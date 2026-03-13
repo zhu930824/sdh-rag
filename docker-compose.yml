@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: sdh-rag-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_DATABASE: sdh_rag
+      MYSQL_USER: ${DB_USERNAME:-rag_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-rag_password}
+      TZ: Asia/Shanghai
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./rag-backend/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    networks:
+      - sdh-rag-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: sdh-rag-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sdh-rag-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Elasticsearch 向量数据库
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: sdh-rag-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx2g
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - "cluster.routing.allocation.disk.threshold_enabled=false"
+    ports:
+      - "${ES_PORT:-9200}:9200"
+      - "${ES_PORT_NODE:-9300}:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - sdh-rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # 后端服务
+  rag-backend:
+    build:
+      context: ./rag-backend
+      dockerfile: Dockerfile
+    container_name: sdh-rag-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USERNAME=${DB_USERNAME:-rag_user}
+      - DB_PASSWORD=${DB_PASSWORD:-rag_password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - ELASTICSEARCH_URI=elasticsearch:9200
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - JWT_ADMIN_SECRET=${JWT_ADMIN_SECRET:-your_admin_secret_key_here}
+      - JWT_USER_SECRET=${JWT_USER_SECRET:-your_user_secret_key_here}
+    ports:
+      - "${BACKEND_PORT:-8989}:8989"
+    volumes:
+      - backend_logs:/app/logs
+      - backend_uploads:/app/uploads
+    networks:
+      - sdh-rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 前端服务
+  rag-frontend:
+    build:
+      context: ./rag-frontend
+      dockerfile: Dockerfile
+    container_name: sdh-rag-frontend
+    restart: unless-stopped
+    depends_on:
+      - rag-backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - sdh-rag-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# 数据卷定义
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  es_data:
+    driver: local
+  backend_logs:
+    driver: local
+  backend_uploads:
+    driver: local
+
+# 网络定义
+networks:
+  sdh-rag-network:
+    driver: bridge
