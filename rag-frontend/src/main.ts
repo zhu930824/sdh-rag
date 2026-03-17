@@ -1,9 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import 'element-plus/dist/index.css'
-import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+import Antd from 'ant-design-vue'
+import 'ant-design-vue/dist/reset.css'
 
 import App from './App.vue'
 import router from './router'
@@ -24,15 +22,8 @@ app.use(pinia)
 // 注册路由
 app.use(router)
 
-// 注册Element Plus
-app.use(ElementPlus, {
-  locale: zhCn,
-})
-
-// 注册Element Plus图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
+// 注册Ant Design Vue
+app.use(Antd)
 
 // 应用初始化
 async function initializeApp(): Promise<void> {

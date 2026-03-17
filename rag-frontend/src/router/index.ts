@@ -96,6 +96,36 @@ const routes: RouteRecordRaw[] = [
         } as RouteMeta,
       },
       {
+        path: 'sensitive',
+        name: 'Sensitive',
+        component: () => import('@/views/sensitive/index.vue'),
+        meta: {
+          title: '敏感词管理',
+          icon: 'Warning',
+          requiresAuth: true,
+        } as RouteMeta,
+      },
+      {
+        path: 'log',
+        name: 'Log',
+        component: () => import('@/views/log/index.vue'),
+        meta: {
+          title: '日志管理',
+          icon: 'Document',
+          requiresAuth: true,
+        } as RouteMeta,
+      },
+      {
+        path: 'hotwords',
+        name: 'Hotwords',
+        component: () => import('@/views/hotwords/index.vue'),
+        meta: {
+          title: '热点词分析',
+          icon: 'TrendCharts',
+          requiresAuth: true,
+        } as RouteMeta,
+      },
+      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/settings/index.vue'),

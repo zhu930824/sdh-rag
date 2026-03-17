@@ -1,13 +1,10 @@
 <template>
   <div class="not-found-container">
-    <!-- 动态背景 -->
     <div class="bg-animation">
       <div class="floating-shape" v-for="i in 6" :key="i" :class="`shape-${i}`"></div>
     </div>
 
-    <!-- 主要内容 -->
     <div class="not-found-content">
-      <!-- 404数字动画 -->
       <div class="error-code-wrapper">
         <div class="error-code">
           <span class="digit" v-for="(digit, index) in '404'" :key="index" :style="{ animationDelay: `${index * 0.1}s` }">
@@ -18,7 +15,6 @@
         <div class="error-glow"></div>
       </div>
 
-      <!-- 错误信息 -->
       <div class="error-info animate-slide-up">
         <h2 class="error-title">哎呀！页面走丢了</h2>
         <p class="error-desc">
@@ -26,13 +22,12 @@
         </p>
         <div class="error-suggestions">
           <div class="suggestion-item" v-for="(item, index) in suggestions" :key="index" @click="handleSuggestion(index)">
-            <el-icon><component :is="item.icon" /></el-icon>
+            <component :is="item.icon" />
             <span>{{ item.text }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 动画图标 -->
       <div class="error-illustration">
         <div class="astronaut">
           <div class="astronaut-body">
@@ -49,31 +44,28 @@
         </div>
       </div>
 
-      <!-- 操作按钮 -->
       <div class="action-buttons animate-slide-up" style="animation-delay: 0.2s">
-        <el-button type="primary" size="large" @click="goHome" class="home-btn">
-          <el-icon><HomeFilled /></el-icon>
+        <a-button type="primary" size="large" @click="goHome" class="home-btn">
+          <template #icon><HomeOutlined /></template>
           <span>返回首页</span>
-        </el-button>
-        <el-button size="large" @click="goBack" class="back-btn">
-          <el-icon><Back /></el-icon>
+        </a-button>
+        <a-button size="large" @click="goBack" class="back-btn">
+          <template #icon><RollbackOutlined /></template>
           <span>返回上页</span>
-        </el-button>
+        </a-button>
       </div>
 
-      <!-- 倒计时自动跳转 -->
       <div class="auto-redirect animate-fade-in" style="animation-delay: 0.4s">
         <span>{{ countdown }}秒后自动返回首页</span>
-        <el-progress 
-          :percentage="progress" 
-          :show-text="false"
+        <a-progress 
+          :percent="progress" 
+          :show-info="false"
           :stroke-width="4"
           class="progress-bar"
         />
       </div>
     </div>
 
-    <!-- 装饰性元素 -->
     <div class="decoration-elements">
       <div class="star" v-for="i in 20" :key="i" :style="getStarStyle(i)"></div>
     </div>
@@ -83,23 +75,20 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { HomeFilled, Back, RefreshRight, Document, ChatDotRound } from '@element-plus/icons-vue'
+import { HomeOutlined, RollbackOutlined, ReloadOutlined, FileTextOutlined, CommentOutlined } from '@ant-design/icons-vue'
 
 const router = useRouter()
 
-// 倒计时
 const countdown = ref(10)
 const progress = ref(100)
 let timer: number | null = null
 
-// 建议操作
 const suggestions = [
-  { icon: RefreshRight, text: '刷新页面' },
-  { icon: Document, text: '查看文档' },
-  { icon: ChatDotRound, text: '开始问答' },
+  { icon: ReloadOutlined, text: '刷新页面' },
+  { icon: FileTextOutlined, text: '查看文档' },
+  { icon: CommentOutlined, text: '开始问答' },
 ]
 
-// 获取星星样式
 function getStarStyle(index: number): Record<string, string> {
   const size = Math.random() * 3 + 1
   return {
@@ -112,7 +101,6 @@ function getStarStyle(index: number): Record<string, string> {
   }
 }
 
-// 返回首页
 function goHome(): void {
   if (timer) {
     clearInterval(timer)
@@ -120,7 +108,6 @@ function goHome(): void {
   router.push('/')
 }
 
-// 返回上一页
 function goBack(): void {
   if (timer) {
     clearInterval(timer)
@@ -128,7 +115,6 @@ function goBack(): void {
   router.go(-1)
 }
 
-// 处理建议操作
 function handleSuggestion(index: number): void {
   if (timer) {
     clearInterval(timer)
@@ -146,7 +132,6 @@ function handleSuggestion(index: number): void {
   }
 }
 
-// 开始倒计时
 function startCountdown(): void {
   timer = window.setInterval(() => {
     countdown.value--
@@ -188,7 +173,6 @@ onUnmounted(() => {
   }
 }
 
-// 动态背景
 .bg-animation {
   position: absolute;
   top: 0;
@@ -274,7 +258,6 @@ onUnmounted(() => {
   }
 }
 
-// 主要内容
 .not-found-content {
   position: relative;
   z-index: 1;
@@ -282,7 +265,6 @@ onUnmounted(() => {
   padding: 20px;
 }
 
-// 404数字
 .error-code-wrapper {
   position: relative;
   margin-bottom: 20px;
@@ -398,7 +380,6 @@ onUnmounted(() => {
   }
 }
 
-// 错误信息
 .error-info {
   margin-bottom: 30px;
 
@@ -447,19 +428,15 @@ onUnmounted(() => {
         transform: translateY(0);
       }
 
-      .el-icon {
-        font-size: 18px;
-      }
-
       span {
         font-size: 14px;
         font-weight: 500;
+        color: #fff;
       }
     }
   }
 }
 
-// 宇航员动画
 .error-illustration {
   margin: 40px 0;
 
@@ -593,7 +570,6 @@ onUnmounted(() => {
   }
 }
 
-// 操作按钮
 .action-buttons {
   display: flex;
   gap: 16px;
@@ -608,10 +584,6 @@ onUnmounted(() => {
     font-weight: 500;
     border-radius: 24px;
     transition: all 0.3s ease;
-
-    .el-icon {
-      margin-right: 8px;
-    }
   }
 
   .home-btn {
@@ -638,7 +610,6 @@ onUnmounted(() => {
   }
 }
 
-// 自动跳转
 .auto-redirect {
   color: rgba(255, 255, 255, 0.7);
   font-size: 14px;
@@ -647,19 +618,23 @@ onUnmounted(() => {
     width: 200px;
     margin: 10px auto 0;
 
-    :deep(.el-progress-bar__outer) {
+    :deep(.ant-progress-outer) {
       background: rgba(255, 255, 255, 0.2);
       border-radius: 2px;
     }
 
-    :deep(.el-progress-bar__inner) {
+    :deep(.ant-progress-inner) {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+    }
+
+    :deep(.ant-progress-bg) {
       background: #fff;
       border-radius: 2px;
     }
   }
 }
 
-// 装饰性星星
 .decoration-elements {
   position: absolute;
   top: 0;
@@ -688,7 +663,6 @@ onUnmounted(() => {
   }
 }
 
-// 响应式设计
 @media (max-width: 768px) {
   .error-code-wrapper {
     .error-code .digit {

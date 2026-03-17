@@ -1,9 +1,8 @@
 <template>
   <div ref="containerRef" class="message-list">
-    <!-- 空状态 -->
     <div v-if="messages.length === 0" class="empty-state">
       <div class="empty-icon">
-        <el-icon :size="64"><ChatDotRound /></el-icon>
+        <CommentOutlined :style="{ fontSize: '64px' }" />
       </div>
       <h3 class="empty-title">开始智能问答</h3>
       <p class="empty-desc">输入您的问题，AI将基于知识库为您生成回答</p>
@@ -14,21 +13,24 @@
           class="quick-question-item"
           @click="handleQuickQuestion(question)"
         >
-          <el-icon><QuestionFilled /></el-icon>
+          <QuestionCircleOutlined />
           <span>{{ question }}</span>
         </div>
       </div>
     </div>
 
-    <!-- 消息列表 -->
     <div v-for="message in messages" :key="message.id" :class="['message-item', message.role]">
       <div class="message-avatar">
-        <el-avatar v-if="message.role === 'user'" :size="36" class="user-avatar">
-          <el-icon><User /></el-icon>
-        </el-avatar>
-        <el-avatar v-else :size="36" class="assistant-avatar">
-          <el-icon><Service /></el-icon>
-        </el-avatar>
+        <a-avatar v-if="message.role === 'user'" :size="36" class="user-avatar">
+          <template #icon>
+            <UserOutlined />
+          </template>
+        </a-avatar>
+        <a-avatar v-else :size="36" class="assistant-avatar">
+          <template #icon>
+            <RobotOutlined />
+          </template>
+        </a-avatar>
       </div>
 
       <div class="message-body">
@@ -38,22 +40,18 @@
         </div>
 
         <div class="message-content">
-          <!-- 用户消息直接显示 -->
           <div v-if="message.role === 'user'" class="message-text user-text">
             {{ message.content }}
           </div>
 
-          <!-- AI消息渲染Markdown -->
           <div v-else class="message-text assistant-text" v-html="renderedContent(message.content)"></div>
 
-          <!-- 打字光标 - 流式输出时显示 -->
           <span v-if="isGenerating && message === lastAssistantMessage" class="typing-cursor"></span>
         </div>
 
-        <!-- 引用来源 -->
         <div v-if="message.sources && message.sources.length > 0" class="message-sources">
           <div class="sources-header">
-            <el-icon><Link /></el-icon>
+            <LinkOutlined />
             <span>参考来源</span>
           </div>
           <div class="sources-list">
@@ -66,18 +64,20 @@
           </div>
         </div>
 
-        <!-- 消息操作按钮 -->
         <div v-if="message.role === 'assistant' && message.content && !isGenerating" class="message-actions">
-          <el-tooltip content="复制内容" placement="top">
-            <el-button :icon="DocumentCopy" size="small" text @click="copyContent(message.content)" />
-          </el-tooltip>
+          <a-tooltip title="复制内容">
+            <a-button type="text" size="small" @click="copyContent(message.content)">
+              <template #icon>
+                <CopyOutlined />
+              </template>
+            </a-button>
+          </a-tooltip>
         </div>
       </div>
     </div>
 
-    <!-- 加载指示器 -->
     <div v-if="loading" class="loading-indicator">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+      <a-spin />
       <span>加载中...</span>
     </div>
   </div>
@@ -87,15 +87,21 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
-import { ChatDotRound, User, Service, Link, Loading, QuestionFilled, DocumentCopy } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { message } from 'ant-design-vue'
+import {
+  CommentOutlined,
+  UserOutlined,
+  RobotOutlined,
+  LinkOutlined,
+  LoadingOutlined,
+  QuestionCircleOutlined,
+  CopyOutlined,
+} from '@ant-design/icons-vue'
 import type { ChatMessage, Source } from '@/api/chat'
 import SourceCard from './SourceCard.vue'
 
-// 配置 marked 使用 highlight.js 进行代码高亮
 const renderer = new marked.Renderer()
 
-// 自定义代码块渲染，添加语言标签和复制按钮
 renderer.code = ({ text, lang }) => {
   const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
   const highlighted = hljs.highlight(text, { language }).value
@@ -108,7 +114,6 @@ renderer.code = ({ text, lang }) => {
   </div>`
 }
 
-// 配置 marked 选项
 marked.setOptions({
   renderer,
   breaks: true,
@@ -128,70 +133,57 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLElement>()
 
-// 快捷问题列表
 const quickQuestions = [
   '如何使用知识库？',
   '支持哪些文档格式？',
   '如何提高检索准确率？',
 ]
 
-// 获取最后一条AI消息
 const lastAssistantMessage = computed(() => {
   const assistantMessages = props.messages.filter((m) => m.role === 'assistant')
   return assistantMessages[assistantMessages.length - 1]
 })
 
-// 渲染Markdown内容
 function renderedContent(content: string): string {
   if (!content) return ''
   return marked.parse(content) as string
 }
 
-// 点击快捷问题
 function handleQuickQuestion(question: string): void {
   emit('quickQuestion', question)
 }
 
-// 复制内容到剪贴板
 async function copyContent(content: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(content)
-    ElMessage.success('已复制到剪贴板')
+    message.success('已复制到剪贴板')
   } catch {
-    ElMessage.error('复制失败')
+    message.error('复制失败')
   }
 }
 
-// 格式化时间
 function formatTime(time: string): string {
   const date = new Date(time)
   const now = new Date()
   const diff = now.getTime() - date.getTime()
 
-  // 一分钟内
   if (diff < 60000) return '刚刚'
-  // 一小时内
   if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  // 今天
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   }
-  // 昨天
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
   if (date.toDateString() === yesterday.toDateString()) {
     return `昨天 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
   }
-  // 其他
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-// 点击来源
 function handleSourceClick(source: Source): void {
   emit('sourceClick', source)
 }
 
-// 滚动到底部
 function scrollToBottom(smooth = true): void {
   nextTick(() => {
     if (containerRef.value) {
@@ -203,7 +195,6 @@ function scrollToBottom(smooth = true): void {
   })
 }
 
-// 监听消息变化自动滚动
 watch(
   () => props.messages.length,
   () => {
@@ -211,12 +202,10 @@ watch(
   }
 )
 
-// 监听生成状态
 watch(
   () => props.isGenerating,
   (generating) => {
     if (generating) {
-      // 生成时持续滚动
       const interval = setInterval(() => {
         scrollToBottom(false)
         if (!props.isGenerating) {
@@ -227,12 +216,10 @@ watch(
   }
 )
 
-// 初始化滚动到底部
 onMounted(() => {
   scrollToBottom(false)
 })
 
-// 暴露方法供父组件调用
 defineExpose({
   scrollToBottom,
 })
@@ -244,7 +231,6 @@ defineExpose({
   overflow-y: auto;
   padding: 20px;
 
-  // 空状态
   .empty-state {
     height: 100%;
     display: flex;
@@ -295,16 +281,10 @@ defineExpose({
           background-color: var(--primary-light-9);
           color: var(--primary-color);
         }
-
-        .el-icon {
-          font-size: 16px;
-          color: var(--primary-color);
-        }
       }
     }
   }
 
-  // 消息项
   .message-item {
     display: flex;
     gap: 12px;
@@ -377,7 +357,6 @@ defineExpose({
             background-color: var(--bg-page);
             color: var(--text-primary);
 
-            // Markdown 样式
             :deep(p) {
               margin: 0 0 12px;
               &:last-child {
@@ -398,7 +377,6 @@ defineExpose({
               }
             }
 
-            // 代码块样式
             :deep(.code-block) {
               margin: 12px 0;
               border-radius: var(--border-radius-base);
@@ -511,7 +489,6 @@ defineExpose({
           }
         }
 
-        // 打字光标动画
         .typing-cursor {
           display: inline-block;
           width: 2px;
@@ -533,7 +510,6 @@ defineExpose({
         }
       }
 
-      // 引用来源
       .message-sources {
         margin-top: 8px;
 
@@ -554,7 +530,6 @@ defineExpose({
         }
       }
 
-      // 消息操作按钮
       .message-actions {
         display: flex;
         gap: 4px;
@@ -565,12 +540,10 @@ defineExpose({
     }
   }
 
-  // 消息项悬停时显示操作按钮
   .message-item:hover .message-actions {
     opacity: 1;
   }
 
-  // 加载指示器
   .loading-indicator {
     display: flex;
     align-items: center;
@@ -578,19 +551,6 @@ defineExpose({
     gap: 8px;
     padding: 20px;
     color: var(--text-secondary);
-
-    .loading-icon {
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-      to {
-        transform: rotate(360deg);
-      }
-    }
   }
 }
 </style>

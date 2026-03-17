@@ -1,110 +1,110 @@
-// CSS变量定义 - 主题色系
+// CSS变量定义 - Ant Design Vue 主题色系
 :root {
-  // 主色调
-  --primary-color: #409eff;
-  --primary-light-3: #79bbff;
-  --primary-light-5: #a0cfff;
-  --primary-light-7: #c6e2ff;
-  --primary-light-8: #d9ecff;
-  --primary-light-9: #ecf5ff;
-  --primary-dark-2: #337ecc;
-  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  // 主色调 - 科技蓝
+  --primary-color: #1890ff;
+  --primary-hover: #40a9ff;
+  --primary-active: #096dd9;
+  --primary-light: #e6f7ff;
+  --primary-light-3: #91d5ff;
+  --primary-light-5: #69c0ff;
+  --primary-light-7: #40a9ff;
+  --primary-light-8: #69c0ff;
+  --primary-light-9: #e6f7ff;
+  --primary-dark-2: #0050b3;
+  --primary-gradient: linear-gradient(135deg, #1890ff 0%, #722ed1 100%);
 
-  // 渐变色系
-  --gradient-purple: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --gradient-blue: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  --gradient-pink: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  --gradient-green: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-  --gradient-orange: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-  --gradient-sunset: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  --gradient-ocean: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  --gradient-forest: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  // 渐变色系 - 科技感
+  --gradient-purple: linear-gradient(135deg, #1890ff 0%, #722ed1 100%);
+  --gradient-blue: linear-gradient(135deg, #1890ff 0%, #36cfc9 100%);
+  --gradient-pink: linear-gradient(135deg, #eb2f96 0%, #f5222d 100%);
+  --gradient-green: linear-gradient(135deg, #52c41a 0%, #13c2c2 100%);
+  --gradient-orange: linear-gradient(135deg, #fa8c16 0%, #fadb14 100%);
 
   // 功能色
-  --success-color: #67c23a;
-  --success-light-3: #95d475;
-  --success-light-5: #b3e19d;
-  --success-light-7: #d1edc4;
-  --success-light-8: #e1f3d8;
-  --success-light-9: #f0f9eb;
-  --success-dark-2: #529b2e;
+  --success-color: #52c41a;
+  --success-light-3: #95de64;
+  --success-light-5: #b7eb8f;
+  --success-light-7: #d9f7be;
+  --success-light-8: #e6f7e0;
+  --success-light-9: #f6ffed;
+  --success-dark-2: #389e0d;
 
-  --warning-color: #e6a23c;
-  --warning-light-3: #eebe77;
-  --warning-light-5: #f3d19e;
-  --warning-light-7: #f8e3c5;
-  --warning-light-8: #faecd8;
-  --warning-light-9: #fdf6ec;
-  --warning-dark-2: #b88230;
+  --warning-color: #faad14;
+  --warning-light-3: #ffc53d;
+  --warning-light-5: #ffd666;
+  --warning-light-7: #ffe58f;
+  --warning-light-8: #fff1b8;
+  --warning-light-9: #fffbe6;
+  --warning-dark-2: #d48806;
 
-  --danger-color: #f56c6c;
-  --danger-light-3: #f89898;
-  --danger-light-5: #fab6b6;
-  --danger-light-7: #fcd3d3;
-  --danger-light-8: #fde2e2;
-  --danger-light-9: #fef0f0;
-  --danger-dark-2: #c45656;
+  --danger-color: #ff4d4f;
+  --danger-light-3: #ff7875;
+  --danger-light-5: #ffa39e;
+  --danger-light-7: #ffccc7;
+  --danger-light-8: #ffd8d4;
+  --danger-light-9: #fff1f0;
+  --danger-dark-2: #cf1322;
 
-  --info-color: #909399;
-  --info-light-3: #b1b3b8;
-  --info-light-5: #c8c9cc;
-  --info-light-7: #dedfe0;
-  --info-light-8: #e9e9eb;
-  --info-light-9: #f4f4f5;
-  --info-dark-2: #73767a;
+  --info-color: #1890ff;
+  --info-light-3: #69c0ff;
+  --info-light-5: #91d5ff;
+  --info-light-7: #bae7ff;
+  --info-light-8: #d6e4ff;
+  --info-light-9: #e6f7ff;
+  --info-dark-2: #003a8c;
 
   // 文字颜色
-  --text-primary: #303133;
-  --text-regular: #606266;
-  --text-secondary: #909399;
-  --text-placeholder: #c0c4cc;
-  --text-disabled: #c0c4cc;
+  --text-primary: rgba(0, 0, 0, 0.88);
+  --text-regular: rgba(0, 0, 0, 0.65);
+  --text-secondary: rgba(0, 0, 0, 0.45);
+  --text-placeholder: rgba(0, 0, 0, 0.25);
+  --text-disabled: rgba(0, 0, 0, 0.25);
 
   // 边框颜色
-  --border-color: #dcdfe6;
-  --border-light: #e4e7ed;
-  --border-lighter: #ebeef5;
-  --border-extra-light: #f2f6fc;
-  --border-dark: #d4d7de;
+  --border-color: #d9d9d9;
+  --border-light: #e8e8e8;
+  --border-lighter: #f0f0f0;
+  --border-extra-light: #f5f5f5;
+  --border-dark: #bfbfbf;
 
   // 背景颜色
   --bg-color: #ffffff;
-  --bg-page: #f2f3f5;
+  --bg-page: #f5f5f5;
   --bg-overlay: #ffffff;
-  --bg-hover: #f5f7fa;
+  --bg-hover: rgba(0, 0, 0, 0.04);
 
   // 阴影
-  --box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  --box-shadow-light: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
-  --box-shadow-lighter: 0 1px 4px 0 rgba(0, 0, 0, 0.04);
-  --box-shadow-dark: 0 4px 16px 0 rgba(0, 0, 0, 0.12);
+  --box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  --box-shadow-light: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --box-shadow-lighter: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --box-shadow-dark: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
 
   // 圆角
   --border-radius-small: 4px;
-  --border-radius-base: 8px;
-  --border-radius-large: 12px;
-  --border-radius-round: 20px;
+  --border-radius-base: 6px;
+  --border-radius-large: 8px;
+  --border-radius-round: 16px;
 
   // 过渡动画
-  --transition-duration: 0.3s;
-  --transition-duration-fast: 0.2s;
-  --transition-duration-slow: 0.5s;
-  --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-duration: 0.2s;
+  --transition-duration-fast: 0.1s;
+  --transition-duration-slow: 0.3s;
+  --transition-timing: cubic-bezier(0.645, 0.045, 0.355, 1);
   --transition-timing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
   --transition-timing-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
   --transition-timing-sharp: cubic-bezier(0.4, 0, 0.6, 1);
 
   // 动画曲线
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
   --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
   // 层级
-  --z-index-dropdown: 1000;
-  --z-index-modal: 2000;
-  --z-index-toast: 3000;
-  --z-index-loading: 4000;
+  --z-index-dropdown: 1050;
+  --z-index-modal: 1000;
+  --z-index-toast: 1010;
+  --z-index-loading: 1100;
 
   // 间距
   --spacing-xs: 4px;
@@ -132,43 +132,46 @@
 
 // 深色模式变量
 html.dark {
-  --primary-color: #5b8cff;
-  --primary-light-3: #8aa8ff;
-  --primary-light-5: #b3c9ff;
-  --primary-light-7: #dbe9ff;
-  --primary-light-8: #e8f2ff;
-  --primary-light-9: #f4f9ff;
-  --primary-dark-2: #4a7ae6;
-  --primary-gradient: linear-gradient(135deg, #5b8cff 0%, #7c6fff 100%);
+  --primary-color: #177ddc;
+  --primary-hover: #3c9ae8;
+  --primary-active: #095cb5;
+  --primary-light: #111d2c;
+  --primary-light-3: #15395b;
+  --primary-light-5: #15417e;
+  --primary-light-7: #1554ad;
+  --primary-light-8: #3c9ae8;
+  --primary-light-9: #111d2c;
+  --primary-dark-2: #3c9ae8;
+  --primary-gradient: linear-gradient(135deg, #177ddc 0%, #9254de 100%);
 
-  --text-primary: #e5eaf3;
-  --text-regular: #cfd3dc;
-  --text-secondary: #a3a6ad;
-  --text-placeholder: #8d9095;
-  --text-disabled: #6c6e72;
+  --text-primary: rgba(255, 255, 255, 0.85);
+  --text-regular: rgba(255, 255, 255, 0.65);
+  --text-secondary: rgba(255, 255, 255, 0.45);
+  --text-placeholder: rgba(255, 255, 255, 0.25);
+  --text-disabled: rgba(255, 255, 255, 0.25);
 
-  --border-color: #4c4d4f;
-  --border-light: #414243;
-  --border-lighter: #363637;
-  --border-extra-light: #2b2b2c;
-  --border-dark: #58585b;
+  --border-color: #424242;
+  --border-light: #363636;
+  --border-lighter: #303030;
+  --border-extra-light: #262626;
+  --border-dark: #545454;
 
-  --bg-color: #1a1a1a;
-  --bg-page: #0f0f0f;
-  --bg-overlay: #1d1d1d;
-  --bg-hover: #262727;
+  --bg-color: #141414;
+  --bg-page: #0a0a0a;
+  --bg-overlay: #1f1f1f;
+  --bg-hover: rgba(255, 255, 255, 0.08);
 
-  --box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.5);
-  --box-shadow-light: 0 2px 8px 0 rgba(0, 0, 0, 0.4);
-  --box-shadow-lighter: 0 1px 4px 0 rgba(0, 0, 0, 0.3);
-  --box-shadow-dark: 0 4px 16px 0 rgba(0, 0, 0, 0.6);
+  --box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.32), 0 3px 6px -4px rgba(0, 0, 0, 0.48), 0 9px 28px 8px rgba(0, 0, 0, 0.2);
+  --box-shadow-light: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --box-shadow-lighter: 0 1px 2px 0 rgba(0, 0, 0, 0.27), 0 1px 6px -1px rgba(0, 0, 0, 0.18), 0 2px 4px 0 rgba(0, 0, 0, 0.18);
+  --box-shadow-dark: 0 6px 16px 0 rgba(0, 0, 0, 0.32), 0 3px 6px -4px rgba(0, 0, 0, 0.48), 0 9px 28px 8px rgba(0, 0, 0, 0.2);
 
   // 深色模式渐变
-  --gradient-purple: linear-gradient(135deg, #4a5fc4 0%, #5a4a8a 100%);
-  --gradient-blue: linear-gradient(135deg, #3a8cc4 0%, #00a8c4 100%);
-  --gradient-pink: linear-gradient(135deg, #c073b4 0%, #c44756 100%);
-  --gradient-green: linear-gradient(135deg, #33b961 0%, #2ac9ab 100%);
-  --gradient-orange: linear-gradient(135deg, #c45a7a 0%, #c4a830 100%);
+  --gradient-purple: linear-gradient(135deg, #177ddc 0%, #9254de 100%);
+  --gradient-blue: linear-gradient(135deg, #177ddc 0%, #13a8a8 100%);
+  --gradient-pink: linear-gradient(135deg, #cb2b83 0%, #d32029 100%);
+  --gradient-green: linear-gradient(135deg, #49aa19 0%, #13a8a8 100%);
+  --gradient-orange: linear-gradient(135deg, #d46b08 0%, #d4b106 100%);
 }
 
 // 全局样式重置
@@ -242,24 +245,31 @@ html.dark {
   }
 }
 
-// Element Plus 样式覆盖
-.el-button {
+// Ant Design Vue 样式覆盖
+.ant-btn {
   font-weight: 500;
 }
 
-.el-card {
+.ant-card {
   border-radius: var(--border-radius-base);
   border: none;
   box-shadow: var(--box-shadow-light);
 }
 
-.el-dialog {
+.ant-modal-content {
   border-radius: var(--border-radius-large);
 }
 
-.el-table {
-  --el-table-header-bg-color: var(--bg-page);
-  --el-table-tr-bg-color: var(--bg-color);
+.ant-table {
+  background: transparent;
+}
+
+.ant-layout {
+  background: transparent;
+}
+
+.ant-menu {
+  background: transparent;
 }
 
 // 通用工具类
@@ -436,10 +446,10 @@ html.dark {
 
 @keyframes glowPulse {
   0%, 100% {
-    box-shadow: 0 0 5px rgba(102, 126, 234, 0.5);
+    box-shadow: 0 0 5px rgba(24, 144, 255, 0.5);
   }
   50% {
-    box-shadow: 0 0 20px rgba(102, 126, 234, 0.8);
+    box-shadow: 0 0 20px rgba(24, 144, 255, 0.8);
   }
 }
 
@@ -614,8 +624,8 @@ html.dark {
   // 优化触摸操作
   button,
   a,
-  .el-button,
-  .el-link {
+  .ant-btn,
+  .ant-anchor-link {
     min-height: 44px;
     min-width: 44px;
   }
@@ -627,19 +637,19 @@ html.dark {
   }
 
   // 小屏幕设备优化
-  .el-dialog {
+  .ant-modal {
     width: 95% !important;
     margin: 0 auto;
   }
 
-  .el-message-box {
+  .ant-modal-confirm {
     width: 90% !important;
   }
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
   // 平板设备优化
-  .el-dialog {
+  .ant-modal {
     width: 70% !important;
   }
 }
@@ -647,9 +657,9 @@ html.dark {
 // 高分辨率屏幕优化
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
   // 优化高清屏显示
-  .el-button,
-  .el-input,
-  .el-select {
+  .ant-btn,
+  .ant-input,
+  .ant-select {
     border-width: 0.5px;
   }
 }

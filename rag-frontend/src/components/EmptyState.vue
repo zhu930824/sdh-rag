@@ -1,96 +1,54 @@
 <template>
-  <div class="empty-state">
-    <div class="empty-icon">
-      <el-icon :size="iconSize">
-        <component :is="icon" />
-      </el-icon>
-    </div>
-    <div class="empty-text">{{ text }}</div>
-    <div v-if="description" class="empty-description">{{ description }}</div>
-    <div v-if="$slots.action" class="empty-action">
-      <slot name="action" />
-    </div>
-  </div>
+  <a-empty :image="imageType" :description="description">
+    <template v-if="$slots.action || showAction" #default>
+      <slot name="action">
+        <a-button v-if="actionText" type="primary" @click="$emit('action')">
+          {{ actionText }}
+        </a-button>
+      </slot>
+    </template>
+  </a-empty>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FolderOpened, Search, Warning, Document, User } from '@element-plus/icons-vue'
+import { Empty } from 'ant-design-vue'
 
-/**
- * 空状态类型
- */
-type EmptyType = 'default' | 'search' | 'error' | 'document' | 'user'
+type EmptyType = 'default' | 'search' | 'data' | 'error' | 'user' | 'document'
 
 interface Props {
   type?: EmptyType
-  text?: string
   description?: string
-  iconSize?: number
+  actionText?: string
+  showAction?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   type: 'default',
-  text: '',
   description: '',
-  iconSize: 64,
+  actionText: '',
+  showAction: false,
 })
 
-// 根据类型选择图标
-const icon = computed(() => {
-  const iconMap: Record<EmptyType, typeof FolderOpened> = {
-    default: FolderOpened,
-    search: Search,
-    error: Warning,
-    document: Document,
-    user: User,
-  }
-  return iconMap[props.type]
-})
+defineEmits<{
+  action: []
+}>()
 
-// 根据类型选择默认文本
-const text = computed(() => {
-  if (props.text) return props.text
-  const textMap: Record<EmptyType, string> = {
-    default: '暂无数据',
-    search: '未找到相关内容',
-    error: '加载失败',
-    document: '暂无文档',
-    user: '暂无用户',
+const imageType = computed(() => {
+  const typeMap: Record<EmptyType, typeof Empty.PRESENTED_IMAGE_SIMPLE> = {
+    default: Empty.PRESENTED_IMAGE_SIMPLE,
+    search: Empty.PRESENTED_IMAGE_SIMPLE,
+    data: Empty.PRESENTED_IMAGE_SIMPLE,
+    error: Empty.PRESENTED_IMAGE_SIMPLE,
+    user: Empty.PRESENTED_IMAGE_SIMPLE,
+    document: Empty.PRESENTED_IMAGE_SIMPLE,
   }
-  return textMap[props.type]
+  return typeMap[props.type] || Empty.PRESENTED_IMAGE_SIMPLE
 })
 </script>
 
 <style scoped lang="scss">
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-
-  .empty-icon {
-    color: var(--el-text-color-placeholder);
-    margin-bottom: 16px;
-  }
-
-  .empty-text {
-    font-size: 14px;
-    color: var(--el-text-color-secondary);
-    margin-bottom: 8px;
-  }
-
-  .empty-description {
-    font-size: 12px;
-    color: var(--el-text-color-placeholder);
-    margin-bottom: 16px;
-    max-width: 300px;
-    text-align: center;
-  }
-
-  .empty-action {
-    margin-top: 8px;
-  }
+.ant-empty {
+  padding: 32px 0;
 }
 </style>

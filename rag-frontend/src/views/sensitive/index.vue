@@ -1,46 +1,37 @@
 <template>
-  <div class="user-container">
+  <div class="sensitive-container">
     <a-card>
       <template #title>
         <div class="card-header">
-          <span class="card-title">用户管理</span>
+          <span class="card-title">敏感词管理</span>
           <a-button type="primary" @click="handleAdd">
             <template #icon><PlusOutlined /></template>
-            新增用户
+            添加敏感词
           </a-button>
         </div>
       </template>
 
       <!-- 搜索栏 -->
       <a-form layout="inline" :model="searchForm" class="search-form">
-        <a-form-item label="用户名">
+        <a-form-item label="敏感词">
           <a-input
             v-model:value="searchForm.keyword"
-            placeholder="请输入用户名或昵称"
+            placeholder="请输入敏感词"
             allow-clear
             @pressEnter="handleSearch"
           />
         </a-form-item>
-        <a-form-item label="状态">
+        <a-form-item label="分类">
           <a-select
-            v-model:value="searchForm.status"
-            placeholder="请选择状态"
+            v-model:value="searchForm.category"
+            placeholder="请选择分类"
             allow-clear
             style="width: 120px"
           >
-            <a-select-option :value="1">启用</a-select-option>
-            <a-select-option :value="0">禁用</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="角色">
-          <a-select
-            v-model:value="searchForm.role"
-            placeholder="请选择角色"
-            allow-clear
-            style="width: 120px"
-          >
-            <a-select-option value="管理员">管理员</a-select-option>
-            <a-select-option value="普通用户">普通用户</a-select-option>
+            <a-select-option value="politics">政治</a-select-option>
+            <a-select-option value="porn">色情</a-select-option>
+            <a-select-option value="violence">暴力</a-select-option>
+            <a-select-option value="ad">广告</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
@@ -85,24 +76,32 @@
         :size="tableDensity"
         :row-selection="rowSelection"
         :pagination="false"
-        :scroll="{ x: 1000 }"
+        :scroll="{ x: 900 }"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'role'">
-            <a-tag :color="record.role === '管理员' ? 'red' : 'blue'">{{ record.role }}</a-tag>
+          <template v-if="column.dataIndex === 'category'">
+            <a-tag :color="getCategoryColor(record.category)">
+              {{ getCategoryText(record.category) }}
+            </a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'status'">
             <a-switch
-              :checked="record.status === 1"
+              :checked="record.status === 'enabled'"
               :loading="record.statusLoading"
-              @change="handleStatusChange(record)"
+              @change="(checked: boolean) => handleStatusChange(record, checked)"
             />
           </template>
           <template v-else-if="column.dataIndex === 'action'">
             <a-space>
               <a-button type="link" size="small" @click="handleEdit(record)">编辑</a-button>
-              <a-button type="link" size="small" @click="handleResetPassword(record)">重置密码</a-button>
-              <a-button type="link" size="small" danger @click="handleDelete(record)">删除</a-button>
+              <a-popconfirm
+                title="确定要删除该敏感词吗？"
+                ok-text="确定"
+                cancel-text="取消"
+                @confirm="handleDelete(record)"
+              >
+                <a-button type="link" size="small" danger>删除</a-button>
+              </a-popconfirm>
             </a-space>
           </template>
         </template>
@@ -124,7 +123,7 @@
       </div>
     </a-card>
 
-    <!-- 用户编辑对话框 -->
+    <!-- 添加/编辑对话框 -->
     <a-modal
       v-model:open="dialogVisible"
       :title="dialogTitle"
@@ -139,37 +138,25 @@
         :label-col="{ span: 4 }"
         :wrapper-col="{ span: 20 }"
       >
-        <a-form-item label="用户名" name="username">
+        <a-form-item label="词汇" name="word">
           <a-input
-            v-model:value="formData.username"
-            placeholder="请输入用户名"
-            :disabled="isEdit"
-            :maxlength="20"
+            v-model:value="formData.word"
+            placeholder="请输入敏感词"
+            :maxlength="50"
           />
         </a-form-item>
-        <a-form-item label="昵称" name="nickname">
-          <a-input v-model:value="formData.nickname" placeholder="请输入昵称" :maxlength="20" />
-        </a-form-item>
-        <a-form-item label="邮箱" name="email">
-          <a-input v-model:value="formData.email" placeholder="请输入邮箱" />
-        </a-form-item>
-        <a-form-item v-if="!isEdit" label="密码" name="password">
-          <a-input-password
-            v-model:value="formData.password"
-            placeholder="请输入密码"
-            :maxlength="20"
-          />
-        </a-form-item>
-        <a-form-item label="角色" name="role">
-          <a-select v-model:value="formData.role" placeholder="请选择角色">
-            <a-select-option value="管理员">管理员</a-select-option>
-            <a-select-option value="普通用户">普通用户</a-select-option>
+        <a-form-item label="分类" name="category">
+          <a-select v-model:value="formData.category" placeholder="请选择分类">
+            <a-select-option value="politics">政治</a-select-option>
+            <a-select-option value="porn">色情</a-select-option>
+            <a-select-option value="violence">暴力</a-select-option>
+            <a-select-option value="ad">广告</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="状态" name="status">
           <a-radio-group v-model:value="formData.status">
-            <a-radio :value="1">启用</a-radio>
-            <a-radio :value="0">禁用</a-radio>
+            <a-radio value="enabled">启用</a-radio>
+            <a-radio value="disabled">禁用</a-radio>
           </a-radio-group>
         </a-form-item>
       </a-form>
@@ -187,58 +174,75 @@ import { PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined } from '@a
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
 import type { TableColumnType, TableProps } from 'ant-design-vue'
 import TableToolbar from '@/components/TableToolbar.vue'
-import { showSuccess, showError, showSaveSuccess, showDeleteSuccess, showOperationError } from '@/utils/message'
-import { showDeleteConfirm, showBatchDeleteConfirm, showResetPasswordConfirm } from '@/utils/confirm'
+import { showSuccess, showSaveSuccess, showDeleteSuccess, showOperationError } from '@/utils/message'
+import { showBatchDeleteConfirm } from '@/utils/confirm'
 import { useLoading } from '@/composables'
-import type { UserItem, UserQueryParams, UserFormData } from '@/api/userManage'
-import { getUserList, createUser, updateUser, deleteUser, batchDeleteUsers, resetUserPassword, toggleUserStatus } from '@/api/userManage'
 import type { ColumnConfig, TableDensity } from '@/components/TableToolbar.vue'
 
-interface UserTableRow extends UserItem {
+// 敏感词数据类型
+interface SensitiveWord {
+  id: number
+  word: string
+  category: string
+  status: string
+  createTime: string
   statusLoading?: boolean
+}
+
+// 搜索表单类型
+interface SearchForm {
+  keyword: string
+  category: string | undefined
+}
+
+// 表单数据类型
+interface FormData {
+  id?: number
+  word: string
+  category: string
+  status: string
 }
 
 const { loading, withLoading } = useLoading()
 
-const searchForm = reactive<UserQueryParams>({
-  page: 1,
-  pageSize: 10,
+// 搜索表单
+const searchForm = reactive<SearchForm>({
   keyword: '',
-  status: undefined,
-  role: undefined,
+  category: undefined,
 })
 
+// 分页配置
 const pagination = reactive({
   page: 1,
   pageSize: 10,
   total: 0,
 })
 
-const tableData = ref<UserTableRow[]>([])
+// 表格数据
+const tableData = ref<SensitiveWord[]>([])
 const selectedRowKeys = ref<number[]>([])
 
+// 表格列配置
 const tableColumns = ref<ColumnConfig[]>([
   { prop: 'id', label: 'ID', visible: true },
-  { prop: 'username', label: '用户名', visible: true },
-  { prop: 'nickname', label: '昵称', visible: true },
-  { prop: 'email', label: '邮箱', visible: true },
-  { prop: 'role', label: '角色', visible: true },
+  { prop: 'word', label: '词汇', visible: true },
+  { prop: 'category', label: '分类', visible: true },
   { prop: 'status', label: '状态', visible: true },
   { prop: 'createTime', label: '创建时间', visible: true },
 ])
 
+// 表格密度
 const tableDensity = ref<TableDensity>('default')
 
+// 表格列配置计算属性
 const tableColumnsConfig = computed<TableColumnType[]>(() => {
   const columns: TableColumnType[] = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-    { title: '用户名', dataIndex: 'username', key: 'username', width: 120 },
-    { title: '昵称', dataIndex: 'nickname', key: 'nickname', width: 120 },
-    { title: '邮箱', dataIndex: 'email', key: 'email', width: 200 },
-    { title: '角色', dataIndex: 'role', key: 'role', width: 100 },
+    { title: '词汇', dataIndex: 'word', key: 'word', width: 200 },
+    { title: '分类', dataIndex: 'category', key: 'category', width: 100 },
     { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
     { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
-    { title: '操作', dataIndex: 'action', key: 'action', width: 200, fixed: 'right' },
+    { title: '操作', dataIndex: 'action', key: 'action', width: 150, fixed: 'right' },
   ]
   return columns.filter(col => {
     const prop = col.dataIndex as string
@@ -247,6 +251,7 @@ const tableColumnsConfig = computed<TableColumnType[]>(() => {
   })
 })
 
+// 行选择配置
 const rowSelection: TableProps['rowSelection'] = computed(() => ({
   selectedRowKeys: selectedRowKeys.value,
   onChange: (keys: number[]) => {
@@ -254,77 +259,98 @@ const rowSelection: TableProps['rowSelection'] = computed(() => ({
   },
 }))
 
+// 对话框相关
 const dialogVisible = ref(false)
-const dialogTitle = ref('新增用户')
+const dialogTitle = ref('添加敏感词')
 const isEdit = ref(false)
 const submitLoading = ref(false)
 const formRef = ref<FormInstance>()
 
-const formData = reactive<UserFormData>({
-  username: '',
-  nickname: '',
-  email: '',
-  role: '普通用户',
-  status: 1,
-  password: '',
+// 表单数据
+const formData = reactive<FormData>({
+  word: '',
+  category: '',
+  status: 'enabled',
 })
 
+// 表单验证规则
 const formRules: Record<string, Rule[]> = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名只能包含字母、数字和下划线', trigger: 'blur' },
+  word: [
+    { required: true, message: '请输入敏感词', trigger: 'blur' },
+    { min: 1, max: 50, message: '词汇长度在 1 到 50 个字符', trigger: 'blur' },
   ],
-  nickname: [
-    { required: true, message: '请输入昵称', trigger: 'blur' },
-    { min: 2, max: 20, message: '昵称长度在 2 到 20 个字符', trigger: 'blur' },
-  ],
-  email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' },
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' },
-  ],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  category: [{ required: true, message: '请选择分类', trigger: 'change' }],
 }
 
+// 分类颜色映射
+const categoryColorMap: Record<string, string> = {
+  politics: 'red',
+  porn: 'orange',
+  violence: 'purple',
+  ad: 'blue',
+}
+
+// 分类文本映射
+const categoryTextMap: Record<string, string> = {
+  politics: '政治',
+  porn: '色情',
+  violence: '暴力',
+  ad: '广告',
+}
+
+// 获取分类颜色
+function getCategoryColor(category: string): string {
+  return categoryColorMap[category] || 'default'
+}
+
+// 获取分类文本
+function getCategoryText(category: string): string {
+  return categoryTextMap[category] || category
+}
+
+// 加载数据
 async function loadData() {
   await withLoading(async () => {
-    try {
-      const params: UserQueryParams = {
-        ...searchForm,
-        page: pagination.page,
-        pageSize: pagination.pageSize,
-      }
-      const { data } = await getUserList(params)
-      tableData.value = data.data.list
-      pagination.total = data.data.total
-    } catch (error) {
-      showError('加载用户列表失败')
-      tableData.value = [
-        { id: 1, username: 'admin', nickname: '管理员', email: 'admin@example.com', role: '管理员', status: 1, createTime: '2024-01-01 00:00:00' },
-        { id: 2, username: 'user01', nickname: '用户一', email: 'user01@example.com', role: '普通用户', status: 1, createTime: '2024-01-10 10:30:00' },
-        { id: 3, username: 'user02', nickname: '用户二', email: 'user02@example.com', role: '普通用户', status: 0, createTime: '2024-01-15 14:20:00' },
-      ]
-      pagination.total = 3
+    // 模拟 API 调用
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // 模拟数据
+    const mockData: SensitiveWord[] = [
+      { id: 1, word: '敏感词1', category: 'politics', status: 'enabled', createTime: '2024-01-01 10:00:00' },
+      { id: 2, word: '敏感词2', category: 'porn', status: 'enabled', createTime: '2024-01-02 11:30:00' },
+      { id: 3, word: '敏感词3', category: 'violence', status: 'disabled', createTime: '2024-01-03 14:20:00' },
+      { id: 4, word: '广告词1', category: 'ad', status: 'enabled', createTime: '2024-01-04 09:15:00' },
+      { id: 5, word: '敏感词4', category: 'politics', status: 'enabled', createTime: '2024-01-05 16:45:00' },
+    ]
+
+    // 根据搜索条件过滤
+    let filteredData = mockData
+    if (searchForm.keyword) {
+      filteredData = filteredData.filter(item => item.word.includes(searchForm.keyword))
     }
+    if (searchForm.category) {
+      filteredData = filteredData.filter(item => item.category === searchForm.category)
+    }
+
+    tableData.value = filteredData
+    pagination.total = filteredData.length
   })
 }
 
+// 搜索
 function handleSearch() {
   pagination.page = 1
   loadData()
 }
 
+// 重置
 function handleReset() {
   searchForm.keyword = ''
-  searchForm.status = undefined
-  searchForm.role = undefined
+  searchForm.category = undefined
   handleSearch()
 }
 
+// 列显示切换
 function handleColumnChange(prop: string, visible: boolean) {
   const col = tableColumns.value.find(c => c.prop === prop)
   if (col) {
@@ -332,76 +358,70 @@ function handleColumnChange(prop: string, visible: boolean) {
   }
 }
 
+// 表格密度切换
 function handleDensityChange(density: TableDensity) {
   tableDensity.value = density
 }
 
+// 添加敏感词
 function handleAdd() {
   isEdit.value = false
-  dialogTitle.value = '新增用户'
+  dialogTitle.value = '添加敏感词'
   dialogVisible.value = true
 }
 
-function handleEdit(row: UserTableRow) {
+// 编辑敏感词
+function handleEdit(row: SensitiveWord) {
   isEdit.value = true
-  dialogTitle.value = '编辑用户'
+  dialogTitle.value = '编辑敏感词'
   Object.assign(formData, {
     id: row.id,
-    username: row.username,
-    nickname: row.nickname,
-    email: row.email,
-    role: row.role,
+    word: row.word,
+    category: row.category,
     status: row.status,
   })
   dialogVisible.value = true
 }
 
-async function handleDelete(row: UserTableRow) {
-  const confirmed = await showDeleteConfirm(`用户 ${row.username}`)
-  if (!confirmed) return
-
+// 删除敏感词
+async function handleDelete(row: SensitiveWord) {
   try {
-    await deleteUser(row.id)
+    // 模拟 API 调用
+    await new Promise(resolve => setTimeout(resolve, 300))
+    tableData.value = tableData.value.filter(item => item.id !== row.id)
+    pagination.total -= 1
     showDeleteSuccess()
-    loadData()
   } catch (error) {
     showOperationError('删除')
   }
 }
 
+// 批量删除
 async function handleBatchDelete() {
   const confirmed = await showBatchDeleteConfirm(selectedRowKeys.value.length)
   if (!confirmed) return
 
   try {
-    await batchDeleteUsers(selectedRowKeys.value)
-    showDeleteSuccess()
+    // 模拟 API 调用
+    await new Promise(resolve => setTimeout(resolve, 300))
+    tableData.value = tableData.value.filter(item => !selectedRowKeys.value.includes(item.id))
+    pagination.total -= selectedRowKeys.value.length
     selectedRowKeys.value = []
-    loadData()
+    showDeleteSuccess()
   } catch (error) {
     showOperationError('批量删除')
   }
 }
 
-async function handleResetPassword(row: UserTableRow) {
-  const confirmed = await showResetPasswordConfirm()
-  if (!confirmed) return
-
-  try {
-    const { data } = await resetUserPassword(row.id)
-    showSuccess(`密码已重置为: ${data.data.password}`)
-  } catch (error) {
-    showOperationError('重置密码')
-  }
-}
-
-async function handleStatusChange(row: UserTableRow) {
-  const statusText = row.status === 1 ? '禁用' : '启用'
+// 状态切换
+async function handleStatusChange(row: SensitiveWord, checked: boolean) {
+  const statusText = checked ? '启用' : '禁用'
   row.statusLoading = true
   try {
-    await toggleUserStatus(row.id)
-    row.status = row.status === 1 ? 0 : 1
-    showSuccess(`已${statusText}用户 ${row.username}`)
+    // 模拟 API 调用
+    await new Promise(resolve => setTimeout(resolve, 300))
+    row.status = checked ? 'enabled' : 'disabled'
+    showSuccess(`已${statusText}敏感词 ${row.word}`)
   } catch (error) {
     showOperationError(statusText)
   } finally {
@@ -409,6 +429,7 @@ async function handleStatusChange(row: UserTableRow) {
   }
 }
 
+// 提交表单
 async function handleSubmit() {
   if (!formRef.value) return
 
@@ -416,17 +437,37 @@ async function handleSubmit() {
     await formRef.value.validate()
     submitLoading.value = true
     try {
+      // 模拟 API 调用
+      await new Promise(resolve => setTimeout(resolve, 500))
+
       if (isEdit.value) {
-        await updateUser(formData.id!, formData)
+        // 编辑模式：更新数据
+        const index = tableData.value.findIndex(item => item.id === formData.id)
+        if (index !== -1) {
+          tableData.value[index] = {
+            ...tableData.value[index],
+            word: formData.word,
+            category: formData.category,
+            status: formData.status,
+          }
+        }
         showSaveSuccess()
       } else {
-        await createUser(formData)
-        showSuccess('创建用户成功')
+        // 添加模式：新增数据
+        const newItem: SensitiveWord = {
+          id: Date.now(),
+          word: formData.word,
+          category: formData.category,
+          status: formData.status,
+          createTime: new Date().toLocaleString('zh-CN'),
+        }
+        tableData.value.unshift(newItem)
+        pagination.total += 1
+        showSuccess('添加成功')
       }
       dialogVisible.value = false
-      loadData()
     } catch (error) {
-      showOperationError(isEdit.value ? '保存' : '创建')
+      showOperationError(isEdit.value ? '保存' : '添加')
     } finally {
       submitLoading.value = false
     }
@@ -435,26 +476,25 @@ async function handleSubmit() {
   }
 }
 
+// 对话框关闭
 function handleDialogClosed() {
   formRef.value?.resetFields()
   Object.assign(formData, {
     id: undefined,
-    username: '',
-    nickname: '',
-    email: '',
-    role: '普通用户',
-    status: 1,
-    password: '',
+    word: '',
+    category: '',
+    status: 'enabled',
   })
 }
 
+// 初始化
 onMounted(() => {
   loadData()
 })
 </script>
 
 <style scoped lang="scss">
-.user-container {
+.sensitive-container {
   :deep(.ant-card-head-title) {
     width: 100%;
   }

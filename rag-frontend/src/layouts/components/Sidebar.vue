@@ -1,175 +1,183 @@
 <template>
-  <!-- 移动端抽屉模式 -->
-  <el-drawer
+  <a-drawer
     v-if="isMobile"
-    v-model="drawerVisible"
-    direction="ltr"
-    :size="220"
-    :with-header="false"
-    :z-index="1000"
+    v-model:open="drawerVisible"
+    placement="left"
+    :width="220"
+    :closable="false"
     class="mobile-drawer"
     @close="handleClose"
   >
     <div class="drawer-content">
-      <!-- Logo区域 -->
       <div class="logo-container" @click="handleLogoClick">
-        <el-icon class="logo-icon" :size="28">
-          <Reading />
-        </el-icon>
+        <ReadOutlined class="logo-icon" />
         <span class="logo-text">智能知识库</span>
       </div>
 
-      <!-- 导航菜单 -->
-      <el-scrollbar class="menu-scrollbar">
-        <el-menu
-          :default-active="activeMenu"
-          :unique-opened="true"
-          router
-          class="sidebar-menu"
-          @select="handleMenuSelect"
-        >
-          <el-menu-item index="/dashboard">
-            <el-icon><Odometer /></el-icon>
-            <template #title>
-              <span>首页</span>
-            </template>
-          </el-menu-item>
+      <a-menu
+        v-model:selectedKeys="selectedKeys"
+        mode="inline"
+        class="sidebar-menu"
+        @click="handleMenuClick"
+      >
+        <a-menu-item key="/dashboard">
+          <template #icon><HomeOutlined /></template>
+          <span>首页</span>
+        </a-menu-item>
 
-          <el-menu-item index="/knowledge">
-            <el-icon><Folder /></el-icon>
-            <template #title>
-              <span>知识库</span>
-            </template>
-          </el-menu-item>
+        <a-menu-item key="/knowledge">
+          <template #icon><FolderOutlined /></template>
+          <span>知识库</span>
+        </a-menu-item>
 
-          <el-menu-item index="/chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <template #title>
-              <span>智能问答</span>
-            </template>
-          </el-menu-item>
+        <a-menu-item key="/chat">
+          <template #icon><MessageOutlined /></template>
+          <span>智能问答</span>
+        </a-menu-item>
 
-          <el-menu-item index="/user">
-            <el-icon><User /></el-icon>
-            <template #title>
-              <span>用户管理</span>
-            </template>
-          </el-menu-item>
+        <a-menu-item key="/user">
+          <template #icon><UserOutlined /></template>
+          <span>用户管理</span>
+        </a-menu-item>
 
-          <el-menu-item index="/settings">
-            <el-icon><Setting /></el-icon>
-            <template #title>
-              <span>系统设置</span>
-            </template>
-          </el-menu-item>
-        </el-menu>
-      </el-scrollbar>
+        <a-menu-item key="/log">
+          <template #icon><FileTextOutlined /></template>
+          <span>日志管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/sensitive">
+          <template #icon><WarningOutlined /></template>
+          <span>敏感词管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/hotwords">
+          <template #icon><LineChartOutlined /></template>
+          <span>热点词分析</span>
+        </a-menu-item>
+
+        <a-menu-item key="/settings">
+          <template #icon><SettingOutlined /></template>
+          <span>系统设置</span>
+        </a-menu-item>
+      </a-menu>
     </div>
-  </el-drawer>
+  </a-drawer>
 
-  <!-- 桌面端侧边栏 -->
-  <el-aside v-else :width="sidebarWidth" class="layout-sidebar">
-    <!-- Logo区域 -->
+  <a-layout-sider
+    v-else
+    :collapsed="sidebarCollapsed"
+    :width="sidebarWidth"
+    :collapsedWidth="64"
+    class="layout-sidebar"
+    :trigger="null"
+  >
     <div class="logo-container" @click="handleLogoClick">
-      <el-icon class="logo-icon" :size="28">
-        <Reading />
-      </el-icon>
+      <ReadOutlined class="logo-icon" />
       <transition name="logo-text">
         <span v-show="!sidebarCollapsed" class="logo-text">智能知识库</span>
       </transition>
     </div>
 
-    <!-- 导航菜单 -->
-    <el-scrollbar class="menu-scrollbar">
-      <el-menu
-        :default-active="activeMenu"
-        :collapse="sidebarCollapsed"
-        :collapse-transition="false"
-        :unique-opened="true"
-        router
-        class="sidebar-menu"
-      >
-        <el-menu-item index="/dashboard">
-          <el-icon><Odometer /></el-icon>
-          <template #title>
-            <span>首页</span>
-          </template>
-        </el-menu-item>
+    <a-menu
+      v-model:selectedKeys="selectedKeys"
+      mode="inline"
+      :inline-collapsed="sidebarCollapsed"
+      class="sidebar-menu"
+      @click="handleMenuClick"
+    >
+      <a-menu-item key="/dashboard">
+        <template #icon><HomeOutlined /></template>
+        <span>首页</span>
+      </a-menu-item>
 
-        <el-menu-item index="/knowledge">
-          <el-icon><Folder /></el-icon>
-          <template #title>
-            <span>知识库</span>
-          </template>
-        </el-menu-item>
+      <a-menu-item key="/knowledge">
+        <template #icon><FolderOutlined /></template>
+        <span>知识库</span>
+      </a-menu-item>
 
-        <el-menu-item index="/chat">
-          <el-icon><ChatDotRound /></el-icon>
-          <template #title>
-            <span>智能问答</span>
-          </template>
-        </el-menu-item>
+      <a-menu-item key="/chat">
+        <template #icon><MessageOutlined /></template>
+        <span>智能问答</span>
+      </a-menu-item>
 
-        <el-menu-item index="/user">
-          <el-icon><User /></el-icon>
-          <template #title>
-            <span>用户管理</span>
-          </template>
-        </el-menu-item>
+      <a-menu-item key="/user">
+        <template #icon><UserOutlined /></template>
+        <span>用户管理</span>
+      </a-menu-item>
 
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
-          <template #title>
-            <span>系统设置</span>
-          </template>
-        </el-menu-item>
-      </el-menu>
-    </el-scrollbar>
+      <a-menu-item key="/log">
+        <template #icon><FileTextOutlined /></template>
+        <span>日志管理</span>
+      </a-menu-item>
 
-    <!-- 折叠按钮 -->
+      <a-menu-item key="/sensitive">
+        <template #icon><WarningOutlined /></template>
+        <span>敏感词管理</span>
+      </a-menu-item>
+
+      <a-menu-item key="/hotwords">
+        <template #icon><LineChartOutlined /></template>
+        <span>热点词分析</span>
+      </a-menu-item>
+
+      <a-menu-item key="/settings">
+        <template #icon><SettingOutlined /></template>
+        <span>系统设置</span>
+      </a-menu-item>
+    </a-menu>
+
     <div class="collapse-trigger" @click="toggleSidebar">
-      <el-icon :size="18">
-        <ArrowLeft v-if="!sidebarCollapsed" />
-        <ArrowRight v-else />
-      </el-icon>
+      <MenuFoldOutlined v-if="!sidebarCollapsed" />
+      <MenuUnfoldOutlined v-else />
     </div>
-  </el-aside>
+  </a-layout-sider>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
+import {
+  HomeOutlined,
+  FolderOutlined,
+  MessageOutlined,
+  UserOutlined,
+  SettingOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  ReadOutlined,
+  FileTextOutlined,
+  WarningOutlined,
+  LineChartOutlined,
+} from '@ant-design/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 
-// 响应式检测
 const isMobile = ref(false)
 const windowWidth = ref(window.innerWidth)
 
-// 检测是否为移动端
 function checkMobile(): void {
   windowWidth.value = window.innerWidth
   isMobile.value = windowWidth.value < 768
 }
 
-// 计算属性
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const sidebarWidth = computed(() => appStore.sidebarWidth)
-const activeMenu = computed(() => route.path)
+const selectedKeys = computed({
+  get: () => [route.path],
+  set: () => {},
+})
 const drawerVisible = computed({
   get: () => appStore.mobileMenuOpen,
   set: (value: boolean) => appStore.setMobileMenuOpen(value),
 })
 
-// 切换侧边栏
 function toggleSidebar(): void {
   appStore.toggleSidebar()
 }
 
-// Logo点击处理
 function handleLogoClick(): void {
   router.push('/dashboard')
   if (isMobile.value) {
@@ -177,17 +185,15 @@ function handleLogoClick(): void {
   }
 }
 
-// 菜单选择处理
-function handleMenuSelect(): void {
+function handleMenuClick({ key }: { key: string }): void {
+  router.push(key)
   drawerVisible.value = false
 }
 
-// 关闭抽屉
 function handleClose(): void {
   drawerVisible.value = false
 }
 
-// 监听窗口大小变化
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -199,9 +205,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-// 移动端抽屉
 .mobile-drawer {
-  :deep(.el-drawer__body) {
+  :deep(.ant-drawer-body) {
     padding: 0;
   }
 
@@ -213,7 +218,6 @@ onUnmounted(() => {
   }
 }
 
-// Logo区域
 .logo-container {
   height: 60px;
   display: flex;
@@ -230,6 +234,7 @@ onUnmounted(() => {
   }
 
   .logo-icon {
+    font-size: 28px;
     color: var(--primary-color);
     flex-shrink: 0;
   }
@@ -243,7 +248,6 @@ onUnmounted(() => {
   }
 }
 
-// Logo文字动画
 .logo-text-enter-active,
 .logo-text-leave-active {
   transition: all 0.3s ease;
@@ -255,31 +259,26 @@ onUnmounted(() => {
   transform: translateX(-10px);
 }
 
-// 滚动区域
-.menu-scrollbar {
-  flex: 1;
-  overflow: hidden;
-
-  :deep(.el-scrollbar__wrap) {
-    overflow-x: hidden;
-  }
-}
-
-// 侧边栏菜单
 .layout-sidebar {
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-overlay);
+  background-color: var(--bg-overlay) !important;
   border-right: 1px solid var(--border-lighter);
-  transition: width var(--transition-duration);
   overflow: hidden;
+
+  :deep(.ant-layout-sider-children) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
 }
 
 .sidebar-menu {
-  border-right: none;
-  background-color: transparent;
+  flex: 1;
+  border-right: none !important;
+  background-color: transparent !important;
 
-  :deep(.el-menu-item) {
+  :deep(.ant-menu-item) {
     height: 50px;
     line-height: 50px;
     margin: 4px 8px;
@@ -290,27 +289,26 @@ onUnmounted(() => {
       background-color: var(--bg-page);
     }
 
-    &.is-active {
+    &.ant-menu-item-selected {
       background-color: var(--primary-light-9);
       color: var(--primary-color);
       font-weight: 500;
 
-      .el-icon {
+      .anticon {
         color: var(--primary-color);
       }
     }
   }
 
-  // 折叠状态样式
-  &.el-menu--collapse {
-    :deep(.el-menu-item) {
+  &.ant-menu-inline-collapsed {
+    :deep(.ant-menu-item) {
       margin: 4px;
       justify-content: center;
+      padding: 0 calc(50% - 16px) !important;
     }
   }
 }
 
-// 折叠按钮
 .collapse-trigger {
   height: 48px;
   display: flex;
@@ -319,6 +317,7 @@ onUnmounted(() => {
   border-top: 1px solid var(--border-lighter);
   cursor: pointer;
   color: var(--text-regular);
+  font-size: 18px;
   transition: all var(--transition-duration);
 
   &:hover {
@@ -327,14 +326,9 @@ onUnmounted(() => {
   }
 }
 
-// 响应式设计
 @media (max-width: 768px) {
   .mobile-drawer {
-    :deep(.el-drawer) {
-      border-radius: 0;
-    }
-
-    :deep(.el-drawer__body) {
+    :deep(.ant-drawer-body) {
       padding: 0;
     }
 
@@ -358,20 +352,11 @@ onUnmounted(() => {
       }
     }
 
-    .menu-scrollbar {
-      flex: 1;
-      overflow: hidden;
-
-      :deep(.el-scrollbar__wrap) {
-        overflow-x: hidden;
-      }
-    }
-
     .sidebar-menu {
       border-right: none;
       background-color: transparent;
 
-      :deep(.el-menu-item) {
+      :deep(.ant-menu-item) {
         height: 56px;
         line-height: 56px;
         margin: 4px 12px;
@@ -382,12 +367,12 @@ onUnmounted(() => {
           background-color: var(--bg-page);
         }
 
-        &.is-active {
+        &.ant-menu-item-selected {
           background-color: var(--primary-light-9);
           color: var(--primary-color);
           font-weight: 500;
 
-          .el-icon {
+          .anticon {
             color: var(--primary-color);
           }
         }
@@ -398,7 +383,7 @@ onUnmounted(() => {
 
 @media (max-width: 480px) {
   .mobile-drawer {
-    :deep(.el-drawer) {
+    :deep(.ant-drawer-content) {
       width: 100% !important;
     }
 
@@ -415,7 +400,7 @@ onUnmounted(() => {
     }
 
     .sidebar-menu {
-      :deep(.el-menu-item) {
+      :deep(.ant-menu-item) {
         height: 52px;
         line-height: 52px;
         margin: 4px 8px;
@@ -424,11 +409,8 @@ onUnmounted(() => {
   }
 }
 
-// 平板设备
 @media (min-width: 769px) and (max-width: 1024px) {
   .layout-sidebar {
-    width: 200px !important;
-
     .logo-container {
       padding: 0 12px;
 
@@ -438,7 +420,7 @@ onUnmounted(() => {
     }
 
     .sidebar-menu {
-      :deep(.el-menu-item) {
+      :deep(.ant-menu-item) {
         height: 48px;
         line-height: 48px;
         margin: 4px 6px;
@@ -447,10 +429,9 @@ onUnmounted(() => {
   }
 }
 
-// 深色模式适配
 html.dark {
   .sidebar-menu {
-    :deep(.el-menu-item.is-active) {
+    :deep(.ant-menu-item.ant-menu-item-selected) {
       background-color: rgba(64, 158, 255, 0.1);
     }
   }

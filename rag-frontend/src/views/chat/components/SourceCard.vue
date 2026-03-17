@@ -1,11 +1,13 @@
 <template>
   <div class="source-card" @click="handleClick">
     <div class="source-header">
-      <el-icon class="document-icon"><Document /></el-icon>
-      <span class="document-title" :title="source.documentTitle">{{ source.documentTitle }}</span>
-      <el-tag size="small" type="info" class="score-tag">
+      <FileTextOutlined class="document-icon" />
+      <a-tooltip :title="source.documentTitle">
+        <span class="document-title">{{ source.documentTitle }}</span>
+      </a-tooltip>
+      <a-tag color="blue" class="score-tag">
         相关度: {{ (source.score * 100).toFixed(1) }}%
-      </el-tag>
+      </a-tag>
     </div>
     <div class="source-content">
       {{ truncatedContent }}
@@ -15,7 +17,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Document } from '@element-plus/icons-vue'
+import { FileTextOutlined } from '@ant-design/icons-vue'
 import type { Source } from '@/api/chat'
 
 const props = defineProps<{
@@ -26,13 +28,11 @@ const emit = defineEmits<{
   (e: 'click', source: Source): void
 }>()
 
-// 截断内容显示
 const truncatedContent = computed(() => {
   const content = props.source.content
   return content.length > 150 ? content.slice(0, 150) + '...' : content
 })
 
-// 点击跳转到文档详情
 function handleClick(): void {
   emit('click', props.source)
 }

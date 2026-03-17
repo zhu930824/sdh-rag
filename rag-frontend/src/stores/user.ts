@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login, register, getUserInfo, logout, type LoginRequest, type RegisterRequest, type UserInfo } from '@/api/user'
-import { ElMessage } from 'element-plus'
+import { message } from 'ant-design-vue'
 
 // Token存储键名
 const TOKEN_KEY = 'token'
@@ -50,10 +50,10 @@ export const useUserStore = defineStore('user', () => {
       const result = await login(loginData)
       if (result.code === 200 || result.code === 0) {
         saveToken(result.data.token, remember)
-        ElMessage.success('登录成功')
+        message.success('登录成功')
         return true
       }
-      ElMessage.error(result.message || '登录失败')
+      message.error(result.message || '登录失败')
       return false
     } catch (error) {
       console.error('登录失败:', error)
@@ -69,10 +69,10 @@ export const useUserStore = defineStore('user', () => {
     try {
       const result = await register(data)
       if (result.code === 200 || result.code === 0) {
-        ElMessage.success('注册成功，请登录')
+        message.success('注册成功，请登录')
         return true
       }
-      ElMessage.error(result.message || '注册失败')
+      message.error(result.message || '注册失败')
       return false
     } catch (error) {
       console.error('注册失败:', error)

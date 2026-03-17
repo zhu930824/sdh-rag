@@ -1,168 +1,149 @@
 <template>
-  <el-dialog
-    :model-value="modelValue"
+  <a-modal
+    :open="open"
     title="分类管理"
-    width="600px"
-    :close-on-click-modal="false"
-    @update:model-value="handleClose"
+    :width="600"
+    :mask-closable="false"
+    @update:open="handleClose"
   >
     <div class="category-manager">
-      <!-- 添加分类 -->
       <div class="add-category">
-        <el-form :inline="true" :model="newCategory" :rules="rules" @submit.prevent="handleAddCategory">
-          <el-form-item prop="name">
-            <el-input
-              v-model="newCategory.name"
+        <a-form layout="inline" :model="newCategory" @submit.prevent="handleAddCategory">
+          <a-form-item>
+            <a-input
+              v-model:value="newCategory.name"
               placeholder="分类名称"
               style="width: 200px"
             />
-          </el-form-item>
-          <el-form-item>
-            <el-tree-select
-              v-model="newCategory.parentId"
-              :data="categoryTreeData"
-              :props="{ label: 'name', children: 'children', value: 'id' }"
+          </a-form-item>
+          <a-form-item>
+            <a-tree-select
+              v-model:value="newCategory.parentId"
+              :tree-data="categoryTreeData"
+              :field-names="{ label: 'name', value: 'id', children: 'children' }"
               placeholder="父级分类"
-              check-strictly
-              clearable
+              allow-clear
+              tree-default-expand-all
               style="width: 150px"
             />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="adding" @click="handleAddCategory">
+          </a-form-item>
+          <a-form-item>
+            <a-button type="primary" :loading="adding" @click="handleAddCategory">
               添加
-            </el-button>
-          </el-form-item>
-        </el-form>
+            </a-button>
+          </a-form-item>
+        </a-form>
       </div>
 
-      <!-- 分类树形列表 -->
       <div class="category-tree">
-        <el-tree
-          :data="knowledgeStore.categoryTree"
-          :props="{ label: 'name', children: 'children' }"
-          node-key="id"
+        <a-tree
+          :tree-data="knowledgeStore.categoryTree"
+          :field-names="{ title: 'name', key: 'id', children: 'children' }"
           default-expand-all
           draggable
-          :allow-drop="allowDrop"
-          :allow-drag="allowDrag"
-          @node-drop="handleDrop"
+          :block-node="true"
+          @drop="handleDrop"
         >
-          <template #default="{ node, data }">
+          <template #title="{ name, description, id, children }">
             <div class="tree-node">
-              <span class="node-label">{{ data.name }}</span>
-              <span class="node-desc">{{ data.description }}</span>
+              <span class="node-label">{{ name }}</span>
+              <span class="node-desc">{{ description }}</span>
               <div class="node-actions">
-                <el-button type="primary" link size="small" @click.stop="handleEdit(data)">
+                <a-button type="link" size="small" @click.stop="handleEdit({ id, name, description })">
                   编辑
-                </el-button>
-                <el-button
-                  type="danger"
-                  link
+                </a-button>
+                <a-button
+                  type="link"
+                  danger
                   size="small"
-                  :disabled="data.children && data.children.length > 0"
-                  @click.stop="handleDelete(data)"
+                  :disabled="children && children.length > 0"
+                  @click.stop="handleDelete({ id, name })"
                 >
                   删除
-                </el-button>
+                </a-button>
               </div>
             </div>
           </template>
-        </el-tree>
+        </a-tree>
       </div>
     </div>
 
-    <!-- 编辑对话框 -->
-    <el-dialog
-      v-model="showEditDialog"
+    <a-modal
+      v-model:open="showEditDialog"
       title="编辑分类"
-      width="400px"
-      append-to-body
-      :close-on-click-modal="false"
+      :width="400"
+      :mask-closable="false"
+      @ok="handleUpdate"
     >
-      <el-form ref="editFormRef" :model="editForm" :rules="rules" label-width="80px">
-        <el-form-item label="分类名称" prop="name">
-          <el-input v-model="editForm.name" placeholder="请输入分类名称" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input
-            v-model="editForm.description"
-            type="textarea"
+      <a-form ref="editFormRef" :model="editForm" :rules="rules" :label-col="{ span: 4 }">
+        <a-form-item label="分类名称" name="name">
+          <a-input v-model:value="editForm.name" placeholder="请输入分类名称" />
+        </a-form-item>
+        <a-form-item label="描述">
+          <a-textarea
+            v-model:value="editForm.description"
             :rows="3"
             placeholder="请输入分类描述"
           />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showEditDialog = false">取消</el-button>
-        <el-button type="primary" :loading="updating" @click="handleUpdate">
-          确定
-        </el-button>
-      </template>
-    </el-dialog>
-  </el-dialog>
+        </a-form-item>
+      </a-form>
+    </a-modal>
+  </a-modal>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import type { FormInstance, Rule } from 'ant-design-vue/es/form'
+import type { TreeProps } from 'ant-design-vue'
 import { useKnowledgeStore } from '@/stores/knowledge'
 import { createCategory, updateCategory, deleteCategory } from '@/api/knowledge'
+import { showSuccess, showError, showWarning } from '@/utils/message'
+import { showDeleteConfirm } from '@/utils/confirm'
 import type { DocumentCategory } from '@/api/knowledge'
 
 const props = defineProps<{
-  modelValue: boolean
+  open: boolean
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
+  'update:open': [value: boolean]
   success: []
 }>()
 
 const knowledgeStore = useKnowledgeStore()
 
-// 添加中状态
 const adding = ref(false)
-// 更新中状态
 const updating = ref(false)
-// 显示编辑对话框
 const showEditDialog = ref(false)
-// 编辑表单引用
 const editFormRef = ref<FormInstance>()
 
-// 新分类数据
 const newCategory = ref({
   name: '',
   parentId: null as number | null,
 })
 
-// 编辑表单数据
 const editForm = ref({
   id: 0,
   name: '',
   description: '',
 })
 
-// 表单验证规则
-const rules: FormRules = {
+const rules: Record<string, Rule[]> = {
   name: [
     { required: true, message: '请输入分类名称', trigger: 'blur' },
     { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' },
   ],
 }
 
-// 分类树数据（包含顶级选项）
 const categoryTreeData = computed(() => {
   return [
     { id: 0, name: '顶级分类', children: knowledgeStore.categoryTree },
   ]
 })
 
-// 添加分类
 async function handleAddCategory() {
   if (!newCategory.value.name.trim()) {
-    ElMessage.warning('请输入分类名称')
+    showWarning('请输入分类名称')
     return
   }
 
@@ -172,20 +153,19 @@ async function handleAddCategory() {
       name: newCategory.value.name,
       parentId: newCategory.value.parentId || undefined,
     })
-    ElMessage.success('添加成功')
+    showSuccess('添加成功')
     newCategory.value.name = ''
     newCategory.value.parentId = null
     await knowledgeStore.fetchCategories()
     emit('success')
   } catch (error) {
-    ElMessage.error('添加失败')
+    showError('添加失败')
   } finally {
     adding.value = false
   }
 }
 
-// 编辑分类
-function handleEdit(data: DocumentCategory) {
+function handleEdit(data: { id: number; name: string; description?: string }) {
   editForm.value = {
     id: data.id,
     name: data.name,
@@ -194,73 +174,52 @@ function handleEdit(data: DocumentCategory) {
   showEditDialog.value = true
 }
 
-// 更新分类
 async function handleUpdate() {
   if (!editFormRef.value) return
 
-  await editFormRef.value.validate(async (valid) => {
-    if (!valid) return
-
-    updating.value = true
-    try {
-      await updateCategory(editForm.value.id, {
-        name: editForm.value.name,
-        description: editForm.value.description,
-      })
-      ElMessage.success('更新成功')
-      showEditDialog.value = false
-      await knowledgeStore.fetchCategories()
-      emit('success')
-    } catch (error) {
-      ElMessage.error('更新失败')
-    } finally {
-      updating.value = false
-    }
-  })
-}
-
-// 删除分类
-async function handleDelete(data: DocumentCategory) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除分类"${data.name}"吗？删除后无法恢复`,
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
+    await editFormRef.value.validate()
+  } catch {
+    return
+  }
 
-    await deleteCategory(data.id)
-    ElMessage.success('删除成功')
+  updating.value = true
+  try {
+    await updateCategory(editForm.value.id, {
+      name: editForm.value.name,
+      description: editForm.value.description,
+    })
+    showSuccess('更新成功')
+    showEditDialog.value = false
     await knowledgeStore.fetchCategories()
     emit('success')
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
+    showError('更新失败')
+  } finally {
+    updating.value = false
   }
 }
 
-// 拖拽判断
-function allowDrop(draggingNode: any, dropNode: any, type: 'prev' | 'inner' | 'next'): boolean {
-  return type !== 'inner' || dropNode.data.id !== 0
+async function handleDelete(data: { id: number; name: string }) {
+  const confirmed = await showDeleteConfirm(`分类"${data.name}"`)
+  if (!confirmed) return
+
+  try {
+    await deleteCategory(data.id)
+    showSuccess('删除成功')
+    await knowledgeStore.fetchCategories()
+    emit('success')
+  } catch (error) {
+    showError('删除失败')
+  }
 }
 
-function allowDrag(draggingNode: any): boolean {
-  return draggingNode.data.id !== 0
+const handleDrop: TreeProps['onDrop'] = (info) => {
+  console.log('拖拽完成:', info)
 }
 
-// 拖拽完成
-async function handleDrop(draggingNode: any, dropNode: any, dropType: string) {
-  // 这里可以调用API更新排序
-  console.log('拖拽完成:', draggingNode.data, dropNode.data, dropType)
-}
-
-// 关闭对话框
 function handleClose() {
-  emit('update:modelValue', false)
+  emit('update:open', false)
 }
 </script>
 
@@ -303,7 +262,7 @@ function handleClose() {
       }
     }
 
-    :deep(.el-tree-node__content):hover .node-actions {
+    :deep(.ant-tree-node-content-wrapper):hover .node-actions {
       display: flex;
     }
   }

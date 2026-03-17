@@ -1,65 +1,60 @@
 <template>
-  <div v-loading="loading" class="document-detail">
-    <!-- 加载骨架屏 -->
+  <div class="document-detail">
     <template v-if="loading">
-      <el-skeleton :rows="5" animated />
+      <a-skeleton active :paragraph="{ rows: 5 }" />
     </template>
 
-    <!-- 文档内容 -->
     <template v-else-if="document">
-      <!-- 基本信息 -->
-      <el-card shadow="never" class="info-card">
-        <template #header>
+      <a-card :bordered="false" class="info-card">
+        <template #title>
           <div class="card-header">
             <span class="title">{{ document.title }}</span>
-            <el-tag :type="getStatusType(document.status)" size="large">
+            <a-tag :color="getStatusColor(document.status)">
               {{ getStatusText(document.status) }}
-            </el-tag>
+            </a-tag>
           </div>
         </template>
 
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="文件类型">
-            <el-tag size="small">{{ document.fileType.toUpperCase() }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="文件大小">
+        <a-descriptions :column="2" bordered>
+          <a-descriptions-item label="文件类型">
+            <a-tag>{{ document.fileType.toUpperCase() }}</a-tag>
+          </a-descriptions-item>
+          <a-descriptions-item label="文件大小">
             {{ formatFileSize(document.fileSize) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="所属分类">
+          </a-descriptions-item>
+          <a-descriptions-item label="所属分类">
             {{ getCategoryName(document.categoryId) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="创建时间">
+          </a-descriptions-item>
+          <a-descriptions-item label="创建时间">
             {{ formatDate(document.createTime) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="更新时间">
+          </a-descriptions-item>
+          <a-descriptions-item label="更新时间">
             {{ formatDate(document.updateTime) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="文件路径">
-            <el-text type="info" size="small">{{ document.filePath }}</el-text>
-          </el-descriptions-item>
-        </el-descriptions>
-      </el-card>
+          </a-descriptions-item>
+          <a-descriptions-item label="文件路径">
+            <span class="file-path">{{ document.filePath }}</span>
+          </a-descriptions-item>
+        </a-descriptions>
+      </a-card>
 
-      <!-- 文档内容预览 -->
-      <el-card shadow="never" class="content-card">
-        <template #header>
+      <a-card :bordered="false" class="content-card">
+        <template #title>
           <div class="section-title">
-          <el-icon><Document /></el-icon>
-          <span>文档内容</span>
-        </div>
+            <FileTextOutlined />
+            <span>文档内容</span>
+          </div>
         </template>
         <div class="content-preview">
-          <el-scrollbar height="400px">
+          <a-scrollbar style="height: 400px">
             <div class="content-text">{{ document.content || '暂无内容预览' }}</div>
-          </el-scrollbar>
+          </a-scrollbar>
         </div>
-      </el-card>
+      </a-card>
 
-      <!-- 相关文档推荐 -->
-      <el-card v-if="relatedDocuments.length > 0" shadow="never" class="related-card">
-        <template #header>
+      <a-card v-if="relatedDocuments.length > 0" :bordered="false" class="related-card">
+        <template #title>
           <div class="section-title">
-            <el-icon><Connection /></el-icon>
+            <LinkOutlined />
             <span>相关文档</span>
           </div>
         </template>
@@ -70,9 +65,7 @@
             class="related-item"
             @click="handleViewRelated(doc.id)"
           >
-            <el-icon :color="getFileIconColor(doc.fileType)">
-              <component :is="getFileIcon(doc.fileType)" />
-            </el-icon>
+            <FileTextOutlined :style="{ color: getFileIconColor(doc.fileType) }" />
             <div class="item-info">
               <div class="item-title">{{ doc.title }}</div>
               <div class="item-meta">
@@ -82,21 +75,20 @@
             </div>
           </div>
         </div>
-      </el-card>
+      </a-card>
     </template>
 
-    <!-- 错误状态 -->
-    <el-empty v-else description="文档不存在或已被删除" />
+    <a-empty v-else description="文档不存在或已被删除" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Document, Connection, Tickets } from '@element-plus/icons-vue'
+import { FileTextOutlined, LinkOutlined } from '@ant-design/icons-vue'
 import { getDocumentDetail, getRelatedDocuments } from '@/api/knowledge'
 import type { KnowledgeDocument } from '@/api/knowledge'
 import { useKnowledgeStore } from '@/stores/knowledge'
+import { showError } from '@/utils/message'
 
 const props = defineProps<{
   id: number
@@ -108,14 +100,10 @@ const emit = defineEmits<{
 
 const knowledgeStore = useKnowledgeStore()
 
-// 加载状态
 const loading = ref(false)
-// 文档详情
 const document = ref<KnowledgeDocument | null>(null)
-// 相关文档
 const relatedDocuments = ref<KnowledgeDocument[]>([])
 
-// 监听ID变化
 watch(
   () => props.id,
   () => {
@@ -123,51 +111,34 @@ watch(
   }
 )
 
-// 初始化
 onMounted(() => {
   fetchDocumentDetail()
 })
 
-// 获取文档详情
 async function fetchDocumentDetail() {
   loading.value = true
   try {
     const result = await getDocumentDetail(props.id)
     document.value = result.data
 
-    // 获取相关文档
     const relatedResult = await getRelatedDocuments(props.id)
     relatedDocuments.value = relatedResult.data
   } catch (error) {
-    ElMessage.error('获取文档详情失败')
+    showError('获取文档详情失败')
   } finally {
     loading.value = false
   }
 }
 
-// 查看相关文档
 function handleViewRelated(id: number) {
   emit('viewRelated', id)
 }
 
-// 获取分类名称
 function getCategoryName(categoryId: number): string {
   const category = knowledgeStore.categoryList.find((c) => c.id === categoryId)
   return category?.name || '未分类'
 }
 
-// 获取文件图标
-function getFileIcon(fileType: string) {
-  const iconMap: Record<string, typeof Document> = {
-    pdf: Tickets,
-    doc: Document,
-    docx: Document,
-    txt: Document,
-  }
-  return iconMap[fileType.toLowerCase()] || Document
-}
-
-// 获取文件图标颜色
 function getFileIconColor(fileType: string): string {
   const colorMap: Record<string, string> = {
     pdf: '#F56C6C',
@@ -178,17 +149,15 @@ function getFileIconColor(fileType: string): string {
   return colorMap[fileType.toLowerCase()] || '#909399'
 }
 
-// 获取状态类型
-function getStatusType(status: number): '' | 'success' | 'warning' | 'danger' | 'info' {
-  const typeMap: Record<number, '' | 'success' | 'warning' | 'danger' | 'info'> = {
+function getStatusColor(status: number): string {
+  const colorMap: Record<number, string> = {
     0: 'warning',
     1: 'success',
-    2: 'danger',
+    2: 'error',
   }
-  return typeMap[status] || 'info'
+  return colorMap[status] || 'default'
 }
 
-// 获取状态文本
 function getStatusText(status: number): string {
   const textMap: Record<number, string> = {
     0: '处理中',
@@ -198,7 +167,6 @@ function getStatusText(status: number): string {
   return textMap[status] || '未知'
 }
 
-// 格式化文件大小
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -207,7 +175,6 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// 格式化日期
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
   return date.toLocaleDateString('zh-CN', {
@@ -234,6 +201,12 @@ function formatDate(dateStr: string): string {
         font-size: 18px;
         font-weight: 600;
       }
+    }
+
+    .file-path {
+      font-size: 12px;
+      color: #909399;
+      word-break: break-all;
     }
   }
 

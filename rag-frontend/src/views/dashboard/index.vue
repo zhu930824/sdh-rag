@@ -10,16 +10,14 @@
           <p class="welcome-subtitle">欢迎使用智能知识库管理系统，开始您的高效工作之旅</p>
           <div class="welcome-stats">
             <div class="stat-badge" v-for="(badge, index) in welcomeBadges" :key="index">
-              <el-icon><component :is="badge.icon" /></el-icon>
+              <component :is="badge.icon" />
               <span>{{ badge.text }}</span>
             </div>
           </div>
         </div>
         <div class="welcome-illustration">
           <div class="illustration-wrapper">
-            <el-icon :size="120" class="illustration-icon">
-              <DataAnalysis />
-            </el-icon>
+            <LineChartOutlined class="illustration-icon" />
             <div class="illustration-glow"></div>
             <div class="floating-particles">
               <div class="particle" v-for="i in 8" :key="i" :style="getParticleStyle(i)"></div>
@@ -30,17 +28,15 @@
     </div>
 
     <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6" v-for="(stat, index) in statsData" :key="stat.label">
-        <el-card
+    <a-row :gutter="20" class="stats-row">
+      <a-col :xs="24" :sm="12" :md="6" v-for="(stat, index) in statsData" :key="stat.label">
+        <a-card
           class="stat-card card-hover animate-slide-up"
           :style="{ animationDelay: `${index * 0.1}s` }"
         >
           <div class="stat-content">
             <div class="stat-icon" :style="{ background: stat.gradient }">
-              <el-icon :size="28">
-                <component :is="stat.icon" />
-              </el-icon>
+              <component :is="stat.icon" class="stat-icon-component" />
             </div>
             <div class="stat-info">
               <div class="stat-value">
@@ -48,55 +44,51 @@
               </div>
               <div class="stat-label">{{ stat.label }}</div>
               <div class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
-                <el-icon>
-                  <component :is="stat.trend > 0 ? 'Top' : 'Bottom'" />
-                </el-icon>
+                <component :is="stat.trend > 0 ? ArrowUpOutlined : ArrowDownOutlined" />
                 <span>{{ Math.abs(stat.trend) }}%</span>
               </div>
             </div>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </a-card>
+      </a-col>
+    </a-row>
 
     <!-- 快捷操作 -->
-    <el-card class="quick-actions-card animate-slide-up" style="animation-delay: 0.3s">
-      <template #header>
+    <a-card class="quick-actions-card animate-slide-up" style="animation-delay: 0.3s">
+      <template #title>
         <div class="card-header">
           <span class="card-title">快捷操作</span>
-          <el-tag size="small" type="info">常用功能</el-tag>
+          <a-tag color="blue">常用功能</a-tag>
         </div>
       </template>
-      <el-row :gutter="20">
-        <el-col :xs="12" :sm="6" v-for="action in quickActions" :key="action.label">
+      <a-row :gutter="20">
+        <a-col :xs="12" :sm="6" v-for="action in quickActions" :key="action.label">
           <div class="action-item interactive-transition" @click="handleAction(action)">
             <div class="action-icon" :style="{ background: action.gradient }">
-              <el-icon :size="32">
-                <component :is="action.icon" />
-              </el-icon>
+              <component :is="action.icon" class="action-icon-component" />
             </div>
             <span class="action-label">{{ action.label }}</span>
             <span class="action-desc">{{ action.desc }}</span>
           </div>
-        </el-col>
-      </el-row>
-    </el-card>
+        </a-col>
+      </a-row>
+    </a-card>
 
     <!-- 内容区域 -->
-    <el-row :gutter="20" class="content-row">
+    <a-row :gutter="20" class="content-row">
       <!-- 最近文档 -->
-      <el-col :xs="24" :lg="12">
-        <el-card class="content-card animate-slide-left" style="animation-delay: 0.4s">
-          <template #header>
+      <a-col :xs="24" :lg="12">
+        <a-card class="content-card animate-slide-left" style="animation-delay: 0.4s">
+          <template #title>
             <div class="card-header">
               <span class="card-title">
-                <el-icon><Document /></el-icon>
+                <FileTextOutlined />
                 最近文档
               </span>
-              <el-link type="primary" :underline="false" @click="router.push('/document')">
+              <a @click="router.push('/document')">
                 查看全部
-                <el-icon><ArrowRight /></el-icon>
-              </el-link>
+                <RightOutlined />
+              </a>
             </div>
           </template>
           <div class="document-list">
@@ -107,9 +99,7 @@
               :style="{ animationDelay: `${0.5 + index * 0.05}s` }"
             >
               <div class="doc-icon">
-                <el-icon :size="24" :color="getDocColor(doc.type)">
-                  <component :is="getDocIcon(doc.type)" />
-                </el-icon>
+                <component :is="getDocIcon(doc.type)" :style="{ color: getDocColor(doc.type) }" />
               </div>
               <div class="doc-info">
                 <div class="doc-name text-ellipsis">{{ doc.name }}</div>
@@ -118,28 +108,28 @@
                   <span class="doc-time">{{ doc.time }}</span>
                 </div>
               </div>
-              <el-tag :type="doc.status === 'success' ? 'success' : 'info'" size="small">
+              <a-tag :color="doc.status === 'success' ? 'success' : 'processing'">
                 {{ doc.status === 'success' ? '已处理' : '处理中' }}
-              </el-tag>
+              </a-tag>
             </div>
-            <el-empty v-if="recentDocuments.length === 0" description="暂无文档" />
+            <a-empty v-if="recentDocuments.length === 0" description="暂无文档" />
           </div>
-        </el-card>
-      </el-col>
+        </a-card>
+      </a-col>
 
       <!-- 最近问答 -->
-      <el-col :xs="24" :lg="12">
-        <el-card class="content-card animate-slide-right" style="animation-delay: 0.4s">
-          <template #header>
+      <a-col :xs="24" :lg="12">
+        <a-card class="content-card animate-slide-right" style="animation-delay: 0.4s">
+          <template #title>
             <div class="card-header">
               <span class="card-title">
-                <el-icon><ChatDotRound /></el-icon>
+                <CommentOutlined />
                 最近问答
               </span>
-              <el-link type="primary" :underline="false" @click="router.push('/chat')">
+              <a @click="router.push('/chat')">
                 查看全部
-                <el-icon><ArrowRight /></el-icon>
-              </el-link>
+                <RightOutlined />
+              </a>
             </div>
           </template>
           <div class="chat-list">
@@ -150,7 +140,7 @@
               :style="{ animationDelay: `${0.5 + index * 0.05}s` }"
             >
               <div class="chat-avatar">
-                <el-icon :size="20"><User /></el-icon>
+                <UserOutlined />
               </div>
               <div class="chat-content">
                 <div class="chat-question text-ellipsis">{{ chat.question }}</div>
@@ -158,37 +148,37 @@
               </div>
               <div class="chat-time">{{ chat.time }}</div>
             </div>
-            <el-empty v-if="recentChats.length === 0" description="暂无问答记录" />
+            <a-empty v-if="recentChats.length === 0" description="暂无问答记录" />
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </a-card>
+      </a-col>
+    </a-row>
 
     <!-- 系统信息 -->
-    <el-card class="system-info-card animate-slide-up" style="animation-delay: 0.5s">
-      <template #header>
+    <a-card class="system-info-card animate-slide-up" style="animation-delay: 0.5s">
+      <template #title>
         <div class="card-header">
           <span class="card-title">
-            <el-icon><Monitor /></el-icon>
+            <DesktopOutlined />
             系统信息
           </span>
         </div>
       </template>
-      <el-descriptions :column="4" border>
-        <el-descriptions-item label="系统版本">
-          <el-tag size="small">v1.0.0</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="技术栈">
-          <el-tag type="success" size="small">Vue3 + TypeScript</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="AI模型">
-          <el-tag type="warning" size="small">GPT-4 / Claude</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="向量数据库">
-          <el-tag type="info" size="small">Milvus</el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+      <a-descriptions :column="{ xs: 1, sm: 2, md: 4 }" bordered>
+        <a-descriptions-item label="系统版本">
+          <a-tag color="blue">v1.0.0</a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item label="技术栈">
+          <a-tag color="green">Vue3 + TypeScript</a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item label="AI模型">
+          <a-tag color="orange">GPT-4 / Claude</a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item label="向量数据库">
+          <a-tag color="cyan">Milvus</a-tag>
+        </a-descriptions-item>
+      </a-descriptions>
+    </a-card>
   </div>
 </template>
 
@@ -197,31 +187,31 @@ import { computed, defineComponent, h, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
-  Folder,
-  Document,
-  ChatDotRound,
-  User,
-  FolderAdd,
-  Upload,
-  ChatLineRound,
-  UserFilled,
-  DataAnalysis,
-  ArrowRight,
-  Monitor,
-  Top,
-  Bottom,
-  DocumentCopy,
-  Tickets,
-  Files,
-} from '@element-plus/icons-vue'
+  FolderOutlined,
+  FileTextOutlined,
+  CommentOutlined,
+  UserOutlined,
+  FolderAddOutlined,
+  UploadOutlined,
+  MessageOutlined,
+  TeamOutlined,
+  LineChartOutlined,
+  RightOutlined,
+  DesktopOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  FilePdfOutlined,
+  FileWordOutlined,
+  FileMarkdownOutlined,
+  FileExcelOutlined,
+  FileOutlined,
+} from '@ant-design/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 
-// 用户昵称
 const nickname = computed(() => userStore.nickname)
 
-// 数字递增组件
 const CountUp = defineComponent({
   props: {
     endVal: { type: Number, default: 0 },
@@ -254,7 +244,6 @@ const CountUp = defineComponent({
   },
 })
 
-// 获取问候语
 function getGreeting(): string {
   const hour = new Date().getHours()
   if (hour < 6) return '夜深了'
@@ -266,14 +255,12 @@ function getGreeting(): string {
   return '夜深了'
 }
 
-// 欢迎区域徽章
 const welcomeBadges = [
-  { icon: Document, text: '256 文档' },
-  { icon: ChatDotRound, text: '1024 问答' },
-  { icon: User, text: '48 用户' },
+  { icon: FileTextOutlined, text: '256 文档' },
+  { icon: CommentOutlined, text: '1024 问答' },
+  { icon: UserOutlined, text: '48 用户' },
 ]
 
-// 获取粒子样式
 function getParticleStyle(index: number): Record<string, string> {
   const angle = (index / 8) * 360
   const distance = 60 + Math.random() * 20
@@ -288,71 +275,68 @@ function getParticleStyle(index: number): Record<string, string> {
   }
 }
 
-// 统计数据
 const statsData = [
   {
     label: '知识库数量',
     value: 12,
-    icon: Folder,
+    icon: FolderOutlined,
     gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     trend: 12,
   },
   {
     label: '文档数量',
     value: 256,
-    icon: Document,
+    icon: FileTextOutlined,
     gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
     trend: 8,
   },
   {
     label: '问答次数',
     value: 1024,
-    icon: ChatDotRound,
+    icon: CommentOutlined,
     gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
     trend: -5,
   },
   {
     label: '用户数量',
     value: 48,
-    icon: User,
+    icon: UserOutlined,
     gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
     trend: 15,
   },
 ]
 
-// 快捷操作
 const quickActions = [
   {
     label: '创建知识库',
     desc: '新建知识库',
-    icon: FolderAdd,
+    icon: FolderAddOutlined,
     gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     route: '/knowledge',
   },
   {
     label: '上传文档',
     desc: '添加新文档',
-    icon: Upload,
+    icon: UploadOutlined,
     gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
     route: '/document',
   },
   {
     label: '开始问答',
     desc: '智能对话',
-    icon: ChatLineRound,
+    icon: MessageOutlined,
     gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
     route: '/chat',
   },
   {
     label: '用户管理',
     desc: '管理用户',
-    icon: UserFilled,
+    icon: TeamOutlined,
     gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
     route: '/user',
   },
 ]
 
-// 最近文档
 const recentDocuments = ref([
   { id: 1, name: '产品需求文档.pdf', type: 'pdf', size: '2.5 MB', time: '10分钟前', status: 'success' },
   { id: 2, name: '技术架构设计.docx', type: 'doc', size: '1.8 MB', time: '1小时前', status: 'success' },
@@ -361,7 +345,6 @@ const recentDocuments = ref([
   { id: 5, name: '测试报告.xlsx', type: 'excel', size: '1.2 MB', time: '昨天', status: 'success' },
 ])
 
-// 最近问答
 const recentChats = ref([
   { id: 1, question: '如何使用RAG技术优化问答系统？', answer: 'RAG技术通过检索增强生成，可以显著提升问答系统的准确性...', time: '5分钟前' },
   { id: 2, question: '向量数据库的选择建议？', answer: '推荐使用Milvus或Pinecone，它们在性能和易用性方面表现优秀...', time: '30分钟前' },
@@ -369,18 +352,16 @@ const recentChats = ref([
   { id: 4, question: '系统支持哪些文档格式？', answer: '目前支持PDF、Word、Markdown、TXT等常见格式...', time: '2小时前' },
 ])
 
-// 获取文档图标
 function getDocIcon(type: string) {
-  const iconMap: Record<string, typeof Document> = {
-    pdf: DocumentCopy,
-    doc: Tickets,
-    md: Document,
-    excel: Files,
+  const iconMap: Record<string, typeof FileTextOutlined> = {
+    pdf: FilePdfOutlined,
+    doc: FileWordOutlined,
+    md: FileMarkdownOutlined,
+    excel: FileExcelOutlined,
   }
-  return iconMap[type] || Document
+  return iconMap[type] || FileOutlined
 }
 
-// 获取文档颜色
 function getDocColor(type: string) {
   const colorMap: Record<string, string> = {
     pdf: '#f56c6c',
@@ -391,7 +372,6 @@ function getDocColor(type: string) {
   return colorMap[type] || '#909399'
 }
 
-// 处理快捷操作
 function handleAction(action: typeof quickActions[0]) {
   router.push(action.route)
 }
@@ -399,16 +379,13 @@ function handleAction(action: typeof quickActions[0]) {
 
 <style scoped lang="scss">
 .dashboard-container {
-  padding: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 16px;
 }
 
-// 欢迎区域
 .welcome-section {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: var(--border-radius-large);
-  padding: 32px 40px;
+  padding: 24px 32px;
   margin-bottom: 20px;
   position: relative;
   overflow: hidden;
@@ -495,7 +472,7 @@ function handleAction(action: typeof quickActions[0]) {
         transform: translateY(-2px);
       }
 
-      .el-icon {
+      :deep(.anticon) {
         font-size: 16px;
       }
     }
@@ -512,6 +489,7 @@ function handleAction(action: typeof quickActions[0]) {
     }
 
     .illustration-icon {
+      font-size: 120px;
       color: rgba(255, 255, 255, 0.3);
       animation: float 3s ease-in-out infinite;
       z-index: 2;
@@ -573,7 +551,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 统计卡片
 .stats-row {
   margin-bottom: 20px;
 }
@@ -633,6 +610,10 @@ function handleAction(action: typeof quickActions[0]) {
       transform: rotate(45deg);
       animation: shimmer 2s infinite;
     }
+
+    .stat-icon-component {
+      font-size: 28px;
+    }
   }
 
   .stat-info {
@@ -688,7 +669,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 快捷操作
 .quick-actions-card {
   margin-bottom: 20px;
 
@@ -761,6 +741,10 @@ function handleAction(action: typeof quickActions[0]) {
       z-index: 1;
       transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+      .action-icon-component {
+        font-size: 32px;
+      }
     }
 
     .action-label {
@@ -780,7 +764,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 内容区域
 .content-row {
   margin-bottom: 20px;
 }
@@ -803,7 +786,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 文档列表
 .document-list {
   .document-item {
     display: flex;
@@ -856,6 +838,10 @@ function handleAction(action: typeof quickActions[0]) {
       flex-shrink: 0;
       transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+      :deep(.anticon) {
+        font-size: 24px;
+      }
     }
 
     .doc-info {
@@ -884,7 +870,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 问答列表
 .chat-list {
   .chat-item {
     display: flex;
@@ -912,6 +897,10 @@ function handleAction(action: typeof quickActions[0]) {
       justify-content: center;
       color: var(--primary-color);
       flex-shrink: 0;
+
+      :deep(.anticon) {
+        font-size: 20px;
+      }
     }
 
     .chat-content {
@@ -939,7 +928,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 系统信息
 .system-info-card {
   .card-title {
     font-size: 16px;
@@ -950,7 +938,6 @@ function handleAction(action: typeof quickActions[0]) {
   }
 }
 
-// 响应式设计
 @media (max-width: 768px) {
   .dashboard-container {
     padding: 12px;

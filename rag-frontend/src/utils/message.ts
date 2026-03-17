@@ -1,51 +1,50 @@
-import { ElMessage, type MessageParams } from 'element-plus'
+import { message, type MessageArgsProps } from 'ant-design-vue'
 
 /**
  * 消息提示配置
  */
-const defaultOptions: Partial<MessageParams> = {
-  duration: 3000,
-  grouping: true, // 相同消息合并显示
+const defaultOptions: Partial<MessageArgsProps> = {
+  duration: 3,
 }
 
 /**
  * 显示成功消息
  */
-export function showSuccess(message: string): void {
-  ElMessage.success({
+export function showSuccess(content: string): void {
+  message.success({
     ...defaultOptions,
-    message,
+    content,
   })
 }
 
 /**
  * 显示警告消息
  */
-export function showWarning(message: string): void {
-  ElMessage.warning({
+export function showWarning(content: string): void {
+  message.warning({
     ...defaultOptions,
-    message,
+    content,
   })
 }
 
 /**
  * 显示错误消息
  */
-export function showError(message: string): void {
-  ElMessage.error({
+export function showError(content: string): void {
+  message.error({
     ...defaultOptions,
-    message,
-    duration: 5000, // 错误消息显示时间更长
+    content,
+    duration: 5,
   })
 }
 
 /**
  * 显示信息消息
  */
-export function showInfo(message: string): void {
-  ElMessage.info({
+export function showInfo(content: string): void {
+  message.info({
     ...defaultOptions,
-    message,
+    content,
   })
 }
 
@@ -53,15 +52,13 @@ export function showInfo(message: string): void {
  * 显示加载中消息
  * @returns 返回关闭函数
  */
-export function showLoading(message: string = '加载中...'): () => void {
-  const instance = ElMessage({
+export function showLoading(content: string = '加载中...'): () => void {
+  const hide = message.loading({
     ...defaultOptions,
-    message,
-    type: 'info',
-    duration: 0, // 不自动关闭
-    iconClass: 'el-icon-loading',
+    content,
+    duration: 0,
   })
-  return () => instance.close()
+  return hide
 }
 
 /**

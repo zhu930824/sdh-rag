@@ -1,18 +1,16 @@
 <template>
-  <el-breadcrumb class="layout-breadcrumb" separator="/">
+  <a-breadcrumb class="layout-breadcrumb">
     <transition-group name="breadcrumb">
-      <el-breadcrumb-item v-for="(item, index) in breadcrumbs" :key="item.path">
-        <!-- 最后一项不可点击 -->
+      <a-breadcrumb-item v-for="(item, index) in breadcrumbs" :key="item.path">
         <span v-if="index === breadcrumbs.length - 1" class="breadcrumb-current">
           {{ item.title }}
         </span>
-        <!-- 其他项可点击跳转 -->
         <a v-else class="breadcrumb-link" @click="handleNavigate(item.path)">
           {{ item.title }}
         </a>
-      </el-breadcrumb-item>
+      </a-breadcrumb-item>
     </transition-group>
-  </el-breadcrumb>
+  </a-breadcrumb>
 </template>
 
 <script setup lang="ts">
@@ -27,13 +25,11 @@ interface BreadcrumbItem {
 const route = useRoute()
 const router = useRouter()
 
-// 根据当前路由生成面包屑
 const breadcrumbs = computed<BreadcrumbItem[]>(() => {
   const matched = route.matched.filter(
     (item: RouteLocationMatched) => item.meta && item.meta.title && !item.meta.hidden
   )
 
-  // 添加首页
   const result: BreadcrumbItem[] = [
     {
       path: '/dashboard',
@@ -41,7 +37,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
     },
   ]
 
-  // 添加匹配的路由
   matched.forEach((item: RouteLocationMatched) => {
     if (item.meta?.title) {
       result.push({
@@ -54,7 +49,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
   return result
 })
 
-// 导航处理
 function handleNavigate(path: string): void {
   router.push(path)
 }
@@ -64,11 +58,11 @@ function handleNavigate(path: string): void {
 .layout-breadcrumb {
   font-size: 14px;
 
-  :deep(.el-breadcrumb__inner) {
+  :deep(.ant-breadcrumb-link) {
     color: var(--text-regular);
   }
 
-  :deep(.el-breadcrumb__separator) {
+  :deep(.ant-breadcrumb-separator) {
     color: var(--text-secondary);
   }
 }
@@ -88,7 +82,6 @@ function handleNavigate(path: string): void {
   font-weight: 500;
 }
 
-// 面包屑动画
 .breadcrumb-enter-active,
 .breadcrumb-leave-active {
   transition: all 0.3s ease;

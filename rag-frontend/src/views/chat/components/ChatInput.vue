@@ -1,40 +1,44 @@
 <template>
   <div class="chat-input">
     <div class="input-wrapper">
-      <textarea
+      <a-textarea
         ref="textareaRef"
-        v-model="inputText"
+        v-model:value="inputText"
         class="input-textarea"
         :placeholder="placeholder"
         :disabled="disabled"
+        :auto-size="{ minRows: 2, maxRows: 6 }"
         @input="adjustHeight"
         @keydown="handleKeydown"
-      ></textarea>
+      />
 
       <div class="input-actions">
         <div class="input-tips">
-          <el-icon><InfoFilled /></el-icon>
+          <InfoCircleOutlined />
           <span>Enter 发送，Shift + Enter 换行</span>
         </div>
 
-        <div class="input-buttons">
-          <!-- 停止生成按钮 -->
-          <el-button v-if="isGenerating" type="danger" :icon="VideoPause" @click="handleStop">
+        <a-space class="input-buttons">
+          <a-button v-if="isGenerating" danger @click="handleStop">
+            <template #icon>
+              <PauseCircleOutlined />
+            </template>
             停止生成
-          </el-button>
+          </a-button>
 
-          <!-- 发送按钮 -->
-          <el-button
+          <a-button
             v-else
             type="primary"
-            :icon="Promotion"
             :disabled="!canSend"
             :loading="sending"
             @click="handleSend"
           >
+            <template #icon>
+              <SendOutlined />
+            </template>
             发送
-          </el-button>
-        </div>
+          </a-button>
+        </a-space>
       </div>
     </div>
   </div>
@@ -42,7 +46,11 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import { Promotion, VideoPause, InfoFilled } from '@element-plus/icons-vue'
+import {
+  SendOutlined,
+  PauseCircleOutlined,
+  InfoCircleOutlined,
+} from '@ant-design/icons-vue'
 
 const props = withDefaults(
   defineProps<{
@@ -64,38 +72,31 @@ const emit = defineEmits<{
   (e: 'stop'): void
 }>()
 
-const textareaRef = ref<HTMLTextAreaElement>()
+const textareaRef = ref()
 const inputText = ref('')
 
-// 是否可以发送
 const canSend = computed(() => {
   return inputText.value.trim().length > 0 && !props.disabled && !props.sending
 })
 
-// 调整文本框高度
 function adjustHeight(): void {
   nextTick(() => {
-    if (textareaRef.value) {
-      // 重置高度
-      textareaRef.value.style.height = 'auto'
-      // 设置新高度（最小60px，最大200px）
-      const newHeight = Math.min(Math.max(textareaRef.value.scrollHeight, 60), 200)
-      textareaRef.value.style.height = `${newHeight}px`
+    if (textareaRef.value?.resizableTextArea?.textArea) {
+      const textarea = textareaRef.value.resizableTextArea.textArea
+      textarea.style.height = 'auto'
+      const newHeight = Math.min(Math.max(textarea.scrollHeight, 60), 200)
+      textarea.style.height = `${newHeight}px`
     }
   })
 }
 
-// 处理键盘事件
 function handleKeydown(event: KeyboardEvent): void {
-  // Enter 发送（非 Shift+Enter）
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     handleSend()
   }
-  // Shift+Enter 换行（默认行为）
 }
 
-// 发送消息
 function handleSend(): void {
   const message = inputText.value.trim()
   if (!message || props.disabled || props.sending) return
@@ -103,25 +104,21 @@ function handleSend(): void {
   emit('send', message)
   inputText.value = ''
 
-  // 重置文本框高度
   nextTick(() => {
-    if (textareaRef.value) {
-      textareaRef.value.style.height = '60px'
+    if (textareaRef.value?.resizableTextArea?.textArea) {
+      textareaRef.value.resizableTextArea.textArea.style.height = '60px'
     }
   })
 }
 
-// 停止生成
 function handleStop(): void {
   emit('stop')
 }
 
-// 聚焦输入框
 function focus(): void {
   textareaRef.value?.focus()
 }
 
-// 暴露方法
 defineExpose({
   focus,
 })
@@ -146,25 +143,28 @@ defineExpose({
     }
 
     .input-textarea {
-      width: 100%;
-      min-height: 60px;
-      max-height: 200px;
-      padding: 12px 16px;
-      border: none;
-      background: transparent;
-      font-size: 14px;
-      line-height: 1.6;
-      color: var(--text-primary);
-      resize: none;
-      outline: none;
+      :deep(.ant-input) {
+        width: 100%;
+        min-height: 60px;
+        max-height: 200px;
+        padding: 12px 16px;
+        border: none;
+        background: transparent;
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--text-primary);
+        resize: none;
+        outline: none;
+        box-shadow: none;
 
-      &::placeholder {
-        color: var(--text-placeholder);
-      }
+        &::placeholder {
+          color: var(--text-placeholder);
+        }
 
-      &:disabled {
-        cursor: not-allowed;
-        opacity: 0.6;
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
       }
     }
 
@@ -181,10 +181,6 @@ defineExpose({
         gap: 4px;
         font-size: 12px;
         color: var(--text-placeholder);
-
-        .el-icon {
-          font-size: 14px;
-        }
       }
 
       .input-buttons {

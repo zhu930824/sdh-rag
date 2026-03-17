@@ -1,6 +1,5 @@
 <template>
   <div class="chat-page">
-    <!-- 左侧会话列表 -->
     <aside class="session-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <SessionList
         :sessions="chatStore.sessions"
@@ -13,35 +12,37 @@
         @load-more="handleLoadMore"
       />
 
-      <!-- 折叠按钮 -->
       <div class="collapse-btn" @click="toggleSidebar">
-        <el-icon>
-          <ArrowLeft v-if="!sidebarCollapsed" />
-          <ArrowRight v-else />
-        </el-icon>
+        <LeftOutlined v-if="!sidebarCollapsed" />
+        <RightOutlined v-else />
       </div>
     </aside>
 
-    <!-- 右侧对话区域 -->
     <main class="chat-main">
-      <!-- 顶部标题栏 -->
       <header class="chat-header">
         <div class="header-left">
-          <el-button
+          <a-button
             v-if="sidebarCollapsed"
-            :icon="Expand"
-            circle
-            text
+            type="text"
+            shape="circle"
             @click="toggleSidebar"
-          />
+          >
+            <template #icon>
+              <MenuFoldOutlined />
+            </template>
+          </a-button>
           <h2 class="chat-title">{{ currentTitle }}</h2>
         </div>
         <div class="header-right">
-          <el-button :icon="Delete" @click="handleClearMessages">清空对话</el-button>
+          <a-button @click="handleClearMessages">
+            <template #icon>
+              <DeleteOutlined />
+            </template>
+            清空对话
+          </a-button>
         </div>
       </header>
 
-      <!-- 消息列表区域 -->
       <div class="message-area">
         <MessageList
           ref="messageListRef"
@@ -53,7 +54,6 @@
         />
       </div>
 
-      <!-- 输入区域 -->
       <ChatInput
         ref="chatInputRef"
         :sending="chatStore.loading"
@@ -63,12 +63,11 @@
       />
     </main>
 
-    <!-- 来源详情抽屉 -->
-    <el-drawer
-      v-model="sourceDrawerVisible"
+    <a-drawer
+      v-model:open="sourceDrawerVisible"
       title="引用来源详情"
-      direction="rtl"
-      size="400px"
+      placement="right"
+      :width="400"
     >
       <div v-if="selectedSource" class="source-detail">
         <div class="detail-item">
@@ -77,9 +76,9 @@
         </div>
         <div class="detail-item">
           <label>相关度分数</label>
-          <el-progress
-            :percentage="selectedSource.score * 100"
-            :format="(val: number) => val.toFixed(1) + '%'"
+          <a-progress
+            :percent="selectedSource.score * 100"
+            :format="(percent: number) => percent.toFixed(1) + '%'"
           />
         </div>
         <div class="detail-item">
@@ -87,20 +86,25 @@
           <div class="content-box">{{ selectedSource.content }}</div>
         </div>
         <div class="detail-actions">
-          <el-button type="primary" @click="goToDocument">
+          <a-button type="primary" @click="goToDocument">
             查看完整文档
-          </el-button>
+          </a-button>
         </div>
       </div>
-    </el-drawer>
+    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Expand, Delete } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { message } from 'ant-design-vue'
+import {
+  LeftOutlined,
+  RightOutlined,
+  MenuFoldOutlined,
+  DeleteOutlined,
+} from '@ant-design/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import type { Source } from '@/api/chat'
 import SessionList from './components/SessionList.vue'
@@ -110,84 +114,69 @@ import ChatInput from './components/ChatInput.vue'
 const router = useRouter()
 const chatStore = useChatStore()
 
-// 组件引用
 const messageListRef = ref<InstanceType<typeof MessageList>>()
 const chatInputRef = ref<InstanceType<typeof ChatInput>>()
 
-// 侧边栏折叠状态
 const sidebarCollapsed = ref(false)
 
-// 来源详情抽屉
 const sourceDrawerVisible = ref(false)
 const selectedSource = ref<Source | null>(null)
 
-// 当前会话标题
 const currentTitle = computed(() => {
   if (!chatStore.currentSessionId) return '智能问答'
   const session = chatStore.sessions.find((s) => s.id === chatStore.currentSessionId)
   return session?.title || '新对话'
 })
 
-// 切换侧边栏
 function toggleSidebar(): void {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
-// 选择会话
 async function handleSelectSession(sessionId: string): Promise<void> {
   await chatStore.selectSession(sessionId)
   chatInputRef.value?.focus()
 }
 
-// 新建会话
 async function handleNewSession(): Promise<void> {
   await chatStore.createNewSession()
   chatInputRef.value?.focus()
 }
 
-// 删除会话
 async function handleDeleteSession(sessionId: string): Promise<void> {
   const success = await chatStore.removeSession(sessionId)
   if (success) {
-    ElMessage.success('删除成功')
+    message.success('删除成功')
   }
 }
 
-// 加载更多会话
 function handleLoadMore(): void {
   chatStore.loadMoreSessions()
 }
 
-// 发送消息
 async function handleSendMessage(message: string): Promise<void> {
   await chatStore.sendMessage(message)
 }
 
-// 停止生成
 function handleStopGeneration(): void {
   chatStore.stopGeneration()
-  ElMessage.info('已停止生成')
+  message.info('已停止生成')
 }
 
-// 清空消息
 function handleClearMessages(): void {
   if (chatStore.messages.length === 0) return
   chatStore.clearMessages()
-  ElMessage.success('对话已清空')
+  message.success('对话已清空')
 }
 
-// 点击来源
 function handleSourceClick(source: Source): void {
   selectedSource.value = source
   sourceDrawerVisible.value = true
 }
 
-// 点击快捷问题
 async function handleQuickQuestion(question: string): Promise<void> {
   await chatStore.sendMessage(question)
 }
 
-// 跳转到文档
 function goToDocument(): void {
   if (selectedSource.value) {
     router.push(`/document/${selectedSource.value.documentId}`)
@@ -195,15 +184,12 @@ function goToDocument(): void {
   }
 }
 
-// 初始化
 onMounted(async () => {
   await chatStore.fetchSessions()
   chatInputRef.value?.focus()
 })
 
-// 清理
 onUnmounted(() => {
-  // 如果正在生成，停止
   if (chatStore.isGenerating) {
     chatStore.stopGeneration()
   }
@@ -218,7 +204,6 @@ onUnmounted(() => {
   border-radius: var(--border-radius-large);
   overflow: hidden;
 
-  // 左侧会话列表
   .session-sidebar {
     width: 280px;
     background-color: var(--bg-color);
@@ -258,7 +243,6 @@ onUnmounted(() => {
     }
   }
 
-  // 右侧对话区域
   .chat-main {
     flex: 1;
     display: flex;
@@ -294,7 +278,6 @@ onUnmounted(() => {
     }
   }
 
-  // 来源详情抽屉
   .source-detail {
     padding: 0 20px;
 
@@ -333,7 +316,6 @@ onUnmounted(() => {
   }
 }
 
-// 响应式设计
 @media (max-width: 768px) {
   .chat-page {
     .session-sidebar {

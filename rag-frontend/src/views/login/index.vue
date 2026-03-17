@@ -1,9 +1,7 @@
 <template>
   <div class="login-container">
-    <!-- 粒子背景 -->
     <canvas ref="particleCanvas" class="particle-canvas"></canvas>
 
-    <!-- 动态背景装饰 -->
     <div class="bg-decoration">
       <div class="bg-shape shape-1"></div>
       <div class="bg-shape shape-2"></div>
@@ -11,15 +9,12 @@
       <div class="bg-shape shape-4"></div>
     </div>
 
-    <!-- 登录卡片 -->
     <div class="login-card">
-      <!-- 左侧品牌区域 -->
       <div class="brand-section">
         <div class="brand-content">
-          <!-- Logo -->
           <div class="brand-logo">
             <div class="logo-icon-wrapper">
-              <el-icon :size="48"><Reading /></el-icon>
+              <ReadOutlined class="logo-icon" />
             </div>
             <div class="logo-glow"></div>
             <div class="logo-ring"></div>
@@ -28,7 +23,6 @@
           <h1 class="brand-title">智能知识库</h1>
           <p class="brand-subtitle">基于 RAG 技术的智能问答平台</p>
 
-          <!-- 动态数据展示 -->
           <div class="brand-stats">
             <div class="stat-item" v-for="(stat, index) in brandStats" :key="index">
               <div class="stat-number">
@@ -41,7 +35,7 @@
           <div class="brand-features">
             <div class="feature-item" v-for="(feature, index) in features" :key="index">
               <div class="feature-icon">
-                <el-icon><component :is="feature.icon" /></el-icon>
+                <component :is="feature.icon" />
               </div>
               <div class="feature-text">
                 <span class="feature-title">{{ feature.title }}</span>
@@ -50,7 +44,6 @@
             </div>
           </div>
 
-          <!-- 装饰性元素 -->
           <div class="brand-decoration">
             <div class="decoration-line"></div>
             <div class="decoration-dot"></div>
@@ -58,19 +51,15 @@
         </div>
       </div>
 
-      <!-- 右侧登录表单 -->
       <div class="form-section">
         <div class="form-content">
-          <!-- 深色模式切换 -->
           <div class="theme-switch">
-            <el-tooltip :content="isDark ? '切换浅色模式' : '切换深色模式'" placement="left">
-              <el-switch
-                v-model="isDark"
-                :active-icon="Moon"
-                :inactive-icon="Sunny"
-                @change="toggleDark"
-              />
-            </el-tooltip>
+            <a-tooltip :title="isDark ? '切换浅色模式' : '切换深色模式'" placement="left">
+              <a-switch v-model:checked="isDark" @change="toggleDark">
+                <template #checkedChildren><MoonOutlined /></template>
+                <template #unCheckedChildren><SunOutlined /></template>
+              </a-switch>
+            </a-tooltip>
           </div>
 
           <div class="form-header">
@@ -78,74 +67,73 @@
             <p class="form-subtitle">请登录您的账号</p>
           </div>
 
-          <el-form
+          <a-form
             ref="formRef"
             :model="loginForm"
             :rules="rules"
             class="login-form"
-            size="large"
-            @keyup.enter="handleLogin"
+            @finish="handleLogin"
+            @finishFailed="onFinishFailed"
           >
-            <el-form-item prop="username">
-              <el-input
-                v-model="loginForm.username"
+            <a-form-item name="username">
+              <a-input
+                v-model:value="loginForm.username"
                 placeholder="请输入用户名"
-                :prefix-icon="User"
-                clearable
-              />
-            </el-form-item>
+                size="large"
+                allow-clear
+              >
+                <template #prefix><UserOutlined /></template>
+              </a-input>
+            </a-form-item>
 
-            <el-form-item prop="password">
-              <el-input
-                v-model="loginForm.password"
-                type="password"
+            <a-form-item name="password">
+              <a-input-password
+                v-model:value="loginForm.password"
                 placeholder="请输入密码"
-                :prefix-icon="Lock"
-                show-password
-              />
-            </el-form-item>
+                size="large"
+              >
+                <template #prefix><LockOutlined /></template>
+              </a-input-password>
+            </a-form-item>
 
-            <el-form-item>
+            <a-form-item>
               <div class="form-options">
-                <el-checkbox v-model="loginForm.remember">记住密码</el-checkbox>
-                <el-link type="primary" :underline="false">忘记密码？</el-link>
+                <a-checkbox v-model:checked="loginForm.remember">记住密码</a-checkbox>
+                <a class="forgot-link">忘记密码？</a>
               </div>
-            </el-form-item>
+            </a-form-item>
 
-            <el-form-item>
-              <el-button
+            <a-form-item>
+              <a-button
                 type="primary"
+                html-type="submit"
                 :loading="loading"
                 class="login-btn"
-                @click="handleLogin"
+                block
               >
-                <span v-if="!loading">登 录</span>
-                <span v-else>登录中...</span>
-              </el-button>
-            </el-form-item>
-          </el-form>
+                {{ loading ? '登录中...' : '登 录' }}
+              </a-button>
+            </a-form-item>
+          </a-form>
 
           <div class="form-footer">
             <span class="footer-text">还没有账号？</span>
-            <el-link type="primary" :underline="false" @click="goToRegister">
-              立即注册
-            </el-link>
+            <a class="register-link" @click="goToRegister">立即注册</a>
           </div>
 
-          <!-- 其他登录方式 -->
           <div class="other-login">
-            <el-divider>
+            <a-divider>
               <span class="divider-text">其他登录方式</span>
-            </el-divider>
+            </a-divider>
             <div class="login-methods">
               <div class="method-item" title="微信登录">
-                <el-icon :size="24"><ChatDotRound /></el-icon>
+                <WechatOutlined />
               </div>
               <div class="method-item" title="GitHub登录">
-                <el-icon :size="24"><Link /></el-icon>
+                <GithubOutlined />
               </div>
               <div class="method-item" title="邮箱登录">
-                <el-icon :size="24"><Message /></el-icon>
+                <MailOutlined />
               </div>
             </div>
           </div>
@@ -153,7 +141,6 @@
       </div>
     </div>
 
-    <!-- 底部版权信息 -->
     <div class="footer-info">
       <span>Copyright 2024 智能知识库系统. All rights reserved.</span>
     </div>
@@ -163,19 +150,19 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted, onUnmounted, defineComponent, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { type FormInstance, type FormRules } from 'element-plus'
+import type { FormInstance, Rule } from 'ant-design-vue/es/form'
 import {
-  User,
-  Lock,
-  Reading,
-  Document,
-  ChatDotRound,
-  DataAnalysis,
-  Moon,
-  Sunny,
-  Link,
-  Message,
-} from '@element-plus/icons-vue'
+  UserOutlined,
+  LockOutlined,
+  ReadOutlined,
+  BulbOutlined,
+  WechatOutlined,
+  GithubOutlined,
+  MailOutlined,
+  FileTextOutlined,
+  MessageOutlined,
+  BarChartOutlined,
+} from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 
@@ -189,7 +176,6 @@ const loading = ref(false)
 const isDark = ref(false)
 const particleCanvas = ref<HTMLCanvasElement>()
 
-// 数字递增组件
 const CountUp = defineComponent({
   props: {
     endVal: { type: Number, default: 0 },
@@ -204,7 +190,7 @@ const CountUp = defineComponent({
       if (!startTime) startTime = timestamp
       const progress = Math.min((timestamp - startTime) / (props.duration * 1000), 1)
       currentVal.value = Math.floor(progress * props.endVal)
-      
+
       if (progress < 1) {
         animationFrame = requestAnimationFrame(animate)
       }
@@ -224,7 +210,6 @@ const CountUp = defineComponent({
   },
 })
 
-// 粒子系统
 interface Particle {
   x: number
   y: number
@@ -237,29 +222,25 @@ interface Particle {
 let particles: Particle[] = []
 let animationFrameId: number | null = null
 
-// 功能特性
 const features = [
-  { icon: Document, title: '智能文档管理', desc: '支持多种格式' },
-  { icon: ChatDotRound, title: '精准问答检索', desc: 'AI驱动' },
-  { icon: DataAnalysis, title: '知识图谱分析', desc: '可视化展示' },
+  { icon: FileTextOutlined, title: '智能文档管理', desc: '支持多种格式' },
+  { icon: MessageOutlined, title: '精准问答检索', desc: 'AI驱动' },
+  { icon: BarChartOutlined, title: '知识图谱分析', desc: '可视化展示' },
 ]
 
-// 品牌统计数据
 const brandStats = [
   { value: 256, label: '文档数量' },
   { value: 1024, label: '问答次数' },
   { value: 48, label: '用户数量' },
 ]
 
-// 登录表单
 const loginForm = reactive({
   username: '',
   password: '',
   remember: false,
 })
 
-// 表单验证规则
-const rules: FormRules = {
+const rules: Record<string, Rule[]> = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 20, message: '用户名长度为3-20个字符', trigger: 'blur' },
@@ -270,7 +251,6 @@ const rules: FormRules = {
   ],
 }
 
-// 初始化粒子系统
 function initParticles(): void {
   const canvas = particleCanvas.value
   if (!canvas) return
@@ -278,7 +258,6 @@ function initParticles(): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  // 设置画布尺寸
   const resizeCanvas = () => {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
@@ -286,7 +265,6 @@ function initParticles(): void {
   resizeCanvas()
   window.addEventListener('resize', resizeCanvas)
 
-  // 创建粒子
   const particleCount = 80
   particles = []
   for (let i = 0; i < particleCount; i++) {
@@ -300,27 +278,21 @@ function initParticles(): void {
     })
   }
 
-  // 动画循环
   const animate = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // 更新和绘制粒子
     particles.forEach((particle, i) => {
-      // 更新位置
       particle.x += particle.vx
       particle.y += particle.vy
 
-      // 边界检测
       if (particle.x < 0 || particle.x > canvas.width) particle.vx *= -1
       if (particle.y < 0 || particle.y > canvas.height) particle.vy *= -1
 
-      // 绘制粒子
       ctx.beginPath()
       ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2)
       ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`
       ctx.fill()
 
-      // 绘制连线
       particles.slice(i + 1).forEach((other) => {
         const dx = particle.x - other.x
         const dy = particle.y - other.y
@@ -342,21 +314,16 @@ function initParticles(): void {
   animate()
 }
 
-// 初始化
 onMounted(() => {
-  // 恢复深色模式状态
   isDark.value = appStore.isDark
-  // 恢复记住的用户名
   const savedUsername = localStorage.getItem('rememberedUsername')
   if (savedUsername) {
     loginForm.username = savedUsername
     loginForm.remember = true
   }
-  // 初始化粒子系统
   initParticles()
 })
 
-// 清理
 onUnmounted(() => {
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId)
@@ -364,27 +331,24 @@ onUnmounted(() => {
   window.removeEventListener('resize', () => {})
 })
 
-// 切换深色模式
 function toggleDark(): void {
   appStore.toggleDark()
 }
 
-// 处理登录
-async function handleLogin(): Promise<void> {
-  const valid = await formRef.value?.validate()
-  if (!valid) return
+function onFinishFailed(): void {
+  // 表单验证失败时的处理
+}
 
+async function handleLogin(): Promise<void> {
   loading.value = true
   try {
     const success = await userStore.login(loginForm)
     if (success) {
-      // 记住用户名
       if (loginForm.remember) {
         localStorage.setItem('rememberedUsername', loginForm.username)
       } else {
         localStorage.removeItem('rememberedUsername')
       }
-      // 跳转到目标页面或首页
       const redirect = (route.query.redirect as string) || '/'
       router.push(redirect)
     }
@@ -393,7 +357,6 @@ async function handleLogin(): Promise<void> {
   }
 }
 
-// 跳转到注册页
 function goToRegister(): void {
   router.push('/register')
 }
@@ -410,13 +373,11 @@ function goToRegister(): void {
   overflow: hidden;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 
-  // 深色模式背景
   :global(html.dark) & {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   }
 }
 
-// 粒子画布
 .particle-canvas {
   position: absolute;
   top: 0;
@@ -427,7 +388,6 @@ function goToRegister(): void {
   pointer-events: none;
 }
 
-// 动态背景装饰
 .bg-decoration {
   position: absolute;
   top: 0;
@@ -496,7 +456,6 @@ function goToRegister(): void {
   }
 }
 
-// 登录卡片
 .login-card {
   display: flex;
   width: 950px;
@@ -524,7 +483,6 @@ function goToRegister(): void {
   }
 }
 
-// 左侧品牌区域
 .brand-section {
   flex: 1;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -535,12 +493,10 @@ function goToRegister(): void {
   position: relative;
   overflow: hidden;
 
-  // 深色模式
   :global(html.dark) & {
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
   }
 
-  // 装饰性背景
   &::before {
     content: '';
     position: absolute;
@@ -552,7 +508,6 @@ function goToRegister(): void {
     animation: rotate 30s linear infinite;
   }
 
-  // 底部装饰
   &::after {
     content: '';
     position: absolute;
@@ -582,7 +537,6 @@ function goToRegister(): void {
   width: 100%;
 }
 
-// Logo
 .brand-logo {
   position: relative;
   display: inline-block;
@@ -600,6 +554,11 @@ function goToRegister(): void {
     position: relative;
     z-index: 1;
     animation: pulse 2s ease-in-out infinite;
+
+    .logo-icon {
+      font-size: 48px;
+      color: #fff;
+    }
   }
 
   .logo-glow {
@@ -672,7 +631,6 @@ function goToRegister(): void {
   margin-bottom: 40px;
 }
 
-// 品牌统计数据
 .brand-stats {
   display: flex;
   justify-content: space-around;
@@ -702,7 +660,6 @@ function goToRegister(): void {
   }
 }
 
-// 功能特性
 .brand-features {
   display: flex;
   flex-direction: column;
@@ -733,10 +690,7 @@ function goToRegister(): void {
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-
-      .el-icon {
-        font-size: 20px;
-      }
+      font-size: 20px;
     }
 
     .feature-text {
@@ -757,7 +711,6 @@ function goToRegister(): void {
   }
 }
 
-// 装饰性元素
 .brand-decoration {
   margin-top: 40px;
   display: flex;
@@ -789,7 +742,6 @@ function goToRegister(): void {
   }
 }
 
-// 右侧表单区域
 .form-section {
   flex: 1;
   padding: 50px 40px;
@@ -829,46 +781,34 @@ function goToRegister(): void {
 }
 
 .login-form {
-  .el-form-item {
+  :deep(.ant-form-item) {
     margin-bottom: 24px;
-    position: relative;
+  }
 
-    &:focus-within {
-      .el-input__wrapper {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-      }
+  :deep(.ant-input-affix-wrapper) {
+    padding: 12px 16px;
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    &.ant-input-affix-wrapper-focused {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
     }
   }
 
-  .el-input {
-    --el-input-border-radius: 12px;
-    --el-input-height: 48px;
+  :deep(.ant-input-prefix) {
+    color: var(--text-secondary);
+    margin-right: 12px;
+    transition: color 0.3s ease;
+  }
 
-    :deep(.el-input__wrapper) {
-      padding: 12px 16px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-
-      &:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      }
-
-      &.is-focus {
-        transform: translateY(-1px);
-      }
-    }
-
-    :deep(.el-input__prefix) {
-      color: var(--text-secondary);
-      transition: color 0.3s ease;
-    }
-
-    &:focus-within {
-      :deep(.el-input__prefix) {
-        color: var(--primary-color);
-      }
-    }
+  :deep(.ant-input-affix-wrapper-focused .ant-input-prefix) {
+    color: var(--primary-color);
   }
 
   .form-options {
@@ -876,6 +816,15 @@ function goToRegister(): void {
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+
+  .forgot-link {
+    color: var(--primary-color);
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.8;
+    }
   }
 
   .login-btn {
@@ -930,9 +879,17 @@ function goToRegister(): void {
   .footer-text {
     margin-right: 4px;
   }
+
+  .register-link {
+    color: var(--primary-color);
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
 }
 
-// 其他登录方式
 .other-login {
   margin-top: 32px;
 
@@ -959,6 +916,7 @@ function goToRegister(): void {
       cursor: pointer;
       transition: all 0.3s ease;
       color: var(--text-secondary);
+      font-size: 24px;
 
       &:hover {
         border-color: var(--primary-color);
@@ -970,7 +928,6 @@ function goToRegister(): void {
   }
 }
 
-// 底部版权信息
 .footer-info {
   position: absolute;
   bottom: 20px;
@@ -982,7 +939,6 @@ function goToRegister(): void {
   z-index: 2;
 }
 
-// 响应式设计
 @media (max-width: 768px) {
   .login-card {
     flex-direction: column;

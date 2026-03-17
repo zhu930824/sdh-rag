@@ -1,40 +1,36 @@
 <template>
   <div class="register-container">
-    <!-- 动态背景 -->
     <div class="bg-animation">
       <div class="bg-shape shape-1"></div>
       <div class="bg-shape shape-2"></div>
       <div class="bg-shape shape-3"></div>
     </div>
 
-    <!-- 注册卡片 -->
     <div class="register-card">
-      <!-- 左侧品牌区域 -->
       <div class="brand-section">
         <div class="brand-content">
           <div class="brand-icon">
-            <el-icon :size="64"><Reading /></el-icon>
+            <ReadOutlined />
           </div>
           <h1 class="brand-title">智能知识库</h1>
           <p class="brand-subtitle">开启您的智能知识管理之旅</p>
           <div class="brand-features">
             <div class="feature-item">
-              <el-icon><UserFilled /></el-icon>
+              <UserOutlined />
               <span>快速注册</span>
             </div>
             <div class="feature-item">
-              <el-icon><Lock /></el-icon>
+              <LockOutlined />
               <span>安全可靠</span>
             </div>
             <div class="feature-item">
-              <el-icon><Connection /></el-icon>
+              <ApiOutlined />
               <span>知识共享</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 右侧注册表单 -->
       <div class="form-section">
         <div class="form-content">
           <div class="form-header">
@@ -42,79 +38,81 @@
             <p class="form-subtitle">填写以下信息完成注册</p>
           </div>
 
-          <el-form
+          <a-form
             ref="formRef"
             :model="registerForm"
             :rules="rules"
             class="register-form"
-            size="large"
-            @keyup.enter="handleRegister"
+            @finish="handleRegister"
+            @finishFailed="onFinishFailed"
           >
-            <el-form-item prop="username">
-              <el-input
-                v-model="registerForm.username"
+            <a-form-item name="username">
+              <a-input
+                v-model:value="registerForm.username"
                 placeholder="请输入用户名"
-                :prefix-icon="User"
-                clearable
-              />
-            </el-form-item>
+                size="large"
+                allow-clear
+              >
+                <template #prefix><UserOutlined /></template>
+              </a-input>
+            </a-form-item>
 
-            <el-form-item prop="nickname">
-              <el-input
-                v-model="registerForm.nickname"
+            <a-form-item name="nickname">
+              <a-input
+                v-model:value="registerForm.nickname"
                 placeholder="请输入昵称（选填）"
-                :prefix-icon="UserFilled"
-                clearable
-              />
-            </el-form-item>
+                size="large"
+                allow-clear
+              >
+                <template #prefix><SmileOutlined /></template>
+              </a-input>
+            </a-form-item>
 
-            <el-form-item prop="password">
-              <el-input
-                v-model="registerForm.password"
-                type="password"
+            <a-form-item name="password">
+              <a-input-password
+                v-model:value="registerForm.password"
                 placeholder="请输入密码"
-                :prefix-icon="Lock"
-                show-password
-              />
-            </el-form-item>
+                size="large"
+              >
+                <template #prefix><LockOutlined /></template>
+              </a-input-password>
+            </a-form-item>
 
-            <el-form-item prop="confirmPassword">
-              <el-input
-                v-model="registerForm.confirmPassword"
-                type="password"
+            <a-form-item name="confirmPassword">
+              <a-input-password
+                v-model:value="registerForm.confirmPassword"
                 placeholder="请确认密码"
-                :prefix-icon="Lock"
-                show-password
-              />
-            </el-form-item>
+                size="large"
+              >
+                <template #prefix><LockOutlined /></template>
+              </a-input-password>
+            </a-form-item>
 
-            <el-form-item>
-              <el-button
+            <a-form-item>
+              <a-button
                 type="primary"
+                html-type="submit"
                 :loading="loading"
                 class="register-btn"
-                @click="handleRegister"
+                block
               >
                 {{ loading ? '注册中...' : '注 册' }}
-              </el-button>
-            </el-form-item>
-          </el-form>
+              </a-button>
+            </a-form-item>
+          </a-form>
 
           <div class="form-footer">
             <span class="footer-text">已有账号？</span>
-            <el-link type="primary" :underline="false" @click="goToLogin">
-              立即登录
-            </el-link>
+            <a class="login-link" @click="goToLogin">立即登录</a>
           </div>
 
-          <!-- 深色模式切换 -->
           <div class="theme-switch">
-            <el-switch
-              v-model="isDark"
-              :active-icon="Moon"
-              :inactive-icon="Sunny"
-              @change="toggleDark"
-            />
+            <a-tooltip :title="isDark ? '切换浅色模式' : '切换深色模式'">
+              <a-switch v-model:checked="isDark" @change="toggleDark">
+                <template #checkedChildren><MoonOutlined /></template>
+                <template #unCheckedChildren><SunOutlined /></template>
+              </a-switch>
+            </a-tooltip>
           </div>
         </div>
       </div>
@@ -125,8 +123,16 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { type FormInstance, type FormRules } from 'element-plus'
-import { User, UserFilled, Lock, Reading, Connection, Moon, Sunny } from '@element-plus/icons-vue'
+import type { FormInstance, Rule } from 'ant-design-vue/es/form'
+import {
+  UserOutlined,
+  SmileOutlined,
+  LockOutlined,
+  ReadOutlined,
+  ApiOutlined,
+  BulbOutlined,
+  SunOutlined,
+} from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 
@@ -138,7 +144,6 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const isDark = ref(false)
 
-// 注册表单
 const registerForm = reactive({
   username: '',
   nickname: '',
@@ -146,19 +151,17 @@ const registerForm = reactive({
   confirmPassword: '',
 })
 
-// 密码一致性校验
-const validateConfirmPassword = (rule: any, value: string, callback: any) => {
+const validateConfirmPassword = async (_rule: any, value: string) => {
   if (value === '') {
-    callback(new Error('请再次输入密码'))
+    return Promise.reject('请再次输入密码')
   } else if (value !== registerForm.password) {
-    callback(new Error('两次输入密码不一致'))
+    return Promise.reject('两次输入密码不一致')
   } else {
-    callback()
+    return Promise.resolve()
   }
 }
 
-// 表单验证规则
-const rules: FormRules = {
+const rules: Record<string, Rule[]> = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 20, message: '用户名长度为3-20个字符', trigger: 'blur' },
@@ -176,21 +179,19 @@ const rules: FormRules = {
   ],
 }
 
-// 初始化
 onMounted(() => {
   isDark.value = appStore.isDark
 })
 
-// 切换深色模式
 function toggleDark(): void {
   appStore.toggleDark()
 }
 
-// 处理注册
-async function handleRegister(): Promise<void> {
-  const valid = await formRef.value?.validate()
-  if (!valid) return
+function onFinishFailed(): void {
+  // 表单验证失败时的处理
+}
 
+async function handleRegister(): Promise<void> {
   loading.value = true
   try {
     const success = await userStore.register({
@@ -206,7 +207,6 @@ async function handleRegister(): Promise<void> {
   }
 }
 
-// 跳转到登录页
 function goToLogin(): void {
   router.push('/login')
 }
@@ -223,13 +223,11 @@ function goToLogin(): void {
   overflow: hidden;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 
-  // 深色模式背景
   :global(html.dark) & {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   }
 }
 
-// 动态背景
 .bg-animation {
   position: absolute;
   top: 0;
@@ -289,7 +287,6 @@ function goToLogin(): void {
   }
 }
 
-// 注册卡片
 .register-card {
   display: flex;
   width: 900px;
@@ -315,7 +312,6 @@ function goToLogin(): void {
   }
 }
 
-// 左侧品牌区域
 .brand-section {
   flex: 1;
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
@@ -326,12 +322,10 @@ function goToLogin(): void {
   position: relative;
   overflow: hidden;
 
-  // 深色模式
   :global(html.dark) & {
     background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
   }
 
-  // 装饰性背景
   &::before {
     content: '';
     position: absolute;
@@ -362,6 +356,7 @@ function goToLogin(): void {
 
 .brand-icon {
   margin-bottom: 24px;
+  font-size: 64px;
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -405,13 +400,12 @@ function goToLogin(): void {
       transform: translateX(5px);
     }
 
-    .el-icon {
+    :deep(.anticon) {
       font-size: 20px;
     }
   }
 }
 
-// 右侧表单区域
 .form-section {
   flex: 1;
   padding: 50px 40px;
@@ -444,12 +438,21 @@ function goToLogin(): void {
 }
 
 .register-form {
-  .el-form-item {
+  :deep(.ant-form-item) {
     margin-bottom: 20px;
   }
 
-  .el-input {
-    --el-input-border-radius: 8px;
+  :deep(.ant-input-affix-wrapper) {
+    border-radius: 8px;
+    transition: all 0.3s ease;
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    &.ant-input-affix-wrapper-focused {
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
   }
 
   .register-btn {
@@ -460,10 +463,16 @@ function goToLogin(): void {
     border-radius: 8px;
     margin-top: 8px;
     transition: all 0.3s ease;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    &:active {
+      transform: translateY(0);
     }
   }
 }
@@ -477,6 +486,15 @@ function goToLogin(): void {
   .footer-text {
     margin-right: 4px;
   }
+
+  .login-link {
+    color: var(--primary-color);
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
 }
 
 .theme-switch {
@@ -485,7 +503,6 @@ function goToLogin(): void {
   right: 20px;
 }
 
-// 响应式设计
 @media (max-width: 768px) {
   .register-card {
     flex-direction: column;

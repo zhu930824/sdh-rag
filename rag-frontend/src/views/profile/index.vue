@@ -1,57 +1,54 @@
 <template>
   <div class="profile-page">
-    <el-row :gutter="20">
-      <!-- 左侧用户信息 -->
-      <el-col :span="8">
-        <el-card class="user-card">
+    <a-row :gutter="20">
+      <a-col :span="8">
+        <a-card class="user-card">
           <div class="user-info">
-            <el-avatar :size="100" :src="userInfo.avatar">
-              <el-icon :size="50"><UserFilled /></el-icon>
-            </el-avatar>
+            <a-avatar :size="100" :src="userInfo.avatar">
+              <template #icon><UserOutlined /></template>
+            </a-avatar>
             <h2 class="username">{{ userInfo.nickname }}</h2>
             <p class="role">{{ userInfo.roles?.join(', ') || '普通用户' }}</p>
-            <el-button type="primary" plain @click="handleEditAvatar">
+            <a-button type="primary" ghost @click="handleEditAvatar">
               更换头像
-            </el-button>
+            </a-button>
           </div>
-        </el-card>
-      </el-col>
+        </a-card>
+      </a-col>
 
-      <!-- 右侧详细信息 -->
-      <el-col :span="16">
-        <el-card class="info-card">
-          <template #header>
+      <a-col :span="16">
+        <a-card class="info-card">
+          <template #title>
             <div class="card-header">
               <span class="title">个人信息</span>
-              <el-button type="primary" text @click="handleEdit">
-                <el-icon><Edit /></el-icon>
+              <a-button type="link" @click="handleEdit">
+                <EditOutlined />
                 编辑
-              </el-button>
+              </a-button>
             </div>
           </template>
 
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="用户名">
+          <a-descriptions :column="1" bordered>
+            <a-descriptions-item label="用户名">
               {{ userInfo.username }}
-            </el-descriptions-item>
-            <el-descriptions-item label="昵称">
+            </a-descriptions-item>
+            <a-descriptions-item label="昵称">
               {{ userInfo.nickname }}
-            </el-descriptions-item>
-            <el-descriptions-item label="邮箱">
+            </a-descriptions-item>
+            <a-descriptions-item label="邮箱">
               {{ userInfo.email }}
-            </el-descriptions-item>
-            <el-descriptions-item label="角色">
+            </a-descriptions-item>
+            <a-descriptions-item label="角色">
               {{ userInfo.roles?.join(', ') || '普通用户' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="注册时间">
+            </a-descriptions-item>
+            <a-descriptions-item label="注册时间">
               {{ userInfo.createTime }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
+            </a-descriptions-item>
+          </a-descriptions>
+        </a-card>
 
-        <!-- 安全设置 -->
-        <el-card class="security-card">
-          <template #header>
+        <a-card class="security-card">
+          <template #title>
             <div class="card-header">
               <span class="title">安全设置</span>
             </div>
@@ -59,80 +56,76 @@
 
           <div class="security-item">
             <div class="security-info">
-              <el-icon class="icon"><Lock /></el-icon>
+              <LockOutlined class="icon" />
               <div class="text">
                 <div class="label">登录密码</div>
                 <div class="desc">定期更换密码可以提高账号安全性</div>
               </div>
             </div>
-            <el-button type="primary" text @click="handleChangePassword">
+            <a-button type="link" @click="handleChangePassword">
               修改
-            </el-button>
+            </a-button>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </a-card>
+      </a-col>
+    </a-row>
 
-    <!-- 编辑信息对话框 -->
-    <el-dialog v-model="editDialogVisible" title="编辑个人信息" width="500px">
-      <el-form :model="editForm" label-width="80px">
-        <el-form-item label="昵称">
-          <el-input v-model="editForm.nickname" placeholder="请输入昵称" />
-        </el-form-item>
-        <el-form-item label="邮箱">
-          <el-input v-model="editForm.email" placeholder="请输入邮箱" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSaveEdit">确定</el-button>
-      </template>
-    </el-dialog>
+    <a-modal
+      v-model:open="editDialogVisible"
+      title="编辑个人信息"
+      :width="500"
+      @ok="handleSaveEdit"
+      @cancel="editDialogVisible = false"
+    >
+      <a-form :model="editForm" :label-col="{ span: 4 }" :wrapper-col="{ span: 20 }">
+        <a-form-item label="昵称">
+          <a-input v-model:value="editForm.nickname" placeholder="请输入昵称" />
+        </a-form-item>
+        <a-form-item label="邮箱">
+          <a-input v-model:value="editForm.email" placeholder="请输入邮箱" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
-    <!-- 修改密码对话框 -->
-    <el-dialog v-model="passwordDialogVisible" title="修改密码" width="500px">
-      <el-form :model="passwordForm" label-width="100px">
-        <el-form-item label="原密码">
-          <el-input
-            v-model="passwordForm.oldPassword"
-            type="password"
+    <a-modal
+      v-model:open="passwordDialogVisible"
+      title="修改密码"
+      :width="500"
+      @ok="handleSavePassword"
+      @cancel="passwordDialogVisible = false"
+    >
+      <a-form :model="passwordForm" :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
+        <a-form-item label="原密码">
+          <a-input-password
+            v-model:value="passwordForm.oldPassword"
             placeholder="请输入原密码"
-            show-password
           />
-        </el-form-item>
-        <el-form-item label="新密码">
-          <el-input
-            v-model="passwordForm.newPassword"
-            type="password"
+        </a-form-item>
+        <a-form-item label="新密码">
+          <a-input-password
+            v-model:value="passwordForm.newPassword"
             placeholder="请输入新密码"
-            show-password
           />
-        </el-form-item>
-        <el-form-item label="确认新密码">
-          <el-input
-            v-model="passwordForm.confirmPassword"
-            type="password"
+        </a-form-item>
+        <a-form-item label="确认新密码">
+          <a-input-password
+            v-model:value="passwordForm.confirmPassword"
             placeholder="请再次输入新密码"
-            show-password
           />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="passwordDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSavePassword">确定</el-button>
-      </template>
-    </el-dialog>
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { UserOutlined, EditOutlined, LockOutlined } from '@ant-design/icons-vue'
+import { showSuccess, showError, showInfo } from '@/utils/message'
 import { useUserStore } from '@/stores'
 
 const userStore = useUserStore()
 
-// 用户信息
 const userInfo = computed(() => userStore.userInfo || {
   username: '',
   nickname: '',
@@ -142,14 +135,12 @@ const userInfo = computed(() => userStore.userInfo || {
   createTime: '',
 })
 
-// 编辑对话框
 const editDialogVisible = ref(false)
 const editForm = reactive({
   nickname: '',
   email: '',
 })
 
-// 修改密码对话框
 const passwordDialogVisible = ref(false)
 const passwordForm = reactive({
   oldPassword: '',
@@ -157,26 +148,21 @@ const passwordForm = reactive({
   confirmPassword: '',
 })
 
-// 编辑个人信息
 function handleEdit(): void {
   editForm.nickname = userInfo.value.nickname
   editForm.email = userInfo.value.email
   editDialogVisible.value = true
 }
 
-// 保存编辑
 function handleSaveEdit(): void {
-  // TODO: 调用API更新用户信息
-  ElMessage.success('保存成功')
+  showSuccess('保存成功')
   editDialogVisible.value = false
 }
 
-// 更换头像
 function handleEditAvatar(): void {
-  ElMessage.info('头像上传功能开发中')
+  showInfo('头像上传功能开发中')
 }
 
-// 修改密码
 function handleChangePassword(): void {
   passwordForm.oldPassword = ''
   passwordForm.newPassword = ''
@@ -184,14 +170,12 @@ function handleChangePassword(): void {
   passwordDialogVisible.value = true
 }
 
-// 保存密码
 function handleSavePassword(): void {
   if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-    ElMessage.error('两次输入的密码不一致')
+    showError('两次输入的密码不一致')
     return
   }
-  // TODO: 调用API修改密码
-  ElMessage.success('密码修改成功')
+  showSuccess('密码修改成功')
   passwordDialogVisible.value = false
 }
 </script>

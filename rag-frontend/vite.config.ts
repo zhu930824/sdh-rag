@@ -3,21 +3,21 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
-import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
-    // Element Plus 自动导入
+    // Ant Design Vue 自动导入
     AutoImport({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [AntDesignVueResolver()],
       imports: ['vue', 'vue-router', 'pinia'],
       dts: 'src/auto-imports.d.ts',
     }),
-    // Element Plus 组件自动导入
+    // Ant Design Vue 组件自动导入
     Components({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [AntDesignVueResolver({ importStyle: false })],
       dts: 'src/components.d.ts',
     }),
   ],
@@ -57,7 +57,7 @@ export default defineConfig({
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
         manualChunks: {
           vue: ['vue', 'vue-router', 'pinia'],
-          elementPlus: ['element-plus', '@element-plus/icons-vue'],
+          antDesignVue: ['ant-design-vue', '@ant-design/icons-vue'],
         },
       },
     },
