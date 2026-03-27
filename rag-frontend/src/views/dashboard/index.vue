@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, ref, watch } from 'vue'
+import { computed, defineComponent, h, ref, watch, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
@@ -206,6 +206,7 @@ import {
   FileExcelOutlined,
   FileOutlined,
 } from '@ant-design/icons-vue'
+import { getDashboardStats } from '@/api/dashboard'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -255,11 +256,19 @@ function getGreeting(): string {
   return '夜深了'
 }
 
-const welcomeBadges = [
-  { icon: FileTextOutlined, text: '256 文档' },
-  { icon: CommentOutlined, text: '1024 问答' },
-  { icon: UserOutlined, text: '48 用户' },
-]
+const statsLoading = ref(false)
+const dashboardStats = reactive({
+  knowledgeCount: 0,
+  documentCount: 0,
+  chatCount: 0,
+  userCount: 0,
+})
+
+const welcomeBadges = computed(() => [
+  { icon: FileTextOutlined, text: `${dashboardStats.documentCount} 文档` },
+  { icon: CommentOutlined, text: `${dashboardStats.chatCount} 问答` },
+  { icon: UserOutlined, text: `${dashboardStats.userCount} 用户` },
+])
 
 function getParticleStyle(index: number): Record<string, string> {
   const angle = (index / 8) * 360
@@ -275,36 +284,36 @@ function getParticleStyle(index: number): Record<string, string> {
   }
 }
 
-const statsData = [
+const statsData = computed(() => [
   {
     label: '知识库数量',
-    value: 12,
+    value: dashboardStats.knowledgeCount,
     icon: FolderOutlined,
     gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     trend: 12,
   },
   {
     label: '文档数量',
-    value: 256,
+    value: dashboardStats.documentCount,
     icon: FileTextOutlined,
     gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
     trend: 8,
   },
   {
     label: '问答次数',
-    value: 1024,
+    value: dashboardStats.chatCount,
     icon: CommentOutlined,
     gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
     trend: -5,
   },
   {
     label: '用户数量',
-    value: 48,
+    value: dashboardStats.userCount,
     icon: UserOutlined,
     gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
     trend: 15,
   },
-]
+])
 
 const quickActions = [
   {
@@ -375,6 +384,27 @@ function getDocColor(type: string) {
 function handleAction(action: typeof quickActions[0]) {
   router.push(action.route)
 }
+
+async function loadStats() {
+  statsLoading.value = true
+  try {
+    const { data } = await getDashboardStats()
+    if (data.data) {
+      dashboardStats.knowledgeCount = data.data.knowledgeCount || 0
+      dashboardStats.documentCount = data.data.documentCount || 0
+      dashboardStats.chatCount = data.data.chatCount || 0
+      dashboardStats.userCount = data.data.userCount || 0
+    }
+  } catch (error) {
+    console.error('加载统计数据失败:', error)
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadStats()
+})
 </script>
 
 <style scoped lang="scss">

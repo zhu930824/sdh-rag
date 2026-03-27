@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   SearchOutlined,
@@ -250,78 +250,41 @@ import {
   ThunderboltOutlined,
   BarChartOutlined,
 } from '@ant-design/icons-vue'
+import { getHotwordStats, getHotwordRanking, getHotwordTrend, getHotwordList } from '@/api/hotwords'
+import type { WordRankItem, TrendItem } from '@/api/hotwords'
 
-// 时间范围
 const timeRange = ref('week')
 const customRange = ref<[Date, Date] | null>(null)
 const loading = ref(false)
 const searchKeyword = ref('')
 const chartType = ref('bar')
-const trendWord = ref('RAG技术')
+const trendWord = ref('')
 
-// 统计数据
 const statsData = reactive([
-  {
-    label: '总查询次数',
-    value: 15680,
-    icon: SearchOutlined,
-    gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    trend: 12.5,
-  },
-  {
-    label: '独立词汇数',
-    value: 2456,
-    icon: TagsOutlined,
-    gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    trend: 8.3,
-  },
-  {
-    label: '平均查询次数',
-    value: 6.4,
-    icon: LineChartOutlined,
-    gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-    trend: -2.1,
-  },
-  {
-    label: '环比增长',
-    value: 15.8,
-    icon: BarChartOutlined,
-    gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-    trend: 15.8,
-  },
+  { label: '总查询次数', value: 0, icon: SearchOutlined, gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', trend: 0 },
+  { label: '独立词汇数', value: 0, icon: TagsOutlined, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', trend: 0 },
+  { label: '平均查询次数', value: 0, icon: LineChartOutlined, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', trend: 0 },
+  { label: '环比增长', value: 0, icon: BarChartOutlined, gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', trend: 0 },
 ])
 
-// 热点词排行数据
-const topWords = ref([
-  { word: 'RAG技术', count: 1256, percent: 100, trend: 15 },
-  { word: '向量数据库', count: 986, percent: 78.5, trend: 12 },
-  { word: '知识图谱', count: 856, percent: 68.2, trend: -5 },
-  { word: '大语言模型', count: 724, percent: 57.6, trend: 8 },
-  { word: 'Embedding', count: 658, percent: 52.4, trend: 20 },
-  { word: '文档检索', count: 542, percent: 43.2, trend: -3 },
-  { word: '语义理解', count: 486, percent: 38.7, trend: 6 },
-  { word: '文本分块', count: 425, percent: 33.8, trend: 10 },
-  { word: '提示工程', count: 398, percent: 31.7, trend: 25 },
-  { word: 'Milvus', count: 356, percent: 28.3, trend: 18 },
-])
+const topWords = ref<WordRankItem[]>([])
+const trendData = ref<number[]>([])
+const trendXAxis = ref<string[]>([])
 
-// 趋势数据
-const trendData = ref([120, 180, 150, 220, 280, 240, 320])
-const trendXAxis = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const trendYAxis = computed(() => {
+  if (trendData.value.length === 0) return [0, 0, 0, 0, 0]
   const max = Math.max(...trendData.value)
   return [max, Math.round(max * 0.75), Math.round(max * 0.5), Math.round(max * 0.25), 0]
 })
 
-// 计算趋势图路径
 const trendPoints = computed(() => {
-  const max = Math.max(...trendData.value)
+  if (trendData.value.length === 0) return []
+  const max = Math.max(...trendData.value) || 1
   const width = 600
   const height = 200
   const padding = 20
-  
   return trendData.value.map((val, index) => ({
-    x: padding + (index * (width - 2 * padding)) / (trendData.value.length - 1),
+    x: padding + (index * (width - 2 * padding)) / (trendData.value.length - 1 || 1),
     y: height - padding - ((val / max) * (height - 2 * padding)),
   }))
 })
@@ -331,6 +294,7 @@ const trendLinePath = computed(() => {
 })
 
 const trendAreaPath = computed(() => {
+  if (trendPoints.value.length === 0) return ''
   const height = 200
   const padding = 20
   const linePath = trendLinePath.value
@@ -339,77 +303,26 @@ const trendAreaPath = computed(() => {
   return `${linePath} L ${lastPoint.x} ${height - padding} L ${firstPoint.x} ${height - padding} Z`
 })
 
-const maxTrendValue = computed(() => Math.max(...trendData.value))
-const minTrendValue = computed(() => Math.min(...trendData.value))
-const avgTrendValue = computed(() => Math.round(trendData.value.reduce((a, b) => a + b, 0) / trendData.value.length))
+const maxTrendValue = computed(() => trendData.value.length > 0 ? Math.max(...trendData.value) : 0)
+const minTrendValue = computed(() => trendData.value.length > 0 ? Math.min(...trendData.value) : 0)
+const avgTrendValue = computed(() => trendData.value.length > 0 ? Math.round(trendData.value.reduce((a, b) => a + b, 0) / trendData.value.length) : 0)
 
-// 表格列定义
 const columns = [
-  {
-    title: '排名',
-    key: 'rank',
-    width: 100,
-  },
-  {
-    title: '词汇',
-    key: 'word',
-    width: 200,
-  },
-  {
-    title: '查询次数',
-    key: 'count',
-    width: 250,
-    sorter: (a: WordItem, b: WordItem) => a.count - b.count,
-  },
-  {
-    title: '占比',
-    dataIndex: 'percent',
-    key: 'percent',
-    width: 100,
-    customRender: ({ text }: { text: number }) => `${text.toFixed(1)}%`,
-  },
-  {
-    title: '趋势',
-    key: 'trend',
-    width: 120,
-    sorter: (a: WordItem, b: WordItem) => a.trend - b.trend,
-  },
-  {
-    title: '操作',
-    key: 'action',
-    width: 100,
-    fixed: 'right' as const,
-  },
+  { title: '排名', key: 'rank', width: 100 },
+  { title: '词汇', key: 'word', width: 200 },
+  { title: '查询次数', key: 'count', width: 250, sorter: (a: WordRankItem, b: WordRankItem) => a.count - b.count },
+  { title: '占比', dataIndex: 'percent', key: 'percent', width: 100, customRender: ({ text }: { text: number }) => `${text.toFixed(1)}%` },
+  { title: '趋势', key: 'trend', width: 120, sorter: (a: WordRankItem, b: WordRankItem) => (a.trend || 0) - (b.trend || 0) },
+  { title: '操作', key: 'action', width: 100, fixed: 'right' as const },
 ]
 
-// 热点词列表数据
-const wordList = ref<WordItem[]>([
-  { id: 1, word: 'RAG技术', count: 1256, percent: 8.0, trend: 15, isNew: false },
-  { id: 2, word: '向量数据库', count: 986, percent: 6.3, trend: 12, isNew: false },
-  { id: 3, word: '知识图谱', count: 856, percent: 5.5, trend: -5, isNew: false },
-  { id: 4, word: '大语言模型', count: 724, percent: 4.6, trend: 8, isNew: false },
-  { id: 5, word: 'Embedding', count: 658, percent: 4.2, trend: 20, isNew: true },
-  { id: 6, word: '文档检索', count: 542, percent: 3.5, trend: -3, isNew: false },
-  { id: 7, word: '语义理解', count: 486, percent: 3.1, trend: 6, isNew: false },
-  { id: 8, word: '文本分块', count: 425, percent: 2.7, trend: 10, isNew: false },
-  { id: 9, word: '提示工程', count: 398, percent: 2.5, trend: 25, isNew: true },
-  { id: 10, word: 'Milvus', count: 356, percent: 2.3, trend: 18, isNew: false },
-  { id: 11, word: 'LangChain', count: 324, percent: 2.1, trend: 22, isNew: true },
-  { id: 12, word: 'OpenAI', count: 298, percent: 1.9, trend: 5, isNew: false },
-  { id: 13, word: 'Claude', count: 276, percent: 1.8, trend: 30, isNew: true },
-  { id: 14, word: 'GPT-4', count: 258, percent: 1.6, trend: -8, isNew: false },
-  { id: 15, word: 'Transformer', count: 234, percent: 1.5, trend: 3, isNew: false },
-])
+const wordList = ref<WordRankItem[]>([])
 
-// 过滤后的列表
 const filteredWordList = computed(() => {
   if (!searchKeyword.value) return wordList.value
-  return wordList.value.filter(item =>
-    item.word.toLowerCase().includes(searchKeyword.value.toLowerCase())
-  )
+  return wordList.value.filter(item => item.word.toLowerCase().includes(searchKeyword.value.toLowerCase()))
 })
 
-// 分页配置
 const pagination = reactive({
   current: 1,
   pageSize: 10,
@@ -419,24 +332,76 @@ const pagination = reactive({
   showTotal: (total: number) => `共 ${total} 条`,
 })
 
-interface WordItem {
-  id: number
-  word: string
-  count: number
-  percent: number
-  trend: number
-  isNew: boolean
+function getDateRange(): { startDate: string; endDate: string } {
+  const now = new Date()
+  const endDate = now.toISOString().split('T')[0]
+  let startDate = endDate
+  
+  if (timeRange.value === 'today') {
+    startDate = endDate
+  } else if (timeRange.value === 'week') {
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    startDate = weekAgo.toISOString().split('T')[0]
+  } else if (timeRange.value === 'month') {
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    startDate = monthAgo.toISOString().split('T')[0]
+  } else if (timeRange.value === 'custom' && customRange.value) {
+    startDate = customRange.value[0].toISOString().split('T')[0]
+  }
+  
+  return { startDate, endDate }
 }
 
-// 格式化数字
-function formatNumber(num: number): string {
-  if (num >= 10000) {
-    return (num / 10000).toFixed(1) + 'w'
+async function loadData() {
+  loading.value = true
+  const { startDate, endDate } = getDateRange()
+  
+  try {
+    const [statsRes, rankingRes, listRes] = await Promise.all([
+      getHotwordStats(startDate, endDate),
+      getHotwordRanking(10, startDate, endDate),
+      getHotwordList({ page: 1, pageSize: 50, startDate, endDate }),
+    ])
+    
+    if (statsRes.data.data) {
+      statsData[0].value = statsRes.data.data.totalQueries || 0
+      statsData[1].value = statsRes.data.data.uniqueWords || 0
+      statsData[2].value = statsRes.data.data.avgQueries || 0
+    }
+    
+    topWords.value = rankingRes.data.data || []
+    wordList.value = listRes.data.data || []
+    
+    if (topWords.value.length > 0 && !trendWord.value) {
+      trendWord.value = topWords.value[0].word
+      loadTrendData()
+    }
+  } catch (error) {
+    console.error('加载热点词数据失败:', error)
+  } finally {
+    loading.value = false
   }
+}
+
+async function loadTrendData() {
+  if (!trendWord.value) return
+  
+  const { startDate, endDate } = getDateRange()
+  try {
+    const { data } = await getHotwordTrend(trendWord.value, startDate, endDate)
+    const trendItems = data.data || []
+    trendData.value = trendItems.map((item: TrendItem) => item.count)
+    trendXAxis.value = trendItems.map((item: TrendItem) => item.date.slice(5))
+  } catch (error) {
+    console.error('加载趋势数据失败:', error)
+  }
+}
+
+function formatNumber(num: number): string {
+  if (num >= 10000) return (num / 10000).toFixed(1) + 'w'
   return num.toLocaleString()
 }
 
-// 获取柱状图渐变色
 function getBarGradient(index: number): string {
   const gradients = [
     'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
@@ -448,85 +413,65 @@ function getBarGradient(index: number): string {
   return gradients[index % gradients.length]
 }
 
-// 获取词云样式
-function getWordStyle(item: typeof topWords.value[0], index: number): Record<string, string> {
+function getWordStyle(item: WordRankItem, index: number): Record<string, string> {
   const baseSize = 14
   const maxSize = 36
-  const size = baseSize + (item.percent / 100) * (maxSize - baseSize)
+  const size = baseSize + ((item.percent || 0) / 100) * (maxSize - baseSize)
   const colors = ['#667eea', '#f5576c', '#4facfe', '#43e97b', '#fa8c16', '#1890ff', '#722ed1']
   const color = colors[index % colors.length]
-  
-  return {
-    fontSize: `${size}px`,
-    color: color,
-    fontWeight: index < 3 ? '600' : '400',
-  }
+  return { fontSize: `${size}px`, color: color, fontWeight: index < 3 ? '600' : '400' }
 }
 
-// 获取排名颜色
 function getRankColor(index: number): string {
   const colors = ['gold', 'silver', '#cd7f32']
   return colors[index] || 'default'
 }
 
-// 获取排名标签
 function getRankLabel(index: number): string {
   const labels = ['TOP 1', 'TOP 2', 'TOP 3']
   return labels[index] || ''
 }
 
-// 获取进度条颜色
 function getProgressColor(percent: number): string {
   if (percent >= 5) return '#52c41a'
   if (percent >= 2) return '#1890ff'
   return '#faad14'
 }
 
-// 时间范围变化
 function handleTimeChange() {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-    message.success('数据已更新')
-  }, 500)
+  loadData()
 }
 
-// 自定义时间范围变化
 function handleCustomRangeChange() {
-  if (customRange.value) {
-    handleTimeChange()
-  }
+  if (customRange.value) handleTimeChange()
 }
 
-// 刷新数据
 function handleRefresh() {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-    message.success('数据刷新成功')
-  }, 800)
+  loadData()
+  message.success('数据刷新成功')
 }
 
-// 搜索
 function handleSearch() {
   pagination.current = 1
 }
 
-// 导出数据
 function handleExport() {
   message.success('数据导出成功')
 }
 
-// 表格变化
 function handleTableChange(pag: any) {
   pagination.current = pag.current
   pagination.pageSize = pag.pageSize
 }
 
-// 查看详情
-function handleViewDetail(record: WordItem) {
-  message.info(`查看 ${record.word} 的详细数据`)
+function handleViewDetail(record: WordRankItem) {
+  trendWord.value = record.word
+  loadTrendData()
 }
+
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <style scoped lang="scss">

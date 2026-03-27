@@ -59,6 +59,81 @@
           <template #icon><SettingOutlined /></template>
           <span>系统设置</span>
         </a-menu-item>
+
+        <a-menu-item key="/model">
+          <template #icon><ApiOutlined /></template>
+          <span>大模型管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/workflow">
+          <template #icon><BranchOutlined /></template>
+          <span>工作流编排</span>
+        </a-menu-item>
+
+        <a-menu-item key="/nlp-query">
+          <template #icon><SearchOutlined /></template>
+          <span>自然语言查询</span>
+        </a-menu-item>
+
+        <a-menu-item key="/embed">
+          <template #icon><CodeOutlined /></template>
+          <span>嵌入聊天配置</span>
+        </a-menu-item>
+
+        <a-menu-item key="/graph">
+          <template #icon><ApartmentOutlined /></template>
+          <span>知识图谱</span>
+        </a-menu-item>
+
+        <a-menu-item key="/assistant">
+          <template #icon><RobotOutlined /></template>
+          <span>助手市场</span>
+        </a-menu-item>
+
+        <a-menu-item key="/stats">
+          <template #icon><BarChartOutlined /></template>
+          <span>数据统计</span>
+        </a-menu-item>
+
+        <a-menu-item key="/feedback">
+          <template #icon><LikeOutlined /></template>
+          <span>问答评价</span>
+        </a-menu-item>
+
+        <a-menu-item key="/announcement">
+          <template #icon><NotificationOutlined /></template>
+          <span>公告管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/approval">
+          <template #icon><AuditOutlined /></template>
+          <span>审核中心</span>
+        </a-menu-item>
+
+        <a-menu-item key="/points">
+          <template #icon><GiftOutlined /></template>
+          <span>积分商城</span>
+        </a-menu-item>
+
+        <a-menu-item key="/channel">
+          <template #icon><ApiOutlined /></template>
+          <span>渠道管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/process-task">
+          <template #icon><CloudUploadOutlined /></template>
+          <span>文档预处理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/tag">
+          <template #icon><TagsOutlined /></template>
+          <span>标签管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/voice">
+          <template #icon><AudioOutlined /></template>
+          <span>语音问答</span>
+        </a-menu-item>
       </a-menu>
     </div>
   </a-drawer>
@@ -120,10 +195,85 @@
         <span>热点词分析</span>
       </a-menu-item>
 
-      <a-menu-item key="/settings">
-        <template #icon><SettingOutlined /></template>
-        <span>系统设置</span>
-      </a-menu-item>
+        <a-menu-item key="/settings">
+          <template #icon><SettingOutlined /></template>
+          <span>系统设置</span>
+        </a-menu-item>
+
+        <a-menu-item key="/model">
+          <template #icon><ApiOutlined /></template>
+          <span>大模型管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/workflow">
+          <template #icon><BranchOutlined /></template>
+          <span>工作流编排</span>
+        </a-menu-item>
+
+        <a-menu-item key="/nlp-query">
+          <template #icon><SearchOutlined /></template>
+          <span>自然语言查询</span>
+        </a-menu-item>
+
+        <a-menu-item key="/embed">
+          <template #icon><CodeOutlined /></template>
+          <span>嵌入聊天配置</span>
+        </a-menu-item>
+
+        <a-menu-item key="/graph">
+          <template #icon><ApartmentOutlined /></template>
+          <span>知识图谱</span>
+        </a-menu-item>
+
+        <a-menu-item key="/assistant">
+          <template #icon><RobotOutlined /></template>
+          <span>助手市场</span>
+        </a-menu-item>
+
+        <a-menu-item key="/stats">
+          <template #icon><BarChartOutlined /></template>
+          <span>数据统计</span>
+        </a-menu-item>
+
+        <a-menu-item key="/feedback">
+          <template #icon><LikeOutlined /></template>
+          <span>问答评价</span>
+        </a-menu-item>
+
+        <a-menu-item key="/announcement">
+          <template #icon><NotificationOutlined /></template>
+          <span>公告管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/approval">
+          <template #icon><AuditOutlined /></template>
+          <span>审核中心</span>
+        </a-menu-item>
+
+        <a-menu-item key="/points">
+          <template #icon><GiftOutlined /></template>
+          <span>积分商城</span>
+        </a-menu-item>
+
+        <a-menu-item key="/channel">
+          <template #icon><ApiOutlined /></template>
+          <span>渠道管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/process-task">
+          <template #icon><CloudUploadOutlined /></template>
+          <span>文档预处理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/tag">
+          <template #icon><TagsOutlined /></template>
+          <span>标签管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/voice">
+          <template #icon><AudioOutlined /></template>
+          <span>语音问答</span>
+        </a-menu-item>
     </a-menu>
 
     <div class="collapse-trigger" @click="toggleSidebar">
@@ -149,6 +299,20 @@ import {
   FileTextOutlined,
   WarningOutlined,
   LineChartOutlined,
+  ApiOutlined,
+  BranchOutlined,
+  SearchOutlined,
+  CodeOutlined,
+  ApartmentOutlined,
+  RobotOutlined,
+  BarChartOutlined,
+  LikeOutlined,
+  NotificationOutlined,
+  AuditOutlined,
+  GiftOutlined,
+  CloudUploadOutlined,
+  TagsOutlined,
+  AudioOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()

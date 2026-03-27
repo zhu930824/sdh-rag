@@ -81,11 +81,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
-import { showSuccess } from '@/utils/message'
+import { showSuccess, showError } from '@/utils/message'
+import { getAllSettings, updateSettingByKey } from '@/api/settings'
 
 const activeTab = ref('basic')
+const loading = ref(false)
 
 const settings = reactive({
   systemName: '智能知识库',
@@ -98,9 +100,65 @@ const settings = reactive({
   notificationEmail: '',
 })
 
-function saveSettings(): void {
-  showSuccess('设置保存成功')
+async function loadSettings() {
+  loading.value = true
+  try {
+    const { data } = await getAllSettings()
+    if (data.data) {
+      if (data.data.basic) {
+        settings.systemName = data.data.basic.systemName || '智能知识库'
+        settings.defaultTheme = data.data.basic.defaultTheme || 'auto'
+      }
+      if (data.data.model) {
+        settings.defaultModel = data.data.model.defaultModel || 'gpt-3.5-turbo'
+        settings.temperature = data.data.model.temperature ?? 0.7
+        settings.maxTokens = data.data.model.maxTokens ?? 2000
+      }
+      if (data.data.notification) {
+        settings.enableNotification = data.data.notification.enableNotification ?? true
+        settings.enableEmail = data.data.notification.enableEmail ?? false
+        settings.notificationEmail = data.data.notification.notificationEmail || ''
+      }
+    }
+  } catch (error) {
+    showError('加载设置失败')
+  } finally {
+    loading.value = false
+  }
 }
+
+async function saveSettings(): Promise<void> {
+  loading.value = true
+  try {
+    if (activeTab.value === 'basic') {
+      await updateSettingByKey('basic', {
+        systemName: settings.systemName,
+        defaultTheme: settings.defaultTheme,
+      })
+    } else if (activeTab.value === 'model') {
+      await updateSettingByKey('model', {
+        defaultModel: settings.defaultModel,
+        temperature: settings.temperature,
+        maxTokens: settings.maxTokens,
+      })
+    } else if (activeTab.value === 'notification') {
+      await updateSettingByKey('notification', {
+        enableNotification: settings.enableNotification,
+        enableEmail: settings.enableEmail,
+        notificationEmail: settings.notificationEmail,
+      })
+    }
+    showSuccess('设置保存成功')
+  } catch (error) {
+    showError('保存设置失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadSettings()
+})
 </script>
 
 <style scoped lang="scss">

@@ -35,13 +35,9 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("用户名或密码错误");
         }
 
-//        // 验证密码
-//        if (!BCrypt.checkpw(password, user.getPassword())) {
-//            throw new BusinessException("用户名或密码错误");
-//        }
-        if (!password.equalsIgnoreCase(user.getPassword())){
+        // 验证密码
+        if (!BCrypt.checkpw(password, user.getPassword())) {
             throw new BusinessException("用户名或密码错误");
-
         }
 
         // 检查用户状态

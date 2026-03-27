@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.sdh.backend.mapper.SensitiveWordMapper">
+
+    <select id="selectPageByCondition" resultType="cn.sdh.backend.entity.SensitiveWord">
+        SELECT * FROM sensitive_word
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND word LIKE CONCAT('%', #{keyword}, '%')
+            </if>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

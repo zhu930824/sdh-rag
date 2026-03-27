@@ -138,7 +138,7 @@
             {{ currentLog.createTime }}
           </a-descriptions-item>
           <a-descriptions-item label="操作用户">
-            {{ currentLog.user }}
+            {{ currentLog.username }}
           </a-descriptions-item>
           <a-descriptions-item label="操作类型">
             <a-tag :color="getTypeColor(currentLog.type)">
@@ -198,56 +198,34 @@ import type { Dayjs } from 'dayjs'
 import TableToolbar from '@/components/TableToolbar.vue'
 import { useLoading } from '@/composables'
 import type { ColumnConfig, TableDensity } from '@/components/TableToolbar.vue'
+import { getLogList } from '@/api/log'
+import type { OperationLog } from '@/api/log'
 
-// 日志项接口定义
-interface LogItem {
-  id: number
-  createTime: string
-  user: string
-  type: string
-  content: string
-  ip: string
-  status: number
-  browser?: string
-  os?: string
-  requestParams?: Record<string, unknown>
-  responseData?: Record<string, unknown>
-  errorMsg?: string
-}
-
-// 筛选表单接口
-interface FilterForm {
-  dateRange: [Dayjs, Dayjs] | null
-  type: string | undefined
-  user: string
-  status: number | undefined
+interface LogItem extends OperationLog {
+  user?: string
 }
 
 const { loading, withLoading } = useLoading()
 
-// 筛选表单
-const filterForm = reactive<FilterForm>({
-  dateRange: null,
-  type: undefined,
+const filterForm = reactive({
+  dateRange: null as [Dayjs, Dayjs] | null,
+  type: undefined as string | undefined,
   user: '',
-  status: undefined,
+  status: undefined as number | undefined,
 })
 
-// 分页配置
 const pagination = reactive({
   page: 1,
   pageSize: 10,
   total: 0,
 })
 
-// 表格数据
 const tableData = ref<LogItem[]>([])
 
-// 表格列配置
 const tableColumns = ref<ColumnConfig[]>([
   { prop: 'id', label: 'ID', visible: true },
   { prop: 'createTime', label: '操作时间', visible: true },
-  { prop: 'user', label: '操作用户', visible: true },
+  { prop: 'username', label: '操作用户', visible: true },
   { prop: 'type', label: '操作类型', visible: true },
   { prop: 'content', label: '操作内容', visible: true },
   { prop: 'ip', label: 'IP地址', visible: true },
@@ -256,12 +234,11 @@ const tableColumns = ref<ColumnConfig[]>([
 
 const tableDensity = ref<TableDensity>('default')
 
-// 表格列配置计算属性
 const tableColumnsConfig = computed<TableColumnType[]>(() => {
   const columns: TableColumnType[] = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
     { title: '操作时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
-    { title: '操作用户', dataIndex: 'user', key: 'user', width: 120 },
+    { title: '操作用户', dataIndex: 'username', key: 'username', width: 120 },
     { title: '操作类型', dataIndex: 'type', key: 'type', width: 100 },
     { title: '操作内容', dataIndex: 'content', key: 'content', width: 300, ellipsis: true },
     { title: 'IP地址', dataIndex: 'ip', key: 'ip', width: 140 },
@@ -275,118 +252,40 @@ const tableColumnsConfig = computed<TableColumnType[]>(() => {
   })
 })
 
-// 详情抽屉
 const detailVisible = ref(false)
 const currentLog = ref<LogItem | null>(null)
 
-// 模拟数据生成
-function generateMockData(): LogItem[] {
-  const types = ['login', 'logout', 'create', 'update', 'delete', 'query', 'export', 'import']
-  const users = ['admin', 'user01', 'user02', '张三', '李四', '王五']
-  const contents = [
-    '用户登录系统',
-    '用户退出系统',
-    '新增知识库文档',
-    '修改用户信息',
-    '删除文档记录',
-    '查询文档列表',
-    '导出数据报表',
-    '导入用户数据',
-    '修改系统配置',
-    '创建新用户',
-  ]
-
-  return Array.from({ length: 50 }, (_, index) => {
-    const type = types[Math.floor(Math.random() * types.length)]
-    const status = Math.random() > 0.1 ? 1 : 0
-    const hasRequest = ['create', 'update', 'delete', 'query', 'export', 'import'].includes(type)
-
-    return {
-      id: index + 1,
-      createTime: getRandomDateTime(),
-      user: users[Math.floor(Math.random() * users.length)],
-      type,
-      content: contents[Math.floor(Math.random() * contents.length)],
-      ip: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-      status,
-      browser: 'Chrome 120.0.0',
-      os: 'Windows 10',
-      requestParams: hasRequest ? {
-        page: 1,
-        pageSize: 10,
-        keyword: '测试',
-        status: 1,
-      } : undefined,
-      responseData: hasRequest ? {
-        code: 200,
-        message: 'success',
-        data: {
-          total: 100,
-          list: [],
-        },
-      } : undefined,
-      errorMsg: status === 0 ? '操作失败：权限不足' : undefined,
-    }
-  })
-}
-
-// 生成随机日期时间
-function getRandomDateTime(): string {
-  const start = new Date(2024, 0, 1)
-  const end = new Date()
-  const date = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()))
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).replace(/\//g, '-')
-}
-
-// 加载数据
 async function loadData() {
   await withLoading(async () => {
-    // 模拟异步请求
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // 生成模拟数据
-    let data = generateMockData()
-
-    // 应用筛选条件
-    if (filterForm.type) {
-      data = data.filter(item => item.type === filterForm.type)
+    try {
+      const params: Record<string, unknown> = {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        type: filterForm.type,
+        username: filterForm.user || undefined,
+        status: filterForm.status,
+      }
+      
+      if (filterForm.dateRange && filterForm.dateRange.length === 2) {
+        params.startTime = filterForm.dateRange[0].format('YYYY-MM-DD HH:mm:ss')
+        params.endTime = filterForm.dateRange[1].format('YYYY-MM-DD HH:mm:ss')
+      }
+      
+      const { data } = await getLogList(params as any)
+      tableData.value = data.data.records || data.data.list || []
+      pagination.total = data.data.total
+    } catch (error) {
+      tableData.value = []
+      pagination.total = 0
     }
-    if (filterForm.user) {
-      data = data.filter(item => item.user.includes(filterForm.user))
-    }
-    if (filterForm.status !== undefined) {
-      data = data.filter(item => item.status === filterForm.status)
-    }
-    if (filterForm.dateRange && filterForm.dateRange.length === 2) {
-      const [start, end] = filterForm.dateRange
-      data = data.filter(item => {
-        const itemDate = new Date(item.createTime)
-        return itemDate >= start.toDate() && itemDate <= end.toDate()
-      })
-    }
-
-    // 应用分页
-    const start = (pagination.page - 1) * pagination.pageSize
-    const end = start + pagination.pageSize
-    tableData.value = data.slice(start, end)
-    pagination.total = data.length
   })
 }
 
-// 搜索
 function handleSearch() {
   pagination.page = 1
   loadData()
 }
 
-// 重置
 function handleReset() {
   filterForm.dateRange = null
   filterForm.type = undefined
@@ -395,20 +294,17 @@ function handleReset() {
   handleSearch()
 }
 
-// 分页变化
 function handlePageChange(page: number) {
   pagination.page = page
   loadData()
 }
 
-// 每页条数变化
 function handleSizeChange(_current: number, size: number) {
   pagination.page = 1
   pagination.pageSize = size
   loadData()
 }
 
-// 列显示切换
 function handleColumnChange(prop: string, visible: boolean) {
   const col = tableColumns.value.find(c => c.prop === prop)
   if (col) {
@@ -416,18 +312,15 @@ function handleColumnChange(prop: string, visible: boolean) {
   }
 }
 
-// 表格密度变化
 function handleDensityChange(density: TableDensity) {
   tableDensity.value = density
 }
 
-// 查看详情
 function handleViewDetail(record: LogItem) {
   currentLog.value = record
   detailVisible.value = true
 }
 
-// 获取操作类型颜色
 function getTypeColor(type: string): string {
   const colorMap: Record<string, string> = {
     login: 'green',
@@ -442,7 +335,6 @@ function getTypeColor(type: string): string {
   return colorMap[type] || 'default'
 }
 
-// 获取操作类型文本
 function getTypeText(type: string): string {
   const textMap: Record<string, string> = {
     login: '登录',
@@ -457,12 +349,17 @@ function getTypeText(type: string): string {
   return textMap[type] || type
 }
 
-// 格式化JSON
-function formatJson(data: Record<string, unknown>): string {
+function formatJson(data: string | Record<string, unknown>): string {
+  if (typeof data === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(data), null, 2)
+    } catch {
+      return data
+    }
+  }
   return JSON.stringify(data, null, 2)
 }
 
-// 初始化
 onMounted(() => {
   loadData()
 })

@@ -8,6 +8,7 @@ import cn.sdh.backend.dto.UserInfoResponse;
 import cn.sdh.backend.entity.User;
 import cn.sdh.backend.service.UserService;
 import cn.sdh.backend.utils.JwtUtil;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +35,7 @@ public class UserController {
      * 用户登录
      */
     @PostMapping("/login")
-    public Result<Map<String, Object>> login(@RequestBody LoginRequest request) {
+    public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest request) {
         String token = userService.login(request.getUsername(), request.getPassword());
         
         Map<String, Object> data = new HashMap<>();
@@ -47,7 +48,7 @@ public class UserController {
      * 用户注册
      */
     @PostMapping("/register")
-    public Result<Void> register(@RequestBody RegisterRequest request) {
+    public Result<Void> register(@Valid @RequestBody RegisterRequest request) {
         userService.register(request.getUsername(), request.getPassword(), request.getNickname());
         return Result.success("注册成功", null);
     }

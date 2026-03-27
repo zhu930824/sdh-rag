@@ -86,7 +86,7 @@
           </template>
           <template v-else-if="column.dataIndex === 'status'">
             <a-switch
-              :checked="record.status === 'enabled'"
+              :checked="record.status === 1"
               :loading="record.statusLoading"
               @change="(checked: boolean) => handleStatusChange(record, checked)"
             />
@@ -155,8 +155,8 @@
         </a-form-item>
         <a-form-item label="状态" name="status">
           <a-radio-group v-model:value="formData.status">
-            <a-radio value="enabled">启用</a-radio>
-            <a-radio value="disabled">禁用</a-radio>
+            <a-radio :value="1">启用</a-radio>
+            <a-radio :value="0">禁用</a-radio>
           </a-radio-group>
         </a-form-item>
       </a-form>
@@ -178,51 +178,29 @@ import { showSuccess, showSaveSuccess, showDeleteSuccess, showOperationError } f
 import { showBatchDeleteConfirm } from '@/utils/confirm'
 import { useLoading } from '@/composables'
 import type { ColumnConfig, TableDensity } from '@/components/TableToolbar.vue'
+import { getSensitiveList, createSensitive, updateSensitive, deleteSensitive, batchDeleteSensitive, toggleSensitiveStatus } from '@/api/sensitive'
+import type { SensitiveWord } from '@/api/sensitive'
 
-// 敏感词数据类型
-interface SensitiveWord {
-  id: number
-  word: string
-  category: string
-  status: string
-  createTime: string
+interface SensitiveTableRow extends SensitiveWord {
   statusLoading?: boolean
-}
-
-// 搜索表单类型
-interface SearchForm {
-  keyword: string
-  category: string | undefined
-}
-
-// 表单数据类型
-interface FormData {
-  id?: number
-  word: string
-  category: string
-  status: string
 }
 
 const { loading, withLoading } = useLoading()
 
-// 搜索表单
-const searchForm = reactive<SearchForm>({
+const searchForm = reactive({
   keyword: '',
-  category: undefined,
+  category: undefined as string | undefined,
 })
 
-// 分页配置
 const pagination = reactive({
   page: 1,
   pageSize: 10,
   total: 0,
 })
 
-// 表格数据
-const tableData = ref<SensitiveWord[]>([])
+const tableData = ref<SensitiveTableRow[]>([])
 const selectedRowKeys = ref<number[]>([])
 
-// 表格列配置
 const tableColumns = ref<ColumnConfig[]>([
   { prop: 'id', label: 'ID', visible: true },
   { prop: 'word', label: '词汇', visible: true },
@@ -231,10 +209,8 @@ const tableColumns = ref<ColumnConfig[]>([
   { prop: 'createTime', label: '创建时间', visible: true },
 ])
 
-// 表格密度
 const tableDensity = ref<TableDensity>('default')
 
-// 表格列配置计算属性
 const tableColumnsConfig = computed<TableColumnType[]>(() => {
   const columns: TableColumnType[] = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
@@ -251,7 +227,6 @@ const tableColumnsConfig = computed<TableColumnType[]>(() => {
   })
 })
 
-// 行选择配置
 const rowSelection: TableProps['rowSelection'] = computed(() => ({
   selectedRowKeys: selectedRowKeys.value,
   onChange: (keys: number[]) => {
@@ -259,21 +234,19 @@ const rowSelection: TableProps['rowSelection'] = computed(() => ({
   },
 }))
 
-// 对话框相关
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加敏感词')
 const isEdit = ref(false)
 const submitLoading = ref(false)
 const formRef = ref<FormInstance>()
 
-// 表单数据
-const formData = reactive<FormData>({
+const formData = reactive({
+  id: undefined as number | undefined,
   word: '',
   category: '',
-  status: 'enabled',
+  status: 1,
 })
 
-// 表单验证规则
 const formRules: Record<string, Rule[]> = {
   word: [
     { required: true, message: '请输入敏感词', trigger: 'blur' },
@@ -282,7 +255,6 @@ const formRules: Record<string, Rule[]> = {
   category: [{ required: true, message: '请选择分类', trigger: 'change' }],
 }
 
-// 分类颜色映射
 const categoryColorMap: Record<string, string> = {
   politics: 'red',
   porn: 'orange',
@@ -290,7 +262,6 @@ const categoryColorMap: Record<string, string> = {
   ad: 'blue',
 }
 
-// 分类文本映射
 const categoryTextMap: Record<string, string> = {
   politics: '政治',
   porn: '色情',
@@ -298,59 +269,43 @@ const categoryTextMap: Record<string, string> = {
   ad: '广告',
 }
 
-// 获取分类颜色
 function getCategoryColor(category: string): string {
   return categoryColorMap[category] || 'default'
 }
 
-// 获取分类文本
 function getCategoryText(category: string): string {
   return categoryTextMap[category] || category
 }
 
-// 加载数据
 async function loadData() {
   await withLoading(async () => {
-    // 模拟 API 调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // 模拟数据
-    const mockData: SensitiveWord[] = [
-      { id: 1, word: '敏感词1', category: 'politics', status: 'enabled', createTime: '2024-01-01 10:00:00' },
-      { id: 2, word: '敏感词2', category: 'porn', status: 'enabled', createTime: '2024-01-02 11:30:00' },
-      { id: 3, word: '敏感词3', category: 'violence', status: 'disabled', createTime: '2024-01-03 14:20:00' },
-      { id: 4, word: '广告词1', category: 'ad', status: 'enabled', createTime: '2024-01-04 09:15:00' },
-      { id: 5, word: '敏感词4', category: 'politics', status: 'enabled', createTime: '2024-01-05 16:45:00' },
-    ]
-
-    // 根据搜索条件过滤
-    let filteredData = mockData
-    if (searchForm.keyword) {
-      filteredData = filteredData.filter(item => item.word.includes(searchForm.keyword))
+    try {
+      const { data } = await getSensitiveList({
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        keyword: searchForm.keyword || undefined,
+        category: searchForm.category,
+      })
+      tableData.value = data.data.records || data.data.list || []
+      pagination.total = data.data.total
+    } catch (error) {
+      tableData.value = []
+      pagination.total = 0
     }
-    if (searchForm.category) {
-      filteredData = filteredData.filter(item => item.category === searchForm.category)
-    }
-
-    tableData.value = filteredData
-    pagination.total = filteredData.length
   })
 }
 
-// 搜索
 function handleSearch() {
   pagination.page = 1
   loadData()
 }
 
-// 重置
 function handleReset() {
   searchForm.keyword = ''
   searchForm.category = undefined
   handleSearch()
 }
 
-// 列显示切换
 function handleColumnChange(prop: string, visible: boolean) {
   const col = tableColumns.value.find(c => c.prop === prop)
   if (col) {
@@ -358,20 +313,17 @@ function handleColumnChange(prop: string, visible: boolean) {
   }
 }
 
-// 表格密度切换
 function handleDensityChange(density: TableDensity) {
   tableDensity.value = density
 }
 
-// 添加敏感词
 function handleAdd() {
   isEdit.value = false
   dialogTitle.value = '添加敏感词'
   dialogVisible.value = true
 }
 
-// 编辑敏感词
-function handleEdit(row: SensitiveWord) {
+function handleEdit(row: SensitiveTableRow) {
   isEdit.value = true
   dialogTitle.value = '编辑敏感词'
   Object.assign(formData, {
@@ -383,44 +335,36 @@ function handleEdit(row: SensitiveWord) {
   dialogVisible.value = true
 }
 
-// 删除敏感词
-async function handleDelete(row: SensitiveWord) {
+async function handleDelete(row: SensitiveTableRow) {
   try {
-    // 模拟 API 调用
-    await new Promise(resolve => setTimeout(resolve, 300))
-    tableData.value = tableData.value.filter(item => item.id !== row.id)
-    pagination.total -= 1
+    await deleteSensitive(row.id)
     showDeleteSuccess()
+    loadData()
   } catch (error) {
     showOperationError('删除')
   }
 }
 
-// 批量删除
 async function handleBatchDelete() {
   const confirmed = await showBatchDeleteConfirm(selectedRowKeys.value.length)
   if (!confirmed) return
 
   try {
-    // 模拟 API 调用
-    await new Promise(resolve => setTimeout(resolve, 300))
-    tableData.value = tableData.value.filter(item => !selectedRowKeys.value.includes(item.id))
-    pagination.total -= selectedRowKeys.value.length
+    await batchDeleteSensitive(selectedRowKeys.value)
     selectedRowKeys.value = []
     showDeleteSuccess()
+    loadData()
   } catch (error) {
     showOperationError('批量删除')
   }
 }
 
-// 状态切换
-async function handleStatusChange(row: SensitiveWord, checked: boolean) {
+async function handleStatusChange(row: SensitiveTableRow, checked: boolean) {
   const statusText = checked ? '启用' : '禁用'
   row.statusLoading = true
   try {
-    // 模拟 API 调用
-    await new Promise(resolve => setTimeout(resolve, 300))
-    row.status = checked ? 'enabled' : 'disabled'
+    await toggleSensitiveStatus(row.id)
+    row.status = checked ? 1 : 0
     showSuccess(`已${statusText}敏感词 ${row.word}`)
   } catch (error) {
     showOperationError(statusText)
@@ -429,7 +373,6 @@ async function handleStatusChange(row: SensitiveWord, checked: boolean) {
   }
 }
 
-// 提交表单
 async function handleSubmit() {
   if (!formRef.value) return
 
@@ -437,35 +380,15 @@ async function handleSubmit() {
     await formRef.value.validate()
     submitLoading.value = true
     try {
-      // 模拟 API 调用
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      if (isEdit.value) {
-        // 编辑模式：更新数据
-        const index = tableData.value.findIndex(item => item.id === formData.id)
-        if (index !== -1) {
-          tableData.value[index] = {
-            ...tableData.value[index],
-            word: formData.word,
-            category: formData.category,
-            status: formData.status,
-          }
-        }
+      if (isEdit.value && formData.id) {
+        await updateSensitive(formData.id, formData)
         showSaveSuccess()
       } else {
-        // 添加模式：新增数据
-        const newItem: SensitiveWord = {
-          id: Date.now(),
-          word: formData.word,
-          category: formData.category,
-          status: formData.status,
-          createTime: new Date().toLocaleString('zh-CN'),
-        }
-        tableData.value.unshift(newItem)
-        pagination.total += 1
+        await createSensitive(formData)
         showSuccess('添加成功')
       }
       dialogVisible.value = false
+      loadData()
     } catch (error) {
       showOperationError(isEdit.value ? '保存' : '添加')
     } finally {
@@ -476,18 +399,16 @@ async function handleSubmit() {
   }
 }
 
-// 对话框关闭
 function handleDialogClosed() {
   formRef.value?.resetFields()
   Object.assign(formData, {
     id: undefined,
     word: '',
     category: '',
-    status: 'enabled',
+    status: 1,
   })
 }
 
-// 初始化
 onMounted(() => {
   loadData()
 })
