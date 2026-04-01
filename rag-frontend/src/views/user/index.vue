@@ -12,80 +12,79 @@
       </template>
 
       <!-- 搜索栏 -->
-      <a-form layout="inline" :model="searchForm" class="search-form">
-        <a-form-item label="用户名">
-          <a-input
-            v-model:value="searchForm.keyword"
-            placeholder="请输入用户名或昵称"
-            allow-clear
-            @pressEnter="handleSearch"
-          />
-        </a-form-item>
-        <a-form-item label="状态">
-          <a-select
-            v-model:value="searchForm.status"
-            placeholder="请选择状态"
-            allow-clear
-            style="width: 120px"
-          >
-            <a-select-option :value="1">启用</a-select-option>
-            <a-select-option :value="0">禁用</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="角色">
-          <a-select
-            v-model:value="searchForm.role"
-            placeholder="请选择角色"
-            allow-clear
-            style="width: 120px"
-          >
-            <a-select-option value="管理员">管理员</a-select-option>
-            <a-select-option value="普通用户">普通用户</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item>
-          <a-space>
+      <div class="search-toolbar">
+        <a-form layout="inline" :model="searchForm" class="search-form">
+          <a-form-item label="用户名">
+            <a-input
+              v-model:value="searchForm.keyword"
+              placeholder="请输入用户名或昵称"
+              allow-clear
+              @pressEnter="handleSearch"
+            />
+          </a-form-item>
+          <a-form-item label="状态">
+            <a-select
+              v-model:value="searchForm.status"
+              placeholder="请选择状态"
+              allow-clear
+              style="width: 120px"
+            >
+              <a-select-option :value="1">启用</a-select-option>
+              <a-select-option :value="0">禁用</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="角色">
+            <a-select
+              v-model:value="searchForm.role"
+              placeholder="请选择角色"
+              allow-clear
+              style="width: 120px"
+            >
+              <a-select-option value="管理员">管理员</a-select-option>
+              <a-select-option value="普通用户">普通用户</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item>
             <a-button type="primary" @click="handleSearch">
               <template #icon><SearchOutlined /></template>
               搜索
+            </a-button>
+          </a-form-item>
+        </a-form>
+        <div class="toolbar-actions">
+          <a-space>
+            <a-button v-if="selectedRowKeys.length > 0" danger @click="handleBatchDelete">
+              <template #icon><DeleteOutlined /></template>
+              批量删除 ({{ selectedRowKeys.length }})
             </a-button>
             <a-button @click="handleReset">
               <template #icon><ReloadOutlined /></template>
               重置
             </a-button>
+            <a-button @click="loadData">
+              <template #icon><SyncOutlined /></template>
+              刷新
+            </a-button>
+            <TableToolbar
+              :columns="tableColumns"
+              :density="tableDensity"
+              @column-change="handleColumnChange"
+              @density-change="handleDensityChange"
+            />
           </a-space>
-        </a-form-item>
-      </a-form>
-
-      <!-- 表格工具栏 -->
-      <TableToolbar
-        :columns="tableColumns"
-        :density="tableDensity"
-        @refresh="loadData"
-        @column-change="handleColumnChange"
-        @density-change="handleDensityChange"
-      >
-        <template #left>
-          <a-button
-            v-if="selectedRowKeys.length > 0"
-            danger
-            @click="handleBatchDelete"
-          >
-            <template #icon><DeleteOutlined /></template>
-            批量删除 ({{ selectedRowKeys.length }})
-          </a-button>
-        </template>
-      </TableToolbar>
+        </div>
+      </div>
 
       <!-- 表格 -->
       <a-table
+        class="user-table"
         :loading="loading"
         :data-source="tableData"
         :columns="tableColumnsConfig"
         :size="tableDensity"
         :row-selection="rowSelection"
         :pagination="false"
-        :scroll="{ x: 1000 }"
+        :scroll="{ x: 1000, y: tableHeight }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'role'">
@@ -183,7 +182,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
 import type { TableColumnType, TableProps } from 'ant-design-vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -228,6 +227,11 @@ const tableColumns = ref<ColumnConfig[]>([
 ])
 
 const tableDensity = ref<TableDensity>('default')
+
+const tableHeight = computed(() => {
+  // 计算表格高度：视口高度 - 头部 - 搜索栏 - 分页 - 边距
+  return window.innerHeight - 280
+})
 
 const tableColumnsConfig = computed<TableColumnType[]>(() => {
   const columns: TableColumnType[] = [
@@ -298,17 +302,13 @@ async function loadData() {
         page: pagination.page,
         pageSize: pagination.pageSize,
       }
-      const { data } = await getUserList(params)
-      tableData.value = data.data.list
-      pagination.total = data.data.total
+      const res = await getUserList(params)
+      tableData.value = res.data.records || []
+      pagination.total = res.data.total || 0
     } catch (error) {
       showError('加载用户列表失败')
-      tableData.value = [
-        { id: 1, username: 'admin', nickname: '管理员', email: 'admin@example.com', role: '管理员', status: 1, createTime: '2024-01-01 00:00:00' },
-        { id: 2, username: 'user01', nickname: '用户一', email: 'user01@example.com', role: '普通用户', status: 1, createTime: '2024-01-10 10:30:00' },
-        { id: 3, username: 'user02', nickname: '用户二', email: 'user02@example.com', role: '普通用户', status: 0, createTime: '2024-01-15 14:20:00' },
-      ]
-      pagination.total = 3
+      tableData.value = []
+      pagination.total = 0
     }
   })
 }
@@ -388,8 +388,8 @@ async function handleResetPassword(row: UserTableRow) {
   if (!confirmed) return
 
   try {
-    const { data } = await resetUserPassword(row.id)
-    showSuccess(`密码已重置为: ${data.data.password}`)
+    const res = await resetUserPassword(row.id)
+    showSuccess(`密码已重置为: ${res.data.password}`)
   } catch (error) {
     showOperationError('重置密码')
   }
@@ -455,6 +455,22 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .user-container {
+  height: 100%;
+  
+  :deep(.ant-card) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    
+    .ant-card-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px;
+    }
+  }
+
   :deep(.ant-card-head-title) {
     width: 100%;
   }
@@ -470,14 +486,40 @@ onMounted(() => {
     }
   }
 
+  .search-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
   .search-form {
-    margin-bottom: 20px;
+    flex: 1;
+  }
+
+  .toolbar-actions {
+    flex-shrink: 0;
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
+    
+    :deep(.table-toolbar) {
+      display: inline-flex;
+      margin-left: 8px;
+    }
+  }
+
+  .user-table {
+    flex: 1;
+    overflow: auto;
   }
 
   .pagination {
-    margin-top: 20px;
+    margin-top: 16px;
     display: flex;
     justify-content: flex-end;
+    flex-shrink: 0;
   }
 }
 </style>

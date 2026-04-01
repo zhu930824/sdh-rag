@@ -276,11 +276,14 @@ function formatDate(dateStr: string): string {
   display: flex;
   gap: 16px;
   height: calc(100vh - 120px);
-  padding: 16px;
 
   .category-panel {
     width: 280px;
     flex-shrink: 0;
+
+    :deep(.ant-card) {
+      height: 100%;
+    }
 
     .panel-header {
       display: flex;
@@ -319,6 +322,8 @@ function formatDate(dateStr: string): string {
       .ant-card-body {
         flex: 1;
         overflow: auto;
+        display: flex;
+        flex-direction: column;
       }
     }
 
@@ -340,7 +345,8 @@ function formatDate(dateStr: string): string {
     }
 
     .document-list {
-      min-height: 400px;
+      flex: 1;
+      min-height: 0;
     }
 
     .document-grid {
@@ -417,6 +423,7 @@ function formatDate(dateStr: string): string {
 
     .pagination {
       margin-top: 16px;
+      display: flex;
       justify-content: flex-end;
     }
   }

@@ -343,6 +343,35 @@ INSERT INTO `role_menu` (`role_id`, `menu_id`) VALUES
 INSERT INTO `role_menu` (`role_id`, `menu_id`) VALUES
 (3, 1), (3, 2), (3, 3), (3, 7);
 
+-- 知识库表
+CREATE TABLE IF NOT EXISTS `knowledge_base` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '知识库ID',
+    `name` VARCHAR(100) NOT NULL COMMENT '知识库名称',
+    `description` VARCHAR(500) COMMENT '知识库描述',
+    `user_id` BIGINT NOT NULL COMMENT '创建用户ID',
+    `status` TINYINT DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user_id` (`user_id`),
+    KEY `idx_status` (`status`),
+    CONSTRAINT `fk_knowledge_base_user` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库表';
+
+-- 知识库文档关联表（多对多）
+CREATE TABLE IF NOT EXISTS `knowledge_document_relation` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '关联ID',
+    `knowledge_id` BIGINT NOT NULL COMMENT '知识库ID',
+    `document_id` BIGINT NOT NULL COMMENT '文档ID',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_knowledge_document` (`knowledge_id`, `document_id`),
+    KEY `idx_knowledge_id` (`knowledge_id`),
+    KEY `idx_document_id` (`document_id`),
+    CONSTRAINT `fk_relation_knowledge` FOREIGN KEY (`knowledge_id`) REFERENCES `knowledge_base`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_relation_document` FOREIGN KEY (`document_id`) REFERENCES `knowledge_document`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库文档关联表';
+
 -- 插入嵌入组件默认配置
 INSERT INTO `embed_config` (`name`, `theme`, `position`, `width`, `height`, `title`, `status`) VALUES
 ('默认配置', 'light', 'right-bottom', 400, 600, '智能助手', 1);

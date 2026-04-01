@@ -78,4 +78,35 @@ public interface KnowledgeService {
      * 重建所有索引
      */
     void rebuildAllIndexes();
+
+    /**
+     * 获取用户所有文档（用于关联选择）
+     * @param userId 用户ID
+     * @param page 页码
+     * @param size 每页大小
+     * @return 分页结果
+     */
+    Page<KnowledgeDocument> getAllDocuments(Long userId, int page, int size);
+
+    /**
+     * 更新分类
+     * @param category 分类实体
+     * @return 是否成功
+     */
+    boolean updateCategory(DocumentCategory category);
+
+    /**
+     * 删除分类
+     * @param id 分类ID
+     * @return 是否成功
+     */
+    boolean deleteCategory(Long id);
+
+    /**
+     * 获取相关文档
+     * @param documentId 文档ID
+     * @param limit 限制数量
+     * @return 相关文档列表
+     */
+    List<KnowledgeDocument> getRelatedDocuments(Long documentId, int limit);
 }

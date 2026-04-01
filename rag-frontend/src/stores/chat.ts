@@ -10,6 +10,9 @@ export const useChatStore = defineStore('chat', () => {
   // 当前选择的知识库ID
   const selectedKnowledgeId = ref<number | null>(null)
 
+  // 当前选择的模型ID
+  const selectedModelId = ref<number | null>(null)
+
   // 消息列表
   const messages = ref<ChatMessage[]>([])
 
@@ -37,7 +40,7 @@ export const useChatStore = defineStore('chat', () => {
   const sessionTotal = ref(0)
 
   // 是否有更多会话
-  const hasMoreSessions = computed(() => sessions.value.length < sessionTotal.value)
+  const hasMoreSessions = computed(() => (sessions.value?.length || 0) < sessionTotal.value)
 
   // 获取会话列表
   async function fetchSessions(append = false): Promise<void> {
@@ -54,12 +57,14 @@ export const useChatStore = defineStore('chat', () => {
         size: sessionPageSize.value,
       })
 
-      if (append) {
-        sessions.value = [...sessions.value, ...res.data.list]
-      } else {
-        sessions.value = res.data.list
+      if (res.data) {
+        if (append) {
+          sessions.value = [...sessions.value, ...(res.data.records || [])]
+        } else {
+          sessions.value = res.data.records || []
+        }
+        sessionTotal.value = res.data.total || 0
       }
-      sessionTotal.value = res.data.total
     } catch (error) {
       console.error('获取会话列表失败:', error)
     } finally {
@@ -85,7 +90,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       loading.value = true
       const res = await getSessionMessages(sessionId)
-      messages.value = res.data
+      messages.value = res.data || []
     } catch (error) {
       console.error('获取会话消息失败:', error)
     } finally {
@@ -249,6 +254,11 @@ export const useChatStore = defineStore('chat', () => {
     selectedKnowledgeId.value = knowledgeId
   }
 
+  // 设置选中的模型
+  function setModelId(modelId: number | null): void {
+    selectedModelId.value = modelId
+  }
+
   return {
     // 状态
     currentSessionId,
@@ -262,6 +272,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionPageSize,
     sessionTotal,
     selectedKnowledgeId,
+    selectedModelId,
 
     // 计算属性
     hasMoreSessions,
@@ -277,5 +288,6 @@ export const useChatStore = defineStore('chat', () => {
     clearMessages,
     reset,
     setKnowledgeId,
+    setModelId,
   }
 })

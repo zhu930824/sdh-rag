@@ -39,13 +39,14 @@ export interface UserFormData {
 }
 
 /**
- * 分页响应
+ * 分页响应（MyBatis Plus IPage格式）
  */
 export interface PageResult<T> {
-  list: T[]
+  records: T[]
   total: number
-  page: number
-  pageSize: number
+  current: number
+  size: number
+  pages: number
 }
 
 /**

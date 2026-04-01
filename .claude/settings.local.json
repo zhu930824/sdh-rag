@@ -7,7 +7,8 @@
       "Bash(mvn:*)",
       "Bash(where java:*)",
       "Bash(dir \"D:\\\\develop\" \")",
-      "Bash(findstr -i jdk)"
+      "Bash(findstr -i jdk)",
+      "Bash(npx vue-tsc:*)"
     ]
   }
 }

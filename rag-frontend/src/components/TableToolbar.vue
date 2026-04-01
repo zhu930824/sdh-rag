@@ -5,15 +5,28 @@
     </div>
     <div class="toolbar-right">
       <a-space>
-        <a-tooltip title="刷新">
-          <a-button type="text" @click="$emit('refresh')">
+        <a-dropdown>
+          <a-button type="text" size="small">
             <template #icon>
-              <ReloadOutlined />
+              <ColumnHeightOutlined />
             </template>
           </a-button>
-        </a-tooltip>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item @click="handleDensityChange('small')">
+                <span :class="{ 'active-density': density === 'small' }">紧凑</span>
+              </a-menu-item>
+              <a-menu-item @click="handleDensityChange('default')">
+                <span :class="{ 'active-density': density === 'default' }">默认</span>
+              </a-menu-item>
+              <a-menu-item @click="handleDensityChange('middle')">
+                <span :class="{ 'active-density': density === 'middle' }">中等</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
         <a-dropdown>
-          <a-button type="text">
+          <a-button type="text" size="small">
             <template #icon>
               <SettingOutlined />
             </template>
@@ -30,18 +43,6 @@
                   </a-checkbox>
                 </a-menu-item>
               </a-menu-item-group>
-              <a-menu-divider />
-              <a-menu-item-group title="表格密度">
-                <a-menu-item @click="handleDensityChange('small')">
-                  <span :class="{ 'active-density': density === 'small' }">紧凑</span>
-                </a-menu-item>
-                <a-menu-item @click="handleDensityChange('default')">
-                  <span :class="{ 'active-density': density === 'default' }">默认</span>
-                </a-menu-item>
-                <a-menu-item @click="handleDensityChange('middle')">
-                  <span :class="{ 'active-density': density === 'middle' }">中等</span>
-                </a-menu-item>
-              </a-menu-item-group>
             </a-menu>
           </template>
         </a-dropdown>
@@ -51,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ReloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { SettingOutlined, ColumnHeightOutlined } from '@ant-design/icons-vue'
 
 export interface ColumnConfig {
   prop: string
@@ -71,7 +72,6 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  refresh: []
   columnChange: [prop: string, visible: boolean]
   densityChange: [density: TableDensity]
 }>()
@@ -91,8 +91,6 @@ function handleDensityChange(density: TableDensity) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding: 8px 0;
 }
 
 .toolbar-left {

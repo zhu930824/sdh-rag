@@ -379,6 +379,7 @@ onMounted(() => {
     background-color: var(--bg-color);
     border-right: 1px solid var(--border-lighter);
     padding: 16px;
+    margin-right: 10px;
 
     .filter-tabs {
       display: flex;
@@ -451,7 +452,7 @@ onMounted(() => {
     .model-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 16px;
+      gap: 10px;
     }
 
     .model-card {

@@ -1,84 +1,96 @@
 <template>
-  <a-layout-header class="layout-header">
+  <header class="app-header">
+    <!-- Left Section -->
     <div class="header-left">
-      <MenuFoldOutlined
-        v-if="!isMobile && !sidebarCollapsed"
-        class="action-icon"
-        @click="toggleSidebar"
-      />
-      <MenuUnfoldOutlined
-        v-if="!isMobile && sidebarCollapsed"
-        class="action-icon"
-        @click="toggleSidebar"
-      />
-      <MenuOutlined v-if="isMobile" class="action-icon menu-trigger" @click="openMobileMenu" />
+      <button class="icon-btn" @click="toggleSidebar" v-if="!isMobile">
+        <MenuFoldOutlined v-if="!sidebarCollapsed" />
+        <MenuUnfoldOutlined v-else />
+      </button>
+      <button class="icon-btn" @click="openMobileMenu" v-else>
+        <MenuOutlined />
+      </button>
       <Breadcrumb />
     </div>
 
+    <!-- Right Section -->
     <div class="header-right">
-      <a-input-search
-        v-if="!isMobile"
-        v-model:value="searchKeyword"
-        placeholder="搜索功能..."
-        class="search-input"
-        @search="handleSearch"
-      />
+      <!-- Search -->
+      <div class="search-wrapper" v-if="!isMobile">
+        <a-input
+          v-model:value="searchKeyword"
+          placeholder="搜索..."
+          class="search-input"
+          @pressEnter="handleSearch"
+        >
+          <template #prefix>
+            <SearchOutlined class="search-icon" />
+          </template>
+        </a-input>
+      </div>
 
-      <a-tooltip :title="isFullscreen ? '退出全屏' : '全屏'">
-        <FullscreenOutlined v-if="!isFullscreen" class="action-icon" @click="toggleFullscreen" />
-        <FullscreenExitOutlined v-else class="action-icon" @click="toggleFullscreen" />
-      </a-tooltip>
+      <!-- Actions -->
+      <div class="header-actions">
+        <!-- Fullscreen -->
+        <button class="icon-btn" @click="toggleFullscreen" :title="isFullscreen ? '退出全屏' : '全屏'">
+          <FullscreenExitOutlined v-if="isFullscreen" />
+          <FullscreenOutlined v-else />
+        </button>
 
-      <a-tooltip :title="isDark ? '切换浅色模式' : '切换深色模式'">
-        <MoonOutlined v-if="!isDark" class="action-icon" @click="toggleDark" />
-        <SunOutlined v-else class="action-icon" @click="toggleDark" />
-      </a-tooltip>
+        <!-- Theme Toggle -->
+        <button class="icon-btn" @click="toggleDark" :title="isDark ? '浅色模式' : '深色模式'">
+          <BulbFilled v-if="isDark" />
+          <BulbOutlined v-else />
+        </button>
 
-      <a-dropdown>
-        <div class="user-info">
-          <a-avatar :size="32" :src="userAvatar">
-            <template #icon><UserOutlined /></template>
-          </a-avatar>
-          <span v-if="!isMobile" class="username">{{ nickname || '用户' }}</span>
-          <DownOutlined v-if="!isMobile" class="arrow-icon" />
-        </div>
-        <template #overlay>
-          <a-menu @click="handleCommand">
-            <a-menu-item key="profile">
-              <UserOutlined />
-              <span>个人中心</span>
-            </a-menu-item>
-            <a-menu-item key="settings">
-              <SettingOutlined />
-              <span>系统设置</span>
-            </a-menu-item>
-            <a-menu-divider />
-            <a-menu-item key="logout">
-              <LogoutOutlined />
-              <span>退出登录</span>
-            </a-menu-item>
-          </a-menu>
-        </template>
-      </a-dropdown>
+        <!-- User Menu -->
+        <a-dropdown :trigger="['click']" placement="bottomRight">
+          <div class="user-menu">
+            <a-avatar :size="34" :src="userAvatar" class="user-avatar">
+              <template #icon><UserOutlined /></template>
+            </a-avatar>
+            <span class="user-name" v-if="!isMobile">{{ nickname || '用户' }}</span>
+            <DownOutlined class="user-arrow" v-if="!isMobile" />
+          </div>
+          <template #overlay>
+            <a-menu class="user-dropdown" @click="handleUserAction">
+              <a-menu-item key="profile">
+                <UserOutlined />
+                <span>个人中心</span>
+              </a-menu-item>
+              <a-menu-item key="settings">
+                <SettingOutlined />
+                <span>系统设置</span>
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="logout" class="logout-item">
+                <LogoutOutlined />
+                <span>退出登录</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </div>
     </div>
-  </a-layout-header>
+  </header>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Modal, message } from 'ant-design-vue'
+import { Modal } from 'ant-design-vue'
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
-  BulbOutlined,
   UserOutlined,
   SettingOutlined,
   LogoutOutlined,
   DownOutlined,
+  SearchOutlined,
+  BulbOutlined,
+  BulbFilled,
 } from '@ant-design/icons-vue'
 import { useAppStore, useUserStore } from '@/stores'
 import Breadcrumb from './Breadcrumb.vue'
@@ -127,13 +139,12 @@ function handleFullscreenChange(): void {
 }
 
 function handleSearch(): void {
-  if (!searchKeyword.value.trim()) {
-    return
+  if (searchKeyword.value.trim()) {
+    console.log('Search:', searchKeyword.value)
   }
-  message.info(`搜索功能开发中: ${searchKeyword.value}`)
 }
 
-async function handleCommand({ key }: { key: string }): Promise<void> {
+function handleUserAction({ key }: { key: string }): void {
   switch (key) {
     case 'profile':
       router.push('/profile')
@@ -143,10 +154,11 @@ async function handleCommand({ key }: { key: string }): Promise<void> {
       break
     case 'logout':
       Modal.confirm({
-        title: '提示',
+        title: '确认退出',
         content: '确定要退出登录吗？',
-        okText: '确定',
+        okText: '退出',
         cancelText: '取消',
+        centered: true,
         onOk() {
           userStore.logout()
           router.push('/login')
@@ -169,89 +181,201 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-.layout-header {
-  height: 60px;
+.app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  background-color: var(--bg-overlay);
-  border-bottom: 1px solid var(--border-lighter);
-  box-shadow: var(--box-shadow-lighter);
+  height: var(--header-height);
+  padding: 0 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
 }
 
+// Left Section
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
+// Right Section
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+}
+
+// Icon Button
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-nature);
+
+  &:hover {
+    background: var(--bg-surface-secondary);
+    color: var(--text-primary);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// Search
+.search-wrapper {
+  width: 240px;
 }
 
 .search-input {
-  width: 200px;
-}
+  background: var(--bg-surface-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
 
-.action-icon {
-  font-size: 20px;
-  color: var(--text-regular);
-  cursor: pointer;
-  transition: all var(--transition-duration);
+  :deep(.ant-input) {
+    background: transparent;
+    font-size: var(--font-size-sm);
 
-  &:hover {
-    color: var(--primary-color);
-    transform: scale(1.1);
+    &::placeholder {
+      color: var(--text-placeholder);
+    }
+  }
+
+  &:hover,
+  &:focus-within {
+    background: var(--bg-surface);
+    border-color: var(--border-color);
+  }
+
+  &:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+  }
+
+  .search-icon {
+    color: var(--text-tertiary);
+    font-size: 14px;
   }
 }
 
-.menu-trigger {
-  font-size: 22px;
-}
-
-.user-info {
+// Header Actions
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: var(--border-radius-base);
+  gap: 4px;
+}
+
+// User Menu
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--radius-full);
   cursor: pointer;
-  transition: background-color var(--transition-duration);
+  transition: background var(--duration-fast) var(--ease-nature);
 
   &:hover {
-    background-color: var(--bg-page);
-  }
-
-  .username {
-    font-size: 14px;
-    color: var(--text-regular);
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .arrow-icon {
-    font-size: 12px;
-    color: var(--text-secondary);
-    transition: transform var(--transition-duration);
+    background: var(--bg-surface-secondary);
   }
 }
 
+.user-avatar {
+  background: linear-gradient(135deg, #059669 0%, #228B22 100%);
+}
+
+.user-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-arrow {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast) var(--ease-nature);
+}
+
+.user-menu:hover .user-arrow {
+  transform: rotate(180deg);
+}
+
+// User Dropdown
+.user-dropdown {
+  min-width: 180px;
+  padding: 8px;
+
+  :deep(.ant-dropdown-menu-item) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    font-size: var(--font-size-sm);
+
+    .anticon {
+      font-size: 16px;
+      color: var(--text-tertiary);
+    }
+
+    &:hover {
+      background: var(--bg-surface-secondary);
+
+      .anticon {
+        color: var(--text-primary);
+      }
+    }
+  }
+
+  .logout-item {
+    color: var(--danger-color);
+
+    .anticon {
+      color: var(--danger-color);
+    }
+
+    &:hover {
+      background: var(--danger-light);
+    }
+  }
+}
+
+// Dark Mode
+html.dark {
+  .search-input {
+    background: var(--bg-surface-secondary);
+
+    &:hover,
+    &:focus-within {
+      background: var(--bg-surface-tertiary);
+    }
+  }
+}
+
+// Mobile
 @media (max-width: 768px) {
-  .layout-header {
-    padding: 0 12px;
+  .app-header {
+    padding: 0 16px;
   }
 
-  .header-left {
-    gap: 12px;
-  }
-
-  .header-right {
-    gap: 12px;
+  .search-wrapper {
+    display: none;
   }
 }
 </style>

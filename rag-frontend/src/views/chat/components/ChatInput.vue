@@ -1,67 +1,91 @@
 <template>
   <div class="chat-input">
     <div class="input-wrapper">
-      <div class="knowledge-selector">
-        <a-select
-          v-model:value="selectedKnowledgeId"
-          placeholder="选择知识库（可选）"
-          allow-clear
-          style="width: 200px"
-          :loading="knowledgeLoading"
-          @change="handleKnowledgeChange"
-        >
-          <a-select-option :value="null">全部知识库</a-select-option>
-          <a-select-option
-            v-for="kb in knowledgeList"
-            :key="kb.id"
-            :value="kb.id"
-          >
-            {{ kb.name }}
-          </a-select-option>
-        </a-select>
-        <span class="knowledge-hint">
-          {{ selectedKnowledgeId ? '将从选定知识库检索' : '将从所有知识库检索' }}
-        </span>
-      </div>
-
+      <!-- 中间：输入框 -->
       <a-textarea
         ref="textareaRef"
         v-model:value="inputText"
         class="input-textarea"
         :placeholder="placeholder"
         :disabled="disabled"
-        :auto-size="{ minRows: 2, maxRows: 6 }"
+        :auto-size="{ minRows: 3, maxRows: 8 }"
         @input="adjustHeight"
         @keydown="handleKeydown"
       />
 
-      <div class="input-actions">
-        <div class="input-tips">
-          <InfoCircleOutlined />
-          <span>Enter 发送，Shift + Enter 换行</span>
+      <!-- 底部：工具栏和发送按钮 -->
+      <div class="input-toolbar">
+        <div class="toolbar-left">
+          <span class="knowledge-label">知识库</span>
+          <a-select
+            v-model:value="selectedKnowledgeId"
+            placeholder="选择知识库"
+            allow-clear
+            size="small"
+            style="width: 180px"
+            :loading="knowledgeLoading"
+            @change="handleKnowledgeChange"
+          >
+            <a-select-option :value="null">全部知识库</a-select-option>
+            <a-select-option
+              v-for="kb in knowledgeList"
+              :key="kb.id"
+              :value="kb.id"
+            >
+              {{ kb.name }}
+            </a-select-option>
+          </a-select>
         </div>
 
-        <a-space class="input-buttons">
-          <a-button v-if="isGenerating" danger @click="handleStop">
+        <div class="toolbar-right">
+          <!-- 模型选择 -->
+          <a-select
+            v-model:value="selectedModelId"
+            placeholder="选择模型"
+            size="small"
+            class="model-select"
+            :loading="modelLoading"
+            @change="handleModelChange"
+          >
+            <a-select-option
+              v-for="model in modelList"
+              :key="model.id"
+              :value="model.id"
+            >
+              {{ model.name }}
+            </a-select-option>
+          </a-select>
+
+          <!-- 停止/发送按钮 -->
+          <a-button
+            v-if="isGenerating"
+            type="primary"
+            danger
+            size="small"
+            shape="circle"
+            class="send-btn"
+            @click="handleStop"
+          >
             <template #icon>
-              <PauseCircleOutlined />
+              <PauseOutlined />
             </template>
-            停止生成
           </a-button>
 
           <a-button
             v-else
             type="primary"
+            size="small"
+            shape="circle"
+            class="send-btn"
             :disabled="!canSend"
             :loading="sending"
             @click="handleSend"
           >
             <template #icon>
-              <SendOutlined />
+              <ArrowUpOutlined />
             </template>
-            发送
           </a-button>
-        </a-space>
+        </div>
       </div>
     </div>
   </div>
@@ -70,12 +94,13 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
 import {
-  SendOutlined,
-  PauseCircleOutlined,
-  InfoCircleOutlined,
+  ArrowUpOutlined,
+  PauseOutlined,
 } from '@ant-design/icons-vue'
 import { getCategories } from '@/api/knowledge'
+import { getActiveModels } from '@/api/model'
 import type { DocumentCategory } from '@/api/knowledge'
+import type { ModelConfig } from '@/types'
 
 const props = withDefaults(
   defineProps<{
@@ -84,6 +109,7 @@ const props = withDefaults(
     sending?: boolean
     isGenerating?: boolean
     knowledgeId?: number | null
+    modelId?: number | null
   }>(),
   {
     disabled: false,
@@ -91,6 +117,7 @@ const props = withDefaults(
     sending: false,
     isGenerating: false,
     knowledgeId: null,
+    modelId: null,
   }
 )
 
@@ -98,13 +125,17 @@ const emit = defineEmits<{
   (e: 'send', message: string): void
   (e: 'stop'): void
   (e: 'knowledgeChange', knowledgeId: number | null): void
+  (e: 'modelChange', modelId: number | null): void
 }>()
 
 const textareaRef = ref()
 const inputText = ref('')
 const selectedKnowledgeId = ref<number | null>(props.knowledgeId)
+const selectedModelId = ref<number | null>(props.modelId)
 const knowledgeList = ref<DocumentCategory[]>([])
+const modelList = ref<ModelConfig[]>([])
 const knowledgeLoading = ref(false)
+const modelLoading = ref(false)
 
 const canSend = computed(() => {
   return inputText.value.trim().length > 0 && !props.disabled && !props.sending
@@ -122,8 +153,29 @@ async function fetchKnowledgeList(): Promise<void> {
   }
 }
 
+async function fetchModelList(): Promise<void> {
+  modelLoading.value = true
+  try {
+    const res = await getActiveModels()
+    modelList.value = res.data || []
+    // 默认选择第一个模型
+    if (modelList.value.length > 0 && !selectedModelId.value) {
+      selectedModelId.value = modelList.value[0].id
+      emit('modelChange', selectedModelId.value)
+    }
+  } catch (error) {
+    console.error('获取模型列表失败:', error)
+  } finally {
+    modelLoading.value = false
+  }
+}
+
 function handleKnowledgeChange(value: number | null): void {
   emit('knowledgeChange', value)
+}
+
+function handleModelChange(value: number | null): void {
+  emit('modelChange', value)
 }
 
 function adjustHeight(): void {
@@ -168,6 +220,7 @@ function focus(): void {
 
 onMounted(() => {
   fetchKnowledgeList()
+  fetchModelList()
 })
 
 defineExpose({
@@ -178,43 +231,31 @@ defineExpose({
 <style scoped lang="scss">
 .chat-input {
   padding: 16px 20px;
-  background-color: var(--bg-color);
   border-top: 1px solid var(--border-lighter);
 
   .input-wrapper {
     display: flex;
     flex-direction: column;
     background-color: var(--bg-page);
-    border-radius: var(--border-radius-large);
+    border-radius: 12px;
     border: 1px solid var(--border-light);
     transition: border-color var(--transition-duration);
+    overflow: hidden;
 
     &:focus-within {
       border-color: var(--primary-color);
     }
 
-    .knowledge-selector {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--border-lighter);
-
-      .knowledge-hint {
-        font-size: 12px;
-        color: var(--text-placeholder);
-      }
-    }
-
+    // 输入框
     .input-textarea {
       :deep(.ant-input) {
         width: 100%;
-        min-height: 60px;
-        max-height: 200px;
-        padding: 12px 16px;
+        min-height: 100px;
+        max-height: 300px;
+        padding: 16px;
         border: none;
         background: transparent;
-        font-size: 14px;
+        font-size: 15px;
         line-height: 1.6;
         color: var(--text-primary);
         resize: none;
@@ -232,24 +273,75 @@ defineExpose({
       }
     }
 
-    .input-actions {
+    // 底部工具栏
+    .input-toolbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 8px 12px;
+      padding: 6px 12px;
+      background-color: var(--bg-surface-secondary);
       border-top: 1px solid var(--border-lighter);
 
-      .input-tips {
+      .toolbar-left {
         display: flex;
         align-items: center;
-        gap: 4px;
-        font-size: 12px;
-        color: var(--text-placeholder);
+        gap: 8px;
+
+        .knowledge-label {
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+
+        :deep(.ant-select) {
+          .ant-select-selector {
+            border-radius: 4px;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-light);
+            height: 24px;
+          }
+
+          .ant-select-selection-placeholder,
+          .ant-select-selection-item {
+            font-size: 12px;
+            line-height: 22px;
+          }
+        }
       }
 
-      .input-buttons {
+      .toolbar-right {
         display: flex;
+        align-items: center;
         gap: 8px;
+
+        .model-select {
+          min-width: 100px;
+
+          :deep(.ant-select-selector) {
+            border-radius: 4px;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-light);
+            height: 24px;
+          }
+
+          :deep(.ant-select-selection-placeholder),
+          :deep(.ant-select-selection-item) {
+            font-size: 12px;
+            line-height: 22px;
+          }
+        }
+
+        .send-btn {
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          :deep(.anticon) {
+            font-size: 14px;
+          }
+        }
       }
     }
   }
@@ -257,14 +349,36 @@ defineExpose({
 
 @media (max-width: 768px) {
   .chat-input {
+    padding: 12px;
+
     .input-wrapper {
-      .knowledge-selector {
-        flex-direction: column;
-        align-items: flex-start;
+      .input-textarea {
+        :deep(.ant-input) {
+          padding: 12px;
+          min-height: 80px;
+        }
+      }
+
+      .input-toolbar {
+        padding: 6px 10px;
+        flex-wrap: wrap;
         gap: 8px;
 
-        .ant-select {
-          width: 100% !important;
+        .toolbar-left {
+          width: 100%;
+
+          .ant-select {
+            flex: 1;
+          }
+        }
+
+        .toolbar-right {
+          width: 100%;
+          justify-content: flex-end;
+
+          .model-select {
+            min-width: 80px;
+          }
         }
       }
     }

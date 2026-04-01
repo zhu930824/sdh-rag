@@ -1,16 +1,23 @@
 <template>
   <div class="chat-page">
     <aside class="session-sidebar" :class="{ collapsed: sidebarCollapsed }">
-      <SessionList
-        :sessions="chatStore.sessions"
-        :current-session-id="chatStore.currentSessionId"
-        :loading="chatStore.loading"
-        :has-more="chatStore.hasMoreSessions"
-        @select="handleSelectSession"
-        @new="handleNewSession"
-        @delete="handleDeleteSession"
-        @load-more="handleLoadMore"
-      />
+      <a-card :bordered="false" class="sidebar-card">
+        <template #title>
+          <div class="panel-header">
+            <span class="panel-title">历史对话</span>
+          </div>
+        </template>
+        <SessionList
+          :sessions="chatStore.sessions"
+          :current-session-id="chatStore.currentSessionId"
+          :loading="chatStore.loading"
+          :has-more="chatStore.hasMoreSessions"
+          @select="handleSelectSession"
+          @new="handleNewSession"
+          @delete="handleDeleteSession"
+          @load-more="handleLoadMore"
+        />
+      </a-card>
 
       <div class="collapse-btn" @click="toggleSidebar">
         <LeftOutlined v-if="!sidebarCollapsed" />
@@ -19,50 +26,56 @@
     </aside>
 
     <main class="chat-main">
-      <header class="chat-header">
-        <div class="header-left">
-          <a-button
-            v-if="sidebarCollapsed"
-            type="text"
-            shape="circle"
-            @click="toggleSidebar"
-          >
-            <template #icon>
-              <MenuFoldOutlined />
-            </template>
-          </a-button>
-          <h2 class="chat-title">{{ currentTitle }}</h2>
-        </div>
-        <div class="header-right">
-          <a-button @click="handleClearMessages">
-            <template #icon>
-              <DeleteOutlined />
-            </template>
-            清空对话
-          </a-button>
-        </div>
-      </header>
+      <a-card :bordered="false" class="chat-card">
+        <template #title>
+          <div class="card-header">
+            <div class="header-left">
+              <a-button
+                v-if="sidebarCollapsed"
+                type="text"
+                shape="circle"
+                @click="toggleSidebar"
+              >
+                <template #icon>
+                  <MenuFoldOutlined />
+                </template>
+              </a-button>
+              <span class="card-title">{{ currentTitle }}</span>
+            </div>
+            <a-button @click="handleClearMessages">
+              <template #icon>
+                <DeleteOutlined />
+              </template>
+              清空对话
+            </a-button>
+          </div>
+        </template>
 
-      <div class="message-area">
-        <MessageList
-          ref="messageListRef"
-          :messages="chatStore.messages"
-          :loading="chatStore.loading"
-          :is-generating="chatStore.isGenerating"
-          @source-click="handleSourceClick"
-          @quick-question="handleQuickQuestion"
-        />
-      </div>
+        <div class="chat-content">
+          <div class="message-area">
+            <MessageList
+              ref="messageListRef"
+              :messages="chatStore.messages"
+              :loading="chatStore.loading"
+              :is-generating="chatStore.isGenerating"
+              @source-click="handleSourceClick"
+              @quick-question="handleQuickQuestion"
+            />
+          </div>
 
-      <ChatInput
-        ref="chatInputRef"
-        :sending="chatStore.loading"
-        :is-generating="chatStore.isGenerating"
-        :knowledge-id="chatStore.selectedKnowledgeId"
-        @send="handleSendMessage"
-        @stop="handleStopGeneration"
-        @knowledge-change="handleKnowledgeChange"
-      />
+          <ChatInput
+            ref="chatInputRef"
+            :sending="chatStore.loading"
+            :is-generating="chatStore.isGenerating"
+            :knowledge-id="chatStore.selectedKnowledgeId"
+            :model-id="chatStore.selectedModelId"
+            @send="handleSendMessage"
+            @stop="handleStopGeneration"
+            @knowledge-change="handleKnowledgeChange"
+            @model-change="handleModelChange"
+          />
+        </div>
+      </a-card>
     </main>
 
     <a-drawer
@@ -183,6 +196,10 @@ function handleKnowledgeChange(knowledgeId: number | null): void {
   chatStore.setKnowledgeId(knowledgeId)
 }
 
+function handleModelChange(modelId: number | null): void {
+  chatStore.setModelId(modelId)
+}
+
 function goToDocument(): void {
   if (selectedSource.value) {
     router.push(`/document/${selectedSource.value.documentId}`)
@@ -205,82 +222,112 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .chat-page {
   display: flex;
-  height: calc(100vh - 100px);
-  background-color: var(--bg-page);
-  border-radius: var(--border-radius-large);
-  overflow: hidden;
+  gap: 16px;
+  height: calc(100vh - 120px);
 
   .session-sidebar {
     width: 280px;
-    background-color: var(--bg-color);
-    border-right: 1px solid var(--border-lighter);
-    display: flex;
-    flex-direction: column;
+    flex-shrink: 0;
     position: relative;
     transition: width var(--transition-duration);
 
-    &.collapsed {
-      width: 0;
-      overflow: hidden;
+    .sidebar-card {
+      height: 100%;
+
+      :deep(.ant-card-body) {
+        height: calc(100% - 57px);
+        padding: 0;
+        overflow: hidden;
+      }
     }
 
-    .collapse-btn {
-      position: absolute;
-      right: -12px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 24px;
-      height: 48px;
-      background-color: var(--bg-color);
-      border: 1px solid var(--border-lighter);
-      border-left: none;
-      border-radius: 0 12px 12px 0;
+    .panel-header {
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 10;
-      transition: all var(--transition-duration);
 
-      &:hover {
-        background-color: var(--bg-page);
-        color: var(--primary-color);
+      .panel-title {
+        font-size: 16px;
+        font-weight: 500;
+      }
+    }
+
+    &.collapsed {
+      width: 0;
+
+      .sidebar-card {
+        visibility: hidden;
       }
     }
   }
 
   .chat-main {
     flex: 1;
-    display: flex;
-    flex-direction: column;
     min-width: 0;
+    overflow: hidden;
 
-    .chat-header {
+    .chat-card {
+      height: 100%;
+
+      :deep(.ant-card-body) {
+        height: calc(100% - 57px);
+        padding: 0;
+        overflow: hidden;
+      }
+    }
+
+    .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 16px 20px;
-      background-color: var(--bg-color);
-      border-bottom: 1px solid var(--border-lighter);
+      width: 100%;
 
       .header-left {
         display: flex;
         align-items: center;
         gap: 12px;
 
-        .chat-title {
+        .card-title {
           font-size: 16px;
           font-weight: 500;
           color: var(--text-primary);
-          margin: 0;
         }
       }
     }
 
-    .message-area {
-      flex: 1;
-      overflow: hidden;
-      background-color: var(--bg-color);
+    .chat-content {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+
+      .message-area {
+        flex: 1;
+        overflow: hidden;
+      }
+    }
+  }
+
+  .collapse-btn {
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 48px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-lighter);
+    border-left: none;
+    border-radius: 0 12px 12px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: all var(--transition-duration);
+
+    &:hover {
+      background-color: var(--bg-page);
+      color: var(--primary-color);
     }
   }
 
@@ -330,7 +377,6 @@ onUnmounted(() => {
       top: 0;
       bottom: 0;
       z-index: 100;
-      box-shadow: var(--box-shadow);
 
       &.collapsed {
         left: -280px;

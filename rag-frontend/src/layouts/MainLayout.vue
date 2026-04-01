@@ -1,170 +1,183 @@
 <template>
-  <a-layout class="main-layout">
+  <a-layout class="app-layout">
     <Sidebar />
-
-    <a-layout class="main-container">
+    <a-layout class="app-main">
       <Header />
-
-      <a-layout-content class="main-content">
-        <router-view v-slot="{ Component, route }">
-          <transition :name="transitionName" mode="out-in">
-            <keep-alive :include="cachedViews">
-              <component :is="Component" :key="route.path" />
-            </keep-alive>
-          </transition>
-        </router-view>
+      <a-layout-content class="app-content">
+        <router-view />
       </a-layout-content>
     </a-layout>
+
+    <!-- Mobile Drawer -->
+    <a-drawer
+      v-if="isMobile"
+      :open="mobileMenuOpen"
+      placement="left"
+      :width="280"
+      :closable="false"
+      class="mobile-drawer"
+      @close="closeMobileMenu"
+    >
+      <div class="mobile-drawer-content">
+        <div class="mobile-header">
+          <div class="logo-mark">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="8" fill="url(#mobile-logo-gradient)"/>
+              <path d="M10 16L14 20L22 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <defs>
+                <linearGradient id="mobile-logo-gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2563EB"/>
+                  <stop offset="1" stop-color="#7C3AED"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <span class="logo-text">智能知识库</span>
+          <button class="close-btn" @click="closeMobileMenu">
+            <CloseOutlined />
+          </button>
+        </div>
+        <MobileMenu @navigate="closeMobileMenu" />
+      </div>
+    </a-drawer>
   </a-layout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
+import { CloseOutlined } from '@ant-design/icons-vue'
 import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
+import MobileMenu from './components/MobileMenu.vue'
 
 const route = useRoute()
 const appStore = useAppStore()
 
-const transitionName = ref('fade-transform')
+const isMobile = ref(false)
+const windowWidth = ref(window.innerWidth)
 
-const cachedViews = computed(() => {
-  return []
-})
+function checkMobile(): void {
+  windowWidth.value = window.innerWidth
+  isMobile.value = windowWidth.value < 768
+}
 
-watch(
-  () => route.path,
-  (to, from) => {
-    const toDepth = to.split('/').length
-    const fromDepth = from?.split('/').length || 0
+const cachedViews = computed(() => [])
+const mobileMenuOpen = computed(() => appStore.mobileMenuOpen)
 
-    if (toDepth > fromDepth) {
-      transitionName.value = 'slide-left'
-    } else if (toDepth < fromDepth) {
-      transitionName.value = 'slide-right'
-    } else {
-      transitionName.value = 'fade-transform'
-    }
-  }
-)
+function closeMobileMenu(): void {
+  appStore.setMobileMenuOpen(false)
+}
 
 onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
   appStore.initDarkMode()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
 })
 </script>
 
 <style scoped lang="scss">
-.main-layout {
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
+.app-layout {
+  min-height: 100vh;
+  background: var(--bg-body);
 }
 
-.main-container {
+.app-main {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-height: 100vh;
+  background: var(--bg-body);
 }
 
-.main-content {
+.app-content {
   flex: 1;
-  overflow: auto;
-  padding: 20px;
-  background-color: var(--bg-page);
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--bg-body);
 }
 
-.fade-transform-enter-active,
-.fade-transform-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+// Mobile Drawer
+.mobile-drawer {
+  :deep(.ant-drawer-body) {
+    padding: 0;
+  }
 }
 
-.fade-transform-enter-from {
-  opacity: 0;
-  transform: translateX(-20px) scale(0.98);
+.mobile-drawer-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
 }
 
-.fade-transform-leave-to {
-  opacity: 0;
-  transform: translateX(20px) scale(0.98);
+.mobile-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.slide-left-enter-active,
-.slide-left-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.logo-mark {
+  width: 32px;
+  height: 32px;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
 }
 
-.slide-left-enter-from {
-  opacity: 0;
-  transform: translateX(30px);
+.logo-text {
+  flex: 1;
+  font-size: 17px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
 }
 
-.slide-left-leave-to {
-  opacity: 0;
-  transform: translateX(-30px);
+.close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-surface-secondary);
+    color: var(--text-primary);
+  }
 }
 
-.slide-right-enter-active,
-.slide-right-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.slide-right-enter-from {
-  opacity: 0;
-  transform: translateX(-30px);
-}
-
-.slide-right-leave-to {
-  opacity: 0;
-  transform: translateX(30px);
-}
-
+// Responsive
 @media (max-width: 768px) {
-  .main-content {
+  .app-content {
     padding: 12px;
-  }
-
-  .fade-transform-enter-from,
-  .fade-transform-leave-to {
-    transform: translateX(0) scale(1);
-  }
-
-  .slide-left-enter-from,
-  .slide-left-leave-to {
-    transform: translateX(20px);
-  }
-
-  .slide-right-enter-from,
-  .slide-right-leave-to {
-    transform: translateX(-20px);
   }
 }
 
 @media (max-width: 480px) {
-  .main-content {
+  .app-content {
     padding: 8px;
-  }
-
-  .fade-transform-enter-active,
-  .fade-transform-leave-active,
-  .slide-left-enter-active,
-  .slide-left-leave-active,
-  .slide-right-enter-active,
-  .slide-right-leave-active {
-    transition-duration: 0.2s;
   }
 }
 
-@media (min-width: 769px) and (max-width: 1024px) {
-  .main-content {
-    padding: 16px;
-  }
-}
-
-@media (orientation: landscape) and (max-height: 600px) {
-  .main-content {
-    padding: 8px;
+// Dark Mode
+html.dark {
+  .app-layout,
+  .app-main,
+  .app-content {
+    background: var(--bg-body);
   }
 }
 </style>

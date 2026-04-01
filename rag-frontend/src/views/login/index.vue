@@ -1,167 +1,169 @@
 <template>
-  <div class="login-container">
-    <canvas ref="particleCanvas" class="particle-canvas"></canvas>
+  <div class="login-page">
+    <!-- Left Panel - Brand -->
+    <div class="brand-panel">
+      <div class="brand-bg">
+        <div class="leaf-shape leaf-1"></div>
+        <div class="leaf-shape leaf-2"></div>
+        <div class="leaf-shape leaf-3"></div>
+      </div>
+      <div class="brand-content">
+        <div class="logo">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="14" fill="#059669"/>
+            <path d="M15 24L20 29L33 17" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h1 class="brand-title">智能知识库</h1>
+        <p class="brand-subtitle">基于 RAG 技术的智能问答平台</p>
 
-    <div class="bg-decoration">
-      <div class="bg-shape shape-1"></div>
-      <div class="bg-shape shape-2"></div>
-      <div class="bg-shape shape-3"></div>
-      <div class="bg-shape shape-4"></div>
-    </div>
-
-    <div class="login-card">
-      <div class="brand-section">
-        <div class="brand-content">
-          <div class="brand-logo">
-            <div class="logo-icon-wrapper">
-              <ReadOutlined class="logo-icon" />
+        <div class="features">
+          <div class="feature">
+            <div class="feature-icon">
+              <FileTextOutlined />
             </div>
-            <div class="logo-glow"></div>
-            <div class="logo-ring"></div>
-          </div>
-
-          <h1 class="brand-title">智能知识库</h1>
-          <p class="brand-subtitle">基于 RAG 技术的智能问答平台</p>
-
-          <div class="brand-stats">
-            <div class="stat-item" v-for="(stat, index) in brandStats" :key="index">
-              <div class="stat-number">
-                <CountUp :end-val="stat.value" :duration="2" />
-              </div>
-              <div class="stat-label">{{ stat.label }}</div>
+            <div class="feature-info">
+              <h3>智能文档管理</h3>
+              <p>支持多种格式，自动解析</p>
             </div>
           </div>
-
-          <div class="brand-features">
-            <div class="feature-item" v-for="(feature, index) in features" :key="index">
-              <div class="feature-icon">
-                <component :is="feature.icon" />
-              </div>
-              <div class="feature-text">
-                <span class="feature-title">{{ feature.title }}</span>
-                <span class="feature-desc">{{ feature.desc }}</span>
-              </div>
+          <div class="feature">
+            <div class="feature-icon">
+              <MessageOutlined />
+            </div>
+            <div class="feature-info">
+              <h3>精准问答检索</h3>
+              <p>AI 驱动，秒级响应</p>
             </div>
           </div>
-
-          <div class="brand-decoration">
-            <div class="decoration-line"></div>
-            <div class="decoration-dot"></div>
+          <div class="feature">
+            <div class="feature-icon">
+              <ApartmentOutlined />
+            </div>
+            <div class="feature-info">
+              <h3>知识图谱分析</h3>
+              <p>可视化展示知识关联</p>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="form-section">
-        <div class="form-content">
-          <div class="theme-switch">
-            <a-tooltip :title="isDark ? '切换浅色模式' : '切换深色模式'" placement="left">
-              <a-switch v-model:checked="isDark" @change="toggleDark">
-                <template #checkedChildren><MoonOutlined /></template>
-                <template #unCheckedChildren><SunOutlined /></template>
-              </a-switch>
-            </a-tooltip>
-          </div>
-
-          <div class="form-header">
-            <h2 class="form-title">欢迎回来</h2>
-            <p class="form-subtitle">请登录您的账号</p>
-          </div>
-
-          <a-form
-            ref="formRef"
-            :model="loginForm"
-            :rules="rules"
-            class="login-form"
-            @finish="handleLogin"
-            @finishFailed="onFinishFailed"
-          >
-            <a-form-item name="username">
-              <a-input
-                v-model:value="loginForm.username"
-                placeholder="请输入用户名"
-                size="large"
-                allow-clear
-              >
-                <template #prefix><UserOutlined /></template>
-              </a-input>
-            </a-form-item>
-
-            <a-form-item name="password">
-              <a-input-password
-                v-model:value="loginForm.password"
-                placeholder="请输入密码"
-                size="large"
-              >
-                <template #prefix><LockOutlined /></template>
-              </a-input-password>
-            </a-form-item>
-
-            <a-form-item>
-              <div class="form-options">
-                <a-checkbox v-model:checked="loginForm.remember">记住密码</a-checkbox>
-                <a class="forgot-link">忘记密码？</a>
-              </div>
-            </a-form-item>
-
-            <a-form-item>
-              <a-button
-                type="primary"
-                html-type="submit"
-                :loading="loading"
-                class="login-btn"
-                block
-              >
-                {{ loading ? '登录中...' : '登 录' }}
-              </a-button>
-            </a-form-item>
-          </a-form>
-
-          <div class="form-footer">
-            <span class="footer-text">还没有账号？</span>
-            <a class="register-link" @click="goToRegister">立即注册</a>
-          </div>
-
-          <div class="other-login">
-            <a-divider>
-              <span class="divider-text">其他登录方式</span>
-            </a-divider>
-            <div class="login-methods">
-              <div class="method-item" title="微信登录">
-                <WechatOutlined />
-              </div>
-              <div class="method-item" title="GitHub登录">
-                <GithubOutlined />
-              </div>
-              <div class="method-item" title="邮箱登录">
-                <MailOutlined />
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="brand-footer">
+        <span>© 2024 智能知识库. All rights reserved.</span>
       </div>
     </div>
 
-    <div class="footer-info">
-      <span>Copyright 2024 智能知识库系统. All rights reserved.</span>
+    <!-- Right Panel - Form -->
+    <div class="form-panel">
+      <div class="form-container">
+        <!-- Theme Toggle -->
+        <div class="theme-toggle">
+          <button class="icon-btn" @click="toggleDark" :title="isDark ? '浅色模式' : '深色模式'">
+            <BulbFilled v-if="isDark" class="bulb-icon" />
+            <BulbOutlined v-else class="bulb-icon" />
+          </button>
+        </div>
+
+        <!-- Form Header -->
+        <div class="form-header">
+          <h2 class="form-title">欢迎回来</h2>
+          <p class="form-subtitle">请登录您的账号继续使用</p>
+        </div>
+
+        <!-- Login Form -->
+        <a-form
+          ref="formRef"
+          :model="loginForm"
+          :rules="rules"
+          class="login-form"
+          layout="vertical"
+          @finish="handleLogin"
+        >
+          <a-form-item label="用户名" name="username">
+            <a-input
+              v-model:value="loginForm.username"
+              placeholder="请输入用户名"
+              size="large"
+              allow-clear
+            >
+              <template #prefix><UserOutlined /></template>
+            </a-input>
+          </a-form-item>
+
+          <a-form-item label="密码" name="password">
+            <a-input-password
+              v-model:value="loginForm.password"
+              placeholder="请输入密码"
+              size="large"
+            >
+              <template #prefix><LockOutlined /></template>
+            </a-input-password>
+          </a-form-item>
+
+          <a-form-item>
+            <div class="form-options">
+              <a-checkbox v-model:checked="loginForm.remember">记住密码</a-checkbox>
+              <a class="forgot-link">忘记密码？</a>
+            </div>
+          </a-form-item>
+
+          <a-form-item>
+            <a-button
+              type="primary"
+              html-type="submit"
+              :loading="loading"
+              class="submit-btn"
+              block
+              size="large"
+            >
+              {{ loading ? '登录中...' : '登录' }}
+            </a-button>
+          </a-form-item>
+        </a-form>
+
+        <!-- Register Link -->
+        <div class="form-footer">
+          <span>还没有账号？</span>
+          <a class="register-link" @click="goToRegister">立即注册</a>
+        </div>
+
+        <!-- Social Login -->
+        <div class="social-login">
+          <a-divider>
+            <span class="divider-text">其他登录方式</span>
+          </a-divider>
+          <div class="social-buttons">
+            <button class="social-btn" title="微信登录">
+              <WechatOutlined />
+            </button>
+            <button class="social-btn" title="GitHub登录">
+              <GithubOutlined />
+            </button>
+            <button class="social-btn" title="邮箱登录">
+              <MailOutlined />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted, onUnmounted, defineComponent, h } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
 import {
   UserOutlined,
   LockOutlined,
-  ReadOutlined,
-  BulbOutlined,
+  FileTextOutlined,
+  MessageOutlined,
+  ApartmentOutlined,
   WechatOutlined,
   GithubOutlined,
   MailOutlined,
-  FileTextOutlined,
-  MessageOutlined,
-  BarChartOutlined,
+  BulbOutlined,
+  BulbFilled,
 } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
@@ -174,65 +176,6 @@ const appStore = useAppStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const isDark = ref(false)
-const particleCanvas = ref<HTMLCanvasElement>()
-
-const CountUp = defineComponent({
-  props: {
-    endVal: { type: Number, default: 0 },
-    duration: { type: Number, default: 2 },
-  },
-  setup(props) {
-    const currentVal = ref(0)
-    let startTime: number | null = null
-    let animationFrame: number | null = null
-
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp
-      const progress = Math.min((timestamp - startTime) / (props.duration * 1000), 1)
-      currentVal.value = Math.floor(progress * props.endVal)
-
-      if (progress < 1) {
-        animationFrame = requestAnimationFrame(animate)
-      }
-    }
-
-    onMounted(() => {
-      animationFrame = requestAnimationFrame(animate)
-    })
-
-    onUnmounted(() => {
-      if (animationFrame) {
-        cancelAnimationFrame(animationFrame)
-      }
-    })
-
-    return () => h('span', currentVal.value.toLocaleString())
-  },
-})
-
-interface Particle {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  radius: number
-  opacity: number
-}
-
-let particles: Particle[] = []
-let animationFrameId: number | null = null
-
-const features = [
-  { icon: FileTextOutlined, title: '智能文档管理', desc: '支持多种格式' },
-  { icon: MessageOutlined, title: '精准问答检索', desc: 'AI驱动' },
-  { icon: BarChartOutlined, title: '知识图谱分析', desc: '可视化展示' },
-]
-
-const brandStats = [
-  { value: 256, label: '文档数量' },
-  { value: 1024, label: '问答次数' },
-  { value: 48, label: '用户数量' },
-]
 
 const loginForm = reactive({
   username: '',
@@ -251,69 +194,6 @@ const rules: Record<string, Rule[]> = {
   ],
 }
 
-function initParticles(): void {
-  const canvas = particleCanvas.value
-  if (!canvas) return
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  const resizeCanvas = () => {
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-  }
-  resizeCanvas()
-  window.addEventListener('resize', resizeCanvas)
-
-  const particleCount = 80
-  particles = []
-  for (let i = 0; i < particleCount; i++) {
-    particles.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      radius: Math.random() * 2 + 1,
-      opacity: Math.random() * 0.5 + 0.2,
-    })
-  }
-
-  const animate = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    particles.forEach((particle, i) => {
-      particle.x += particle.vx
-      particle.y += particle.vy
-
-      if (particle.x < 0 || particle.x > canvas.width) particle.vx *= -1
-      if (particle.y < 0 || particle.y > canvas.height) particle.vy *= -1
-
-      ctx.beginPath()
-      ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`
-      ctx.fill()
-
-      particles.slice(i + 1).forEach((other) => {
-        const dx = particle.x - other.x
-        const dy = particle.y - other.y
-        const distance = Math.sqrt(dx * dx + dy * dy)
-
-        if (distance < 150) {
-          ctx.beginPath()
-          ctx.moveTo(particle.x, particle.y)
-          ctx.lineTo(other.x, other.y)
-          ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 * (1 - distance / 150)})`
-          ctx.stroke()
-        }
-      })
-    })
-
-    animationFrameId = requestAnimationFrame(animate)
-  }
-
-  animate()
-}
-
 onMounted(() => {
   isDark.value = appStore.isDark
   const savedUsername = localStorage.getItem('rememberedUsername')
@@ -321,22 +201,11 @@ onMounted(() => {
     loginForm.username = savedUsername
     loginForm.remember = true
   }
-  initParticles()
-})
-
-onUnmounted(() => {
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-  }
-  window.removeEventListener('resize', () => {})
 })
 
 function toggleDark(): void {
   appStore.toggleDark()
-}
-
-function onFinishFailed(): void {
-  // 表单验证失败时的处理
+  isDark.value = !isDark.value
 }
 
 async function handleLogin(): Promise<void> {
@@ -363,622 +232,362 @@ function goToRegister(): void {
 </script>
 
 <style scoped lang="scss">
-.login-container {
-  width: 100%;
-  height: 100vh;
+.login-page {
   display: flex;
-  align-items: center;
+  min-height: 100vh;
+  background: var(--bg-body);
+}
+
+// Brand Panel (Left) - Nature Style
+.brand-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
+  padding: 60px;
+  background: linear-gradient(135deg, #059669 0%, #228B22 50%, #6B8E4E 100%);
+  color: white;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 
-  :global(html.dark) & {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  html.dark & {
+    background: linear-gradient(135deg, #065F46 0%, #064E3B 50%, #022C22 100%);
   }
 }
 
-.particle-canvas {
+.brand-bg {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.bg-decoration {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   overflow: hidden;
-  z-index: 0;
 
-  .bg-shape {
+  .leaf-shape {
     position: absolute;
     border-radius: 50%;
-    opacity: 0.1;
-    animation: float 20s infinite ease-in-out;
+    background: rgba(255, 255, 255, 0.06);
 
-    &.shape-1 {
-      width: 500px;
-      height: 500px;
-      background: radial-gradient(circle, #fff 0%, transparent 70%);
-      top: -150px;
-      left: -150px;
-      animation-delay: 0s;
-    }
-
-    &.shape-2 {
-      width: 400px;
-      height: 400px;
-      background: radial-gradient(circle, #fff 0%, transparent 70%);
-      bottom: -100px;
-      right: -100px;
-      animation-delay: -5s;
-    }
-
-    &.shape-3 {
+    &.leaf-1 {
       width: 300px;
       height: 300px;
-      background: radial-gradient(circle, #fff 0%, transparent 70%);
+      top: -100px;
+      right: -50px;
+    }
+
+    &.leaf-2 {
+      width: 200px;
+      height: 200px;
+      bottom: -50px;
+      left: -50px;
+    }
+
+    &.leaf-3 {
+      width: 150px;
+      height: 150px;
       top: 40%;
-      left: 60%;
-      animation-delay: -10s;
-    }
-
-    &.shape-4 {
-      width: 250px;
-      height: 250px;
-      background: radial-gradient(circle, #fff 0%, transparent 70%);
-      top: 20%;
       right: 20%;
-      animation-delay: -15s;
     }
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-  }
-  25% {
-    transform: translate(50px, 50px) rotate(90deg) scale(1.1);
-  }
-  50% {
-    transform: translate(0, 100px) rotate(180deg) scale(1);
-  }
-  75% {
-    transform: translate(-50px, 50px) rotate(270deg) scale(0.9);
-  }
-}
-
-.login-card {
-  display: flex;
-  width: 950px;
-  max-width: 95%;
-  min-height: 600px;
-  background: var(--bg-overlay);
-  border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-  position: relative;
-  z-index: 2;
-  animation: slideUp 0.6s ease-out;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.brand-section {
-  flex: 1;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 50px 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-
-  :global(html.dark) & {
-    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-  }
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
-    animation: rotate 30s linear infinite;
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 200px;
-    background: linear-gradient(to top, rgba(0,0,0,0.1), transparent);
-    pointer-events: none;
-  }
-}
-
-@keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
   }
 }
 
 .brand-content {
   position: relative;
   z-index: 1;
-  text-align: center;
-  color: #fff;
-  width: 100%;
+  max-width: 480px;
 }
 
-.brand-logo {
-  position: relative;
-  display: inline-block;
-  margin-bottom: 24px;
+.logo {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 32px;
 
-  .logo-icon-wrapper {
-    width: 80px;
-    height: 80px;
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    z-index: 1;
-    animation: pulse 2s ease-in-out infinite;
-
-    .logo-icon {
-      font-size: 48px;
-      color: #fff;
-    }
-  }
-
-  .logo-glow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-    animation: glow 2s ease-in-out infinite;
-  }
-
-  .logo-ring {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 120px;
-    height: 120px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    animation: ringPulse 3s ease-in-out infinite;
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-}
-
-@keyframes glow {
-  0%, 100% {
-    opacity: 0.5;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.2);
-  }
-}
-
-@keyframes ringPulse {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.3;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.1);
-    opacity: 0.6;
+  svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
   }
 }
 
 .brand-title {
-  font-size: 32px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 600;
   margin-bottom: 12px;
-  letter-spacing: 2px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  letter-spacing: -0.02em;
 }
 
 .brand-subtitle {
-  font-size: 16px;
+  font-size: 18px;
   opacity: 0.9;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
+  font-weight: 400;
 }
 
-.brand-stats {
-  display: flex;
-  justify-content: space-around;
-  margin-bottom: 40px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  backdrop-filter: blur(10px);
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-
-    .stat-number {
-      font-size: 28px;
-      font-weight: 700;
-      color: #fff;
-      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    }
-
-    .stat-label {
-      font-size: 12px;
-      opacity: 0.8;
-    }
-  }
-}
-
-.brand-features {
+.features {
   display: flex;
   flex-direction: column;
   gap: 20px;
-
-  .feature-item {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 16px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
-    text-align: left;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.15);
-      transform: translateX(5px);
-    }
-
-    .feature-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      font-size: 20px;
-    }
-
-    .feature-text {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-
-      .feature-title {
-        font-size: 15px;
-        font-weight: 600;
-      }
-
-      .feature-desc {
-        font-size: 12px;
-        opacity: 0.8;
-      }
-    }
-  }
 }
 
-.brand-decoration {
-  margin-top: 40px;
+.feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.feature-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  font-size: 20px;
+  flex-shrink: 0;
+  backdrop-filter: blur(8px);
+}
 
-  .decoration-line {
-    width: 60px;
-    height: 2px;
-    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent);
+.feature-info {
+  h3 {
+    font-family: var(--font-serif);
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 4px;
   }
 
-  .decoration-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.5);
-    animation: blink 2s ease-in-out infinite;
+  p {
+    font-size: 14px;
+    opacity: 0.8;
+    margin: 0;
   }
 }
 
-@keyframes blink {
-  0%, 100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
+.brand-footer {
+  position: absolute;
+  bottom: 24px;
+  left: 60px;
+  font-size: 13px;
+  opacity: 0.7;
 }
 
-.form-section {
-  flex: 1;
-  padding: 50px 40px;
+// Form Panel (Right)
+.form-panel {
+  width: 520px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-overlay);
+  padding: 40px;
+  background: var(--bg-surface);
+}
+
+.form-container {
+  width: 100%;
+  max-width: 360px;
   position: relative;
 }
 
-.form-content {
-  width: 100%;
-  max-width: 360px;
+.theme-toggle {
+  position: absolute;
+  top: -20px;
+  right: -20px;
 }
 
-.theme-switch {
-  position: absolute;
-  top: 20px;
-  right: 20px;
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-nature);
+
+  &:hover {
+    background: var(--bg-surface-tertiary);
+    color: var(--text-primary);
+  }
+}
+
+// Use BulbOutlined for light mode, BulbFilled for dark mode indicator
+.theme-toggle {
+  :deep(.bulb-icon) {
+    font-size: 18px;
+  }
 }
 
 .form-header {
-  text-align: center;
   margin-bottom: 32px;
 }
 
 .form-title {
+  font-family: var(--font-serif);
   font-size: 28px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 8px;
+  letter-spacing: -0.02em;
 }
 
 .form-subtitle {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-secondary);
 }
 
 .login-form {
-  :deep(.ant-form-item) {
-    margin-bottom: 24px;
+  :deep(.ant-form-item-label > label) {
+    font-weight: 500;
+    color: var(--text-primary);
   }
 
   :deep(.ant-input-affix-wrapper) {
     padding: 12px 16px;
-    border-radius: 12px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface-secondary);
+    border: 1px solid transparent;
 
     &:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      background: var(--bg-surface);
+      border-color: var(--border-color);
     }
 
     &.ant-input-affix-wrapper-focused {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+      background: var(--bg-surface);
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
     }
   }
 
   :deep(.ant-input-prefix) {
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
     margin-right: 12px;
-    transition: color 0.3s ease;
   }
 
   :deep(.ant-input-affix-wrapper-focused .ant-input-prefix) {
     color: var(--primary-color);
   }
+}
 
-  .form-options {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.forgot-link {
+  color: var(--primary-color);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.submit-btn {
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-lg);
+  background: var(--primary-color);
+  border: none;
+  transition: all var(--duration-fast) var(--ease-nature);
+
+  &:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
   }
 
-  .forgot-link {
-    color: var(--primary-color);
-    cursor: pointer;
-
-    &:hover {
-      opacity: 0.8;
-    }
-  }
-
-  .login-btn {
-    width: 100%;
-    height: 48px;
-    font-size: 16px;
-    font-weight: 500;
-    border-radius: 12px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
-    position: relative;
-    overflow: hidden;
-
-    &::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.3) 50%,
-        transparent 100%
-      );
-      transition: left 0.5s ease;
-    }
-
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
-
-      &::before {
-        left: 100%;
-      }
-    }
-
-    &:active {
-      transform: translateY(0);
-    }
+  &:active {
+    transform: translateY(0);
   }
 }
 
 .form-footer {
   text-align: center;
   margin-top: 24px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 
-  .footer-text {
-    margin-right: 4px;
-  }
-
-  .register-link {
+  a {
     color: var(--primary-color);
+    font-weight: 500;
     cursor: pointer;
+    margin-left: 4px;
 
     &:hover {
-      opacity: 0.8;
+      text-decoration: underline;
     }
   }
 }
 
-.other-login {
+.social-login {
   margin-top: 32px;
 
   .divider-text {
-    font-size: 12px;
-    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
     padding: 0 16px;
   }
+}
 
-  .login-methods {
-    display: flex;
-    justify-content: center;
-    gap: 24px;
-    margin-top: 20px;
+.social-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+}
 
-    .method-item {
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      color: var(--text-secondary);
-      font-size: 24px;
+.social-btn {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-nature);
 
-      &:hover {
-        border-color: var(--primary-color);
-        color: var(--primary-color);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
-      }
-    }
+  &:hover {
+    background: var(--bg-surface-tertiary);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    transform: translateY(-2px);
   }
 }
 
-.footer-info {
-  position: absolute;
-  bottom: 20px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 12px;
-  z-index: 2;
+// Dark Mode
+html.dark {
+  .form-panel {
+    background: var(--bg-page);
+  }
 }
 
-@media (max-width: 768px) {
-  .login-card {
-    flex-direction: column;
+// Responsive
+@media (max-width: 1024px) {
+  .brand-panel {
+    display: none;
+  }
+
+  .form-panel {
     width: 100%;
-    max-width: 420px;
-    min-height: auto;
-    margin: 20px;
   }
+}
 
-  .brand-section {
-    padding: 40px 30px;
-  }
-
-  .brand-title {
-    font-size: 24px;
-  }
-
-  .brand-features {
-    display: none;
-  }
-
-  .brand-decoration {
-    display: none;
-  }
-
-  .form-section {
-    padding: 40px 30px;
+@media (max-width: 480px) {
+  .form-panel {
+    padding: 24px;
   }
 
   .form-title {
     font-size: 24px;
-  }
-
-  .theme-switch {
-    top: 15px;
-    right: 15px;
-  }
-
-  .footer-info {
-    display: none;
   }
 }
 </style>

@@ -10,29 +10,24 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 用户实体
+ * 知识库实体
  */
 @Data
-@TableName("user")
-public class User implements Serializable {
+@TableName("knowledge_base")
+public class KnowledgeBase implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String username;
+    private String name;
 
-    private String password;
+    private String description;
 
-    private String nickname;
-
-    private String avatar;
-
-    private String email;
-
-    private String role;
+    @TableField("user_id")
+    private Long userId;
 
     /**
-     * 状态：0-禁用，1-正常
+     * 状态：0-禁用，1-启用
      */
     private Integer status;
 

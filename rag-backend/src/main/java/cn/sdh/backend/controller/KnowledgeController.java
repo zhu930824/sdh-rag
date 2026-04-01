@@ -79,7 +79,7 @@ public class KnowledgeController {
     /**
      * 获取文档列表（分页）
      */
-    @GetMapping("/list")
+    @GetMapping("/document/list")
     public Result<Page<KnowledgeDocument>> getDocumentList(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,

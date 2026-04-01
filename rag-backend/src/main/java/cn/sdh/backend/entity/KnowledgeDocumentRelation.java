@@ -10,35 +10,21 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 用户实体
+ * 知识库文档关联实体
  */
 @Data
-@TableName("user")
-public class User implements Serializable {
+@TableName("knowledge_document_relation")
+public class KnowledgeDocumentRelation implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String username;
+    @TableField("knowledge_id")
+    private Long knowledgeId;
 
-    private String password;
-
-    private String nickname;
-
-    private String avatar;
-
-    private String email;
-
-    private String role;
-
-    /**
-     * 状态：0-禁用，1-正常
-     */
-    private Integer status;
+    @TableField("document_id")
+    private Long documentId;
 
     @TableField("create_time")
     private LocalDateTime createTime;
-
-    @TableField("update_time")
-    private LocalDateTime updateTime;
 }

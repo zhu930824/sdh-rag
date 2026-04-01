@@ -36,13 +36,17 @@
         >
           <div class="stat-content">
             <div class="stat-icon" :style="{ background: stat.gradient }">
-              <component :is="stat.icon" class="stat-icon-component" />
+              <SearchOutlined v-if="stat.label === '总查询次数'" class="stat-icon-component" />
+              <TagsOutlined v-else-if="stat.label === '独立词汇数'" class="stat-icon-component" />
+              <LineChartOutlined v-else-if="stat.label === '平均查询次数'" class="stat-icon-component" />
+              <BarChartOutlined v-else class="stat-icon-component" />
             </div>
             <div class="stat-info">
               <div class="stat-value">{{ formatNumber(stat.value) }}</div>
               <div class="stat-label">{{ stat.label }}</div>
               <div class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
-                <component :is="stat.trend > 0 ? ArrowUpOutlined : ArrowDownOutlined" />
+                <ArrowUpOutlined v-if="stat.trend > 0" />
+                <ArrowDownOutlined v-else />
                 <span>{{ Math.abs(stat.trend) }}%</span>
               </div>
             </div>
@@ -133,17 +137,17 @@
                     stroke-linejoin="round"
                   />
                   <!-- 数据点 -->
-                  <circle
-                    v-for="(point, index) in trendPoints"
-                    :key="index"
-                    :cx="point.x"
-                    :cy="point.y"
-                    r="4"
-                    fill="#1890ff"
-                    stroke="#fff"
-                    stroke-width="2"
-                    class="trend-point"
-                  />
+                  <template v-for="(point, index) in trendPoints" :key="index">
+                    <circle
+                      :cx="point.x"
+                      :cy="point.y"
+                      r="4"
+                      fill="#1890ff"
+                      stroke="#fff"
+                      stroke-width="2"
+                      class="trend-point"
+                    />
+                  </template>
                 </svg>
               </div>
               <div class="trend-x-axis">
@@ -238,6 +242,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import dayjs, { type Dayjs } from 'dayjs'
 import {
   SearchOutlined,
   TagsOutlined,
@@ -254,17 +259,17 @@ import { getHotwordStats, getHotwordRanking, getHotwordTrend, getHotwordList } f
 import type { WordRankItem, TrendItem } from '@/api/hotwords'
 
 const timeRange = ref('week')
-const customRange = ref<[Date, Date] | null>(null)
+const customRange = ref<[Dayjs, Dayjs] | null>(null)
 const loading = ref(false)
 const searchKeyword = ref('')
 const chartType = ref('bar')
 const trendWord = ref('')
 
 const statsData = reactive([
-  { label: '总查询次数', value: 0, icon: SearchOutlined, gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', trend: 0 },
-  { label: '独立词汇数', value: 0, icon: TagsOutlined, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', trend: 0 },
-  { label: '平均查询次数', value: 0, icon: LineChartOutlined, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', trend: 0 },
-  { label: '环比增长', value: 0, icon: BarChartOutlined, gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', trend: 0 },
+  { label: '总查询次数', value: 0, gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', trend: 0 },
+  { label: '独立词汇数', value: 0, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', trend: 0 },
+  { label: '平均查询次数', value: 0, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', trend: 0 },
+  { label: '环比增长', value: 0, gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', trend: 0 },
 ])
 
 const topWords = ref<WordRankItem[]>([])
@@ -333,22 +338,20 @@ const pagination = reactive({
 })
 
 function getDateRange(): { startDate: string; endDate: string } {
-  const now = new Date()
-  const endDate = now.toISOString().split('T')[0]
+  const now = dayjs()
+  const endDate = now.format('YYYY-MM-DD')
   let startDate = endDate
-  
+
   if (timeRange.value === 'today') {
     startDate = endDate
   } else if (timeRange.value === 'week') {
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    startDate = weekAgo.toISOString().split('T')[0]
+    startDate = now.subtract(7, 'day').format('YYYY-MM-DD')
   } else if (timeRange.value === 'month') {
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    startDate = monthAgo.toISOString().split('T')[0]
+    startDate = now.subtract(30, 'day').format('YYYY-MM-DD')
   } else if (timeRange.value === 'custom' && customRange.value) {
-    startDate = customRange.value[0].toISOString().split('T')[0]
+    startDate = customRange.value[0].format('YYYY-MM-DD')
   }
-  
+
   return { startDate, endDate }
 }
 
@@ -476,12 +479,21 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .hotwords-container {
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
 }
 
 // 筛选卡片
 .filter-card {
-  margin-bottom: 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 16px 20px;
+
+  :deep(.ant-card-body) {
+    padding: 0;
+  }
 
   .filter-content {
     display: flex;
@@ -500,34 +512,27 @@ onMounted(() => {
 
   .filter-label {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--text-secondary);
+    font-size: 14px;
   }
 }
 
 // 统计卡片
 .stats-row {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .stat-card {
-  margin-bottom: 20px;
-  position: relative;
-  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  transition: all var(--duration-normal) var(--ease-nature);
+  animation: slideInUp 0.4s var(--ease-out) both;
 
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--gradient-purple);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  &:hover::before {
-    opacity: 1;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
   }
 
   .stat-content {
@@ -537,31 +542,17 @@ onMounted(() => {
   }
 
   .stat-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: var(--border-radius-base);
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
     flex-shrink: 0;
-    position: relative;
-    overflow: hidden;
-
-    &::after {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
-      transform: rotate(45deg);
-      animation: shimmer 2s infinite;
-    }
 
     .stat-icon-component {
-      font-size: 28px;
+      font-size: 24px;
     }
   }
 
@@ -571,21 +562,17 @@ onMounted(() => {
   }
 
   .stat-value {
-    font-size: 32px;
-    font-weight: 700;
+    font-family: var(--font-serif);
+    font-size: 28px;
+    font-weight: 600;
     color: var(--text-primary);
-    line-height: 1;
-    margin-bottom: 4px;
-    background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-regular) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    line-height: 1.2;
   }
 
   .stat-label {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-secondary);
-    margin-bottom: 4px;
+    margin-top: 2px;
   }
 
   .stat-trend {
@@ -593,39 +580,56 @@ onMounted(() => {
     align-items: center;
     gap: 2px;
     font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 12px;
     font-weight: 500;
+    padding: 4px 8px;
+    border-radius: var(--radius-full);
+    margin-top: 4px;
 
     &.up {
       color: var(--success-color);
-      background: var(--success-light-9);
+      background: var(--success-light);
     }
 
     &.down {
       color: var(--danger-color);
-      background: var(--danger-light-9);
+      background: var(--danger-light);
     }
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%) rotate(45deg);
-  }
-  100% {
-    transform: translateX(100%) rotate(45deg);
   }
 }
 
 // 图表卡片
 .chart-row {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .chart-card {
-  margin-bottom: 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 24px;
   min-height: 400px;
+
+  :deep(.ant-card-head) {
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 0 16px;
+    min-height: auto;
+
+    .ant-card-head-title {
+      font-family: var(--font-serif);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      padding: 0;
+    }
+
+    .ant-card-extra {
+      padding: 0;
+    }
+  }
+
+  :deep(.ant-card-body) {
+    padding: 16px 0 0;
+  }
 }
 
 // 柱状图
@@ -635,7 +639,7 @@ onMounted(() => {
     align-items: center;
     gap: 12px;
     margin-bottom: 16px;
-    animation: slideInUp 0.3s ease-out both;
+    animation: slideInUp 0.3s var(--ease-out) both;
 
     &:last-child {
       margin-bottom: 0;
@@ -646,7 +650,7 @@ onMounted(() => {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: var(--bg-page);
+    background: var(--bg-surface-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -656,7 +660,7 @@ onMounted(() => {
     flex-shrink: 0;
 
     &.top-three {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: var(--primary-color);
       color: #fff;
     }
   }
@@ -675,40 +679,25 @@ onMounted(() => {
   .bar-wrapper {
     flex: 1;
     height: 28px;
-    background: var(--bg-page);
-    border-radius: var(--border-radius-base);
+    background: var(--bg-surface-secondary);
+    border-radius: var(--radius-md);
     overflow: hidden;
-    position: relative;
   }
 
   .bar-fill {
     height: 100%;
-    border-radius: var(--border-radius-base);
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: flex-end;
     padding-right: 8px;
     transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-
-    &::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
-      animation: shimmer 2s infinite;
-    }
   }
 
   .bar-count {
     font-size: 12px;
     color: #fff;
     font-weight: 600;
-    position: relative;
-    z-index: 1;
   }
 }
 
@@ -725,14 +714,15 @@ onMounted(() => {
   .word-item {
     display: inline-block;
     padding: 8px 16px;
-    border-radius: var(--border-radius-round);
-    background: var(--bg-page);
-    transition: all 0.3s ease;
+    border-radius: var(--radius-full);
+    background: var(--bg-surface-secondary);
+    transition: all var(--duration-normal) var(--ease-nature);
     cursor: default;
 
     &:hover {
       transform: scale(1.1);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      background: var(--primary-lighter);
+      color: var(--primary-color);
     }
   }
 }
@@ -749,7 +739,7 @@ onMounted(() => {
     flex-direction: column;
     justify-content: space-between;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
     padding: 20px 0;
     width: 40px;
     text-align: right;
@@ -772,7 +762,7 @@ onMounted(() => {
 
     .grid-line {
       height: 1px;
-      background: var(--border-lighter);
+      background: var(--border-light);
     }
   }
 
@@ -801,7 +791,7 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
     padding-top: 8px;
   }
 }
@@ -810,8 +800,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-around;
   padding: 16px;
-  background: var(--bg-page);
-  border-radius: var(--border-radius-base);
+  background: var(--bg-surface-secondary);
+  border-radius: var(--radius-lg);
   margin-top: 16px;
 
   .trend-stat-item {
@@ -835,7 +825,32 @@ onMounted(() => {
 
 // 表格卡片
 .table-card {
-  margin-bottom: 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+
+  :deep(.ant-card-head) {
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 0 16px;
+    min-height: auto;
+
+    .ant-card-head-title {
+      font-family: var(--font-serif);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      padding: 0;
+    }
+
+    .ant-card-extra {
+      padding: 0;
+    }
+  }
+
+  :deep(.ant-card-body) {
+    padding: 16px 0 0;
+  }
 }
 
 .rank-cell {
@@ -886,27 +901,43 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-full);
   font-weight: 500;
   font-size: 13px;
 
   &.trend-up {
     color: var(--success-color);
-    background: var(--success-light-9);
+    background: var(--success-light);
   }
 
   &.trend-down {
     color: var(--danger-color);
-    background: var(--danger-light-9);
+    background: var(--danger-light);
+  }
+}
+
+// 动画
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 // 响应式
-@media (max-width: 768px) {
-  .hotwords-container {
-    padding: 12px;
+@media (max-width: 1200px) {
+  .stats-row {
+    :deep(.ant-col) {
+      margin-bottom: var(--card-gap);
+    }
   }
+}
 
+@media (max-width: 768px) {
   .filter-card {
     .filter-content {
       flex-direction: column;

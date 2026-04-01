@@ -1,290 +1,198 @@
 <template>
-  <a-drawer
-    v-if="isMobile"
-    v-model:open="drawerVisible"
-    placement="left"
-    :width="220"
-    :closable="false"
-    class="mobile-drawer"
-    @close="handleClose"
-  >
-    <div class="drawer-content">
-      <div class="logo-container" @click="handleLogoClick">
-        <ReadOutlined class="logo-icon" />
-        <span class="logo-text">智能知识库</span>
-      </div>
-
-      <a-menu
-        v-model:selectedKeys="selectedKeys"
-        mode="inline"
-        class="sidebar-menu"
-        @click="handleMenuClick"
-      >
-        <a-menu-item key="/dashboard">
-          <template #icon><HomeOutlined /></template>
-          <span>首页</span>
-        </a-menu-item>
-
-        <a-menu-item key="/knowledge">
-          <template #icon><FolderOutlined /></template>
-          <span>知识库</span>
-        </a-menu-item>
-
-        <a-menu-item key="/chat">
-          <template #icon><MessageOutlined /></template>
-          <span>智能问答</span>
-        </a-menu-item>
-
-        <a-menu-item key="/user">
-          <template #icon><UserOutlined /></template>
-          <span>用户管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/log">
-          <template #icon><FileTextOutlined /></template>
-          <span>日志管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/sensitive">
-          <template #icon><WarningOutlined /></template>
-          <span>敏感词管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/hotwords">
-          <template #icon><LineChartOutlined /></template>
-          <span>热点词分析</span>
-        </a-menu-item>
-
-        <a-menu-item key="/settings">
-          <template #icon><SettingOutlined /></template>
-          <span>系统设置</span>
-        </a-menu-item>
-
-        <a-menu-item key="/model">
-          <template #icon><ApiOutlined /></template>
-          <span>大模型管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/workflow">
-          <template #icon><ForkOutlined /></template>
-          <span>工作流编排</span>
-        </a-menu-item>
-
-        <a-menu-item key="/nlp-query">
-          <template #icon><SearchOutlined /></template>
-          <span>自然语言查询</span>
-        </a-menu-item>
-
-        <a-menu-item key="/embed">
-          <template #icon><CodeOutlined /></template>
-          <span>嵌入聊天配置</span>
-        </a-menu-item>
-
-        <a-menu-item key="/graph">
-          <template #icon><ApartmentOutlined /></template>
-          <span>知识图谱</span>
-        </a-menu-item>
-
-        <a-menu-item key="/assistant">
-          <template #icon><RobotOutlined /></template>
-          <span>助手市场</span>
-        </a-menu-item>
-
-        <a-menu-item key="/stats">
-          <template #icon><BarChartOutlined /></template>
-          <span>数据统计</span>
-        </a-menu-item>
-
-        <a-menu-item key="/feedback">
-          <template #icon><LikeOutlined /></template>
-          <span>问答评价</span>
-        </a-menu-item>
-
-        <a-menu-item key="/announcement">
-          <template #icon><NotificationOutlined /></template>
-          <span>公告管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/approval">
-          <template #icon><AuditOutlined /></template>
-          <span>审核中心</span>
-        </a-menu-item>
-
-        <a-menu-item key="/points">
-          <template #icon><GiftOutlined /></template>
-          <span>积分商城</span>
-        </a-menu-item>
-
-        <a-menu-item key="/channel">
-          <template #icon><ApiOutlined /></template>
-          <span>渠道管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/process-task">
-          <template #icon><CloudUploadOutlined /></template>
-          <span>文档预处理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/tag">
-          <template #icon><TagsOutlined /></template>
-          <span>标签管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/voice">
-          <template #icon><AudioOutlined /></template>
-          <span>语音问答</span>
-        </a-menu-item>
-      </a-menu>
-    </div>
-  </a-drawer>
-
   <a-layout-sider
-    v-else
-    :collapsed="sidebarCollapsed"
-    :width="sidebarWidth"
-    :collapsedWidth="64"
-    class="layout-sidebar"
+    :collapsed="collapsed"
+    :width="260"
+    :collapsedWidth="72"
+    class="app-sidebar"
     :trigger="null"
   >
-    <div class="logo-container" @click="handleLogoClick">
-      <ReadOutlined class="logo-icon" />
+    <!-- Logo -->
+    <div class="sidebar-header" @click="navigateToDashboard">
+      <div class="logo-mark">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="10" fill="#059669"/>
+          <path d="M10 16L14 20L22 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
       <transition name="logo-text">
-        <span v-show="!sidebarCollapsed" class="logo-text">智能知识库</span>
+        <span v-show="!collapsed" class="logo-text">智能知识库</span>
       </transition>
     </div>
 
-    <a-menu
-      v-model:selectedKeys="selectedKeys"
-      mode="inline"
-      :inline-collapsed="sidebarCollapsed"
-      class="sidebar-menu"
-      @click="handleMenuClick"
-    >
-      <a-menu-item key="/dashboard">
-        <template #icon><HomeOutlined /></template>
-        <span>首页</span>
-      </a-menu-item>
-
-      <a-menu-item key="/knowledge">
-        <template #icon><FolderOutlined /></template>
-        <span>知识库</span>
-      </a-menu-item>
-
-      <a-menu-item key="/chat">
-        <template #icon><MessageOutlined /></template>
-        <span>智能问答</span>
-      </a-menu-item>
-
-      <a-menu-item key="/user">
-        <template #icon><UserOutlined /></template>
-        <span>用户管理</span>
-      </a-menu-item>
-
-      <a-menu-item key="/log">
-        <template #icon><FileTextOutlined /></template>
-        <span>日志管理</span>
-      </a-menu-item>
-
-      <a-menu-item key="/sensitive">
-        <template #icon><WarningOutlined /></template>
-        <span>敏感词管理</span>
-      </a-menu-item>
-
-      <a-menu-item key="/hotwords">
-        <template #icon><LineChartOutlined /></template>
-        <span>热点词分析</span>
-      </a-menu-item>
-
-        <a-menu-item key="/settings">
-          <template #icon><SettingOutlined /></template>
-          <span>系统设置</span>
+    <!-- Navigation -->
+    <nav class="sidebar-nav">
+      <a-menu
+        v-model:selectedKeys="selectedKeys"
+        v-model:openKeys="openKeys"
+        mode="inline"
+        :inline-collapsed="collapsed"
+        class="nav-menu"
+        @click="handleMenuClick"
+      >
+        <!-- Core -->
+        <a-menu-item key="/dashboard" class="nav-item">
+          <template #icon>
+            <HomeOutlined class="nav-icon" />
+          </template>
+          <span>首页</span>
         </a-menu-item>
 
-        <a-menu-item key="/model">
-          <template #icon><ApiOutlined /></template>
-          <span>大模型管理</span>
+        <a-menu-item key="/knowledge" class="nav-item">
+          <template #icon>
+            <FolderOutlined class="nav-icon" />
+          </template>
+          <span>知识库</span>
         </a-menu-item>
 
-        <a-menu-item key="/workflow">
-          <template #icon><ForkOutlined /></template>
-          <span>工作流编排</span>
+        <a-menu-item key="/chat" class="nav-item">
+          <template #icon>
+            <MessageOutlined class="nav-icon" />
+          </template>
+          <span>智能问答</span>
         </a-menu-item>
 
-        <a-menu-item key="/nlp-query">
-          <template #icon><SearchOutlined /></template>
-          <span>自然语言查询</span>
-        </a-menu-item>
-
-        <a-menu-item key="/embed">
-          <template #icon><CodeOutlined /></template>
-          <span>嵌入聊天配置</span>
-        </a-menu-item>
-
-        <a-menu-item key="/graph">
-          <template #icon><ApartmentOutlined /></template>
+        <a-menu-item key="/graph" class="nav-item">
+          <template #icon>
+            <ApartmentOutlined class="nav-icon" />
+          </template>
           <span>知识图谱</span>
         </a-menu-item>
 
-        <a-menu-item key="/assistant">
-          <template #icon><RobotOutlined /></template>
-          <span>助手市场</span>
+        <!-- Divider -->
+        <div class="nav-divider" />
+
+        <!-- Tools -->
+        <a-menu-item key="/workflow" class="nav-item">
+          <template #icon>
+            <ForkOutlined class="nav-icon" />
+          </template>
+          <span>工作流编排</span>
         </a-menu-item>
 
-        <a-menu-item key="/stats">
-          <template #icon><BarChartOutlined /></template>
+        <a-menu-item key="/model" class="nav-item">
+          <template #icon>
+            <ApiOutlined class="nav-icon" />
+          </template>
+          <span>大模型管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="/embed" class="nav-item">
+          <template #icon>
+            <CodeOutlined class="nav-icon" />
+          </template>
+          <span>嵌入配置</span>
+        </a-menu-item>
+
+        <!-- Divider -->
+        <div class="nav-divider" />
+
+        <!-- Analysis -->
+        <a-menu-item key="/stats" class="nav-item">
+          <template #icon>
+            <BarChartOutlined class="nav-icon" />
+          </template>
           <span>数据统计</span>
         </a-menu-item>
 
-        <a-menu-item key="/feedback">
-          <template #icon><LikeOutlined /></template>
+        <a-menu-item key="/hotwords" class="nav-item">
+          <template #icon>
+            <LineChartOutlined class="nav-icon" />
+          </template>
+          <span>热点词分析</span>
+        </a-menu-item>
+
+        <a-menu-item key="/feedback" class="nav-item">
+          <template #icon>
+            <LikeOutlined class="nav-icon" />
+          </template>
           <span>问答评价</span>
         </a-menu-item>
 
-        <a-menu-item key="/announcement">
-          <template #icon><NotificationOutlined /></template>
-          <span>公告管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/approval">
-          <template #icon><AuditOutlined /></template>
+        <a-menu-item key="/approval" class="nav-item">
+          <template #icon>
+            <AuditOutlined class="nav-icon" />
+          </template>
           <span>审核中心</span>
         </a-menu-item>
 
-        <a-menu-item key="/points">
-          <template #icon><GiftOutlined /></template>
-          <span>积分商城</span>
-        </a-menu-item>
+        <!-- Divider -->
+        <div class="nav-divider" />
 
-        <a-menu-item key="/channel">
-          <template #icon><ApiOutlined /></template>
-          <span>渠道管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/process-task">
-          <template #icon><CloudUploadOutlined /></template>
+        <!-- More -->
+        <a-menu-item key="/process-task" class="nav-item">
+          <template #icon>
+            <CloudUploadOutlined class="nav-icon" />
+          </template>
           <span>文档预处理</span>
         </a-menu-item>
 
-        <a-menu-item key="/tag">
-          <template #icon><TagsOutlined /></template>
+        <a-menu-item key="/tag" class="nav-item">
+          <template #icon>
+            <TagsOutlined class="nav-icon" />
+          </template>
           <span>标签管理</span>
         </a-menu-item>
 
-        <a-menu-item key="/voice">
-          <template #icon><AudioOutlined /></template>
-          <span>语音问答</span>
-        </a-menu-item>
-    </a-menu>
 
-    <div class="collapse-trigger" @click="toggleSidebar">
-      <MenuFoldOutlined v-if="!sidebarCollapsed" />
-      <MenuUnfoldOutlined v-else />
+        <!-- Divider -->
+        <div class="nav-divider" />
+
+        <!-- System -->
+        <a-sub-menu key="system" class="nav-submenu">
+          <template #icon>
+            <SettingOutlined class="nav-icon" />
+          </template>
+          <template #title>系统管理</template>
+          <a-menu-item key="/user">
+            <UserOutlined class="nav-icon-sm" />
+            <span>用户管理</span>
+          </a-menu-item>
+          <a-menu-item key="/log">
+            <FileTextOutlined class="nav-icon-sm" />
+            <span>日志管理</span>
+          </a-menu-item>
+          <a-menu-item key="/sensitive">
+            <WarningOutlined class="nav-icon-sm" />
+            <span>敏感词管理</span>
+          </a-menu-item>
+          <a-menu-item key="/announcement">
+            <NotificationOutlined class="nav-icon-sm" />
+            <span>公告管理</span>
+          </a-menu-item>
+          <a-menu-item key="/settings">
+            <SettingOutlined class="nav-icon-sm" />
+            <span>系统设置</span>
+          </a-menu-item>
+        </a-sub-menu>
+
+        <a-menu-item key="/points" class="nav-item">
+          <template #icon>
+            <GiftOutlined class="nav-icon" />
+          </template>
+          <span>积分商城</span>
+        </a-menu-item>
+
+        <a-menu-item key="/channel" class="nav-item">
+          <template #icon>
+            <ApiOutlined class="nav-icon" />
+          </template>
+          <span>渠道管理</span>
+        </a-menu-item>
+      </a-menu>
+    </nav>
+
+    <!-- Collapse Toggle -->
+    <div class="sidebar-footer">
+      <button class="collapse-btn" @click="toggleCollapsed">
+        <MenuFoldOutlined v-if="!collapsed" />
+        <MenuUnfoldOutlined v-else />
+      </button>
     </div>
   </a-layout-sider>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
 import {
@@ -295,16 +203,13 @@ import {
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  ReadOutlined,
   FileTextOutlined,
   WarningOutlined,
   LineChartOutlined,
   ApiOutlined,
   ForkOutlined,
-  SearchOutlined,
   CodeOutlined,
   ApartmentOutlined,
-  RobotOutlined,
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
@@ -319,116 +224,59 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 
-const isMobile = ref(false)
-const windowWidth = ref(window.innerWidth)
+const openKeys = ref<string[]>([])
 
-function checkMobile(): void {
-  windowWidth.value = window.innerWidth
-  isMobile.value = windowWidth.value < 768
+const subMenuMap: Record<string, string[]> = {
+  'system': ['/user', '/log', '/sensitive', '/announcement', '/settings']
 }
 
-const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
-const sidebarWidth = computed(() => appStore.sidebarWidth)
+function updateOpenKeys(path: string): void {
+  for (const [key, paths] of Object.entries(subMenuMap)) {
+    if (paths.includes(path)) {
+      if (!openKeys.value.includes(key)) {
+        openKeys.value = [key]
+      }
+      return
+    }
+  }
+}
+
+const collapsed = computed(() => appStore.sidebarCollapsed)
 const selectedKeys = computed({
   get: () => [route.path],
   set: () => {},
 })
-const drawerVisible = computed({
-  get: () => appStore.mobileMenuOpen,
-  set: (value: boolean) => appStore.setMobileMenuOpen(value),
-})
 
-function toggleSidebar(): void {
+function toggleCollapsed(): void {
   appStore.toggleSidebar()
 }
 
-function handleLogoClick(): void {
+function navigateToDashboard(): void {
   router.push('/dashboard')
-  if (isMobile.value) {
-    drawerVisible.value = false
-  }
 }
 
 function handleMenuClick({ key }: { key: string }): void {
-  router.push(key)
-  drawerVisible.value = false
+  if (key.startsWith('/')) {
+    router.push(key)
+  }
 }
 
-function handleClose(): void {
-  drawerVisible.value = false
-}
-
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
-})
+watch(
+  () => route.path,
+  (path) => {
+    updateOpenKeys(path)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped lang="scss">
-.mobile-drawer {
-  :deep(.ant-drawer-body) {
-    padding: 0;
-  }
-
-  .drawer-content {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-overlay);
-  }
-}
-
-.logo-container {
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border-lighter);
-  cursor: pointer;
-  transition: all var(--transition-duration);
-
-  &:hover {
-    background-color: var(--bg-page);
-  }
-
-  .logo-icon {
-    font-size: 28px;
-    color: var(--primary-color);
-    flex-shrink: 0;
-  }
-
-  .logo-text {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-  }
-}
-
-.logo-text-enter-active,
-.logo-text-leave-active {
-  transition: all 0.3s ease;
-}
-
-.logo-text-enter-from,
-.logo-text-leave-to {
-  opacity: 0;
-  transform: translateX(-10px);
-}
-
-.layout-sidebar {
+.app-sidebar {
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-overlay) !important;
-  border-right: 1px solid var(--border-lighter);
-  overflow: hidden;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  z-index: var(--z-fixed);
 
   :deep(.ant-layout-sider-children) {
     display: flex;
@@ -437,167 +285,168 @@ onUnmounted(() => {
   }
 }
 
-.sidebar-menu {
-  flex: 1;
-  border-right: none !important;
-  background-color: transparent !important;
+// Header
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-nature);
 
-  :deep(.ant-menu-item) {
-    height: 50px;
-    line-height: 50px;
-    margin: 4px 8px;
-    border-radius: var(--border-radius-base);
-    transition: all var(--transition-duration);
+  &:hover {
+    background: var(--bg-surface-secondary);
+  }
+}
+
+.logo-mark {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.logo-text {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.logo-text-enter-active,
+.logo-text-leave-active {
+  transition: opacity var(--duration-normal) var(--ease-nature);
+}
+
+.logo-text-enter-from,
+.logo-text-leave-to {
+  opacity: 0;
+}
+
+// Navigation
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 12px;
+}
+
+.nav-menu {
+  background: transparent;
+  border: none;
+
+  :deep(.ant-menu-item),
+  :deep(.ant-menu-submenu-title) {
+    height: 44px;
+    line-height: 44px;
+    margin: 2px 0;
+    padding: 0 14px !important;
+    border-radius: var(--radius-lg);
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all var(--duration-fast) var(--ease-nature);
 
     &:hover {
-      background-color: var(--bg-page);
+      background: var(--bg-surface-secondary);
+      color: var(--text-primary);
     }
 
-    &.ant-menu-item-selected {
-      background-color: var(--primary-light-9);
-      color: var(--primary-color);
-      font-weight: 500;
+    .nav-icon {
+      font-size: 18px;
+      margin-right: 12px;
+      color: var(--text-tertiary);
+    }
+  }
 
-      .anticon {
-        color: var(--primary-color);
+  :deep(.ant-menu-item-selected) {
+    background: var(--primary-lighter) !important;
+    color: var(--primary-color) !important;
+
+    .nav-icon {
+      color: var(--primary-color);
+    }
+  }
+
+  :deep(.ant-menu-submenu-open) > .ant-menu-submenu-title {
+    color: var(--text-primary);
+
+    .nav-icon {
+      color: var(--text-secondary);
+    }
+  }
+
+  :deep(.ant-menu-sub) {
+    background: transparent;
+
+    .ant-menu-item {
+      padding-left: 46px !important;
+      height: 40px;
+      line-height: 40px;
+
+      .nav-icon-sm {
+        font-size: 16px;
+        margin-right: 10px;
       }
     }
   }
 
   &.ant-menu-inline-collapsed {
-    :deep(.ant-menu-item) {
-      margin: 4px;
+    :deep(.ant-menu-item),
+    :deep(.ant-menu-submenu-title) {
+      padding: 0 calc(50% - 18px) !important;
       justify-content: center;
-      padding: 0 calc(50% - 16px) !important;
+
+      .nav-icon {
+        margin-right: 0;
+      }
     }
   }
 }
 
-.collapse-trigger {
-  height: 48px;
+// Divider
+.nav-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 10px 12px;
+}
+
+// Footer
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.collapse-btn {
+  width: 100%;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-top: 1px solid var(--border-lighter);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-size: 16px;
   cursor: pointer;
-  color: var(--text-regular);
-  font-size: 18px;
-  transition: all var(--transition-duration);
+  transition: all var(--duration-fast) var(--ease-nature);
 
   &:hover {
-    background-color: var(--bg-page);
+    background: var(--bg-surface-secondary);
+    border-color: var(--primary-color);
     color: var(--primary-color);
   }
 }
 
-@media (max-width: 768px) {
-  .mobile-drawer {
-    :deep(.ant-drawer-body) {
-      padding: 0;
-    }
-
-    .drawer-content {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg-overlay);
-    }
-
-    .logo-container {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-lighter);
-
-      .logo-icon {
-        font-size: 24px;
-      }
-
-      .logo-text {
-        font-size: 15px;
-      }
-    }
-
-    .sidebar-menu {
-      border-right: none;
-      background-color: transparent;
-
-      :deep(.ant-menu-item) {
-        height: 56px;
-        line-height: 56px;
-        margin: 4px 12px;
-        border-radius: var(--border-radius-base);
-        transition: all var(--transition-duration);
-
-        &:hover {
-          background-color: var(--bg-page);
-        }
-
-        &.ant-menu-item-selected {
-          background-color: var(--primary-light-9);
-          color: var(--primary-color);
-          font-weight: 500;
-
-          .anticon {
-            color: var(--primary-color);
-          }
-        }
-      }
-    }
-  }
-}
-
-@media (max-width: 480px) {
-  .mobile-drawer {
-    :deep(.ant-drawer-content) {
-      width: 100% !important;
-    }
-
-    .logo-container {
-      padding: 12px;
-
-      .logo-icon {
-        font-size: 22px;
-      }
-
-      .logo-text {
-        font-size: 14px;
-      }
-    }
-
-    .sidebar-menu {
-      :deep(.ant-menu-item) {
-        height: 52px;
-        line-height: 52px;
-        margin: 4px 8px;
-      }
-    }
-  }
-}
-
-@media (min-width: 769px) and (max-width: 1024px) {
-  .layout-sidebar {
-    .logo-container {
-      padding: 0 12px;
-
-      .logo-text {
-        font-size: 15px;
-      }
-    }
-
-    .sidebar-menu {
-      :deep(.ant-menu-item) {
-        height: 48px;
-        line-height: 48px;
-        margin: 4px 6px;
-      }
-    }
-  }
-}
-
+// Dark Mode
 html.dark {
-  .sidebar-menu {
-    :deep(.ant-menu-item.ant-menu-item-selected) {
-      background-color: rgba(64, 158, 255, 0.1);
-    }
+  .app-sidebar {
+    background: var(--bg-page);
   }
 }
 </style>

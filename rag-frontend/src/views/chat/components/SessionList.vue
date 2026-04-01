@@ -140,7 +140,6 @@ defineExpose({
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-color);
 
   .new-session-btn {
     display: flex;
@@ -148,16 +147,17 @@ defineExpose({
     justify-content: center;
     gap: 8px;
     margin: 12px;
-    padding: 12px;
-    background-color: var(--primary-light-9);
+    padding: 10px;
+    background-color: var(--primary-lighter);
     color: var(--primary-color);
-    border-radius: var(--border-radius-base);
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 500;
-    transition: all var(--transition-duration);
+    font-size: 14px;
+    transition: all var(--duration-normal) var(--ease-nature);
 
     &:hover {
-      background-color: var(--primary-light-8);
+      background-color: var(--primary-light);
     }
 
     &:active {
@@ -182,14 +182,14 @@ defineExpose({
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 12px;
+      padding: 10px 12px;
       margin-bottom: 4px;
-      border-radius: var(--border-radius-base);
+      border-radius: var(--radius-md);
       cursor: pointer;
-      transition: all var(--transition-duration);
+      transition: all var(--duration-fast) var(--ease-nature);
 
       &:hover {
-        background-color: var(--bg-page);
+        background-color: var(--bg-surface-secondary);
 
         .session-actions {
           opacity: 1;
@@ -197,7 +197,7 @@ defineExpose({
       }
 
       &.active {
-        background-color: var(--primary-light-9);
+        background-color: var(--primary-lighter);
 
         .session-icon {
           color: var(--primary-color);
@@ -212,7 +212,7 @@ defineExpose({
       .session-icon {
         flex-shrink: 0;
         color: var(--text-secondary);
-        font-size: 18px;
+        font-size: 16px;
       }
 
       .session-info {
@@ -229,14 +229,14 @@ defineExpose({
 
         .session-time {
           font-size: 12px;
-          color: var(--text-placeholder);
+          color: var(--text-tertiary);
           margin-top: 2px;
         }
       }
 
       .session-actions {
         opacity: 0;
-        transition: opacity var(--transition-duration);
+        transition: opacity var(--duration-fast);
 
         .delete-btn {
           padding: 4px 8px;

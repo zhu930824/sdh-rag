@@ -1,15 +1,13 @@
 <template>
   <a-breadcrumb class="layout-breadcrumb">
-    <transition-group name="breadcrumb">
-      <a-breadcrumb-item v-for="(item, index) in breadcrumbs" :key="item.path">
-        <span v-if="index === breadcrumbs.length - 1" class="breadcrumb-current">
-          {{ item.title }}
-        </span>
-        <a v-else class="breadcrumb-link" @click="handleNavigate(item.path)">
-          {{ item.title }}
-        </a>
-      </a-breadcrumb-item>
-    </transition-group>
+    <a-breadcrumb-item v-for="(item, index) in breadcrumbs" :key="item.path">
+      <span v-if="index === breadcrumbs.length - 1" class="breadcrumb-current">
+        {{ item.title }}
+      </span>
+      <a v-else class="breadcrumb-link" @click="handleNavigate(item.path)">
+        {{ item.title }}
+      </a>
+    </a-breadcrumb-item>
   </a-breadcrumb>
 </template>
 
@@ -80,16 +78,5 @@ function handleNavigate(path: string): void {
 .breadcrumb-current {
   color: var(--text-primary);
   font-weight: 500;
-}
-
-.breadcrumb-enter-active,
-.breadcrumb-leave-active {
-  transition: all 0.3s ease;
-}
-
-.breadcrumb-enter-from,
-.breadcrumb-leave-to {
-  opacity: 0;
-  transform: translateX(10px);
 }
 </style>

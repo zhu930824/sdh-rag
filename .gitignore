@@ -33,3 +33,4 @@ build/
 .vscode/
 /rag-frontend/node_modules/
 /.mvn/
+/rag-frontend/.claude/
