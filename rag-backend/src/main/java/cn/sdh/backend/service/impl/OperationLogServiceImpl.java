@@ -22,7 +22,7 @@ public class OperationLogServiceImpl extends ServiceImpl<OperationLogMapper, Ope
     public IPage<OperationLog> getPage(Integer page, Integer pageSize, String type, String username, Integer status, String startTime, String endTime) {
         Page<OperationLog> pageParam = new Page<>(page, pageSize);
         LambdaQueryWrapper<OperationLog> wrapper = new LambdaQueryWrapper<>();
-        
+
         if (StringUtils.hasText(type)) {
             wrapper.eq(OperationLog::getType, type);
         }
@@ -39,7 +39,22 @@ public class OperationLogServiceImpl extends ServiceImpl<OperationLogMapper, Ope
             wrapper.le(OperationLog::getCreateTime, LocalDateTime.parse(endTime, FORMATTER));
         }
         wrapper.orderByDesc(OperationLog::getCreateTime);
-        
+
         return page(pageParam, wrapper);
+    }
+
+    @Override
+    public OperationLog getById(Long id) {
+        return super.getById(id);
+    }
+
+    @Override
+    public boolean save(OperationLog log) {
+        return super.save(log);
+    }
+
+    @Override
+    public void asyncSaveLog(OperationLog log) {
+        new Thread(() -> save(log)).start();
     }
 }

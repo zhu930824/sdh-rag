@@ -58,8 +58,10 @@
         ref="chatInputRef"
         :sending="chatStore.loading"
         :is-generating="chatStore.isGenerating"
+        :knowledge-id="chatStore.selectedKnowledgeId"
         @send="handleSendMessage"
         @stop="handleStopGeneration"
+        @knowledge-change="handleKnowledgeChange"
       />
     </main>
 
@@ -175,6 +177,10 @@ function handleSourceClick(source: Source): void {
 
 async function handleQuickQuestion(question: string): Promise<void> {
   await chatStore.sendMessage(question)
+}
+
+function handleKnowledgeChange(knowledgeId: number | null): void {
+  chatStore.setKnowledgeId(knowledgeId)
 }
 
 function goToDocument(): void {

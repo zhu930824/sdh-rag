@@ -81,6 +81,13 @@ public class Result<T> implements Serializable {
     }
 
     /**
+     * 禁止访问（自定义消息）
+     */
+    public static <T> Result<T> forbidden(String message) {
+        return new Result<>(403, message, null);
+    }
+
+    /**
      * 资源未找到
      */
     public static <T> Result<T> notFound(String message) {

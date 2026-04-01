@@ -27,12 +27,13 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
-    open: true,
+      host: '0.0.0.0',
+      port: 3000,
+      open: true,
     // 开发服务器代理配置
     proxy: {
       '/api': {
-        target: 'http://localhost:8989',
+        target: 'http://192.168.2.26:8989',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

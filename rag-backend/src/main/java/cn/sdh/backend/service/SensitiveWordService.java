@@ -11,9 +11,11 @@ public interface SensitiveWordService {
 
     SensitiveWord getById(Long id);
 
-    void save(SensitiveWord sensitiveWord);
+    boolean save(SensitiveWord sensitiveWord);
 
-    void update(SensitiveWord sensitiveWord);
+    void removeById(Long id);
+
+    void removeByIds(List<Long> ids);
 
     void deleteById(Long id);
 

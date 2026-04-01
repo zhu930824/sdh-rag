@@ -73,4 +73,9 @@ public interface KnowledgeService {
      * @return 是否成功
      */
     boolean updateDocumentStatus(Long id, Integer status);
+
+    /**
+     * 重建所有索引
+     */
+    void rebuildAllIndexes();
 }

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn compile:*)",
+      "Bash(JAVA_HOME=\"D:/develop/JDK21\" mvn compile -Dfile.encoding=UTF-8)",
+      "Bash(java:*)",
+      "Bash(mvn:*)",
+      "Bash(where java:*)",
+      "Bash(dir \"D:\\\\develop\" \")",
+      "Bash(findstr -i jdk)"
+    ]
+  }
+}

@@ -117,4 +117,23 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         document.setUpdateTime(LocalDateTime.now());
         return documentMapper.updateById(document) > 0;
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rebuildAllIndexes() {
+        log.info("开始重建所有索引");
+        LambdaQueryWrapper<KnowledgeDocument> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(KnowledgeDocument::getStatus, 1);
+        List<KnowledgeDocument> documents = documentMapper.selectList(wrapper);
+        for (KnowledgeDocument document : documents) {
+            try {
+                // 更新文档状态为处理中
+                document.setStatus(0);
+                documentMapper.updateById(document);
+            } catch (Exception e) {
+                log.error("重建索引失败: documentId={}", document.getId(), e);
+            }
+        }
+        log.info("索引重建任务已提交，共 {} 个文档", documents.size());
+    }
 }

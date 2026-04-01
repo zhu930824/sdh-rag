@@ -2,7 +2,7 @@
   <div class="feedback-page">
     <div class="page-header">
       <h2>问答评价管理</h2>
-      <p class="description">查看用户对问答的评价反馈，p>
+      <p class="description">查看用户对问答的评价反馈</p>
     </div>
 
     <div class="filter-section">

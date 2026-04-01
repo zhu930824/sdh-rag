@@ -1,136 +1,280 @@
 package cn.sdh.backend.service.impl;
 
-import cn.sdh.backend.entity.GraphNode;
-import cn.sdh.backend.entity.GraphEdge;
-import cn.sdh.backend.mapper.GraphNodeMapper;
-import cn.sdh.backend.mapper.GraphEdgeMapper;
+import cn.sdh.backend.dto.GraphDataResponse;
+import cn.sdh.backend.dto.GraphPathResponse;
+import cn.sdh.backend.dto.GraphStatsResponse;
+import cn.sdh.backend.graph.node.ConceptNode;
+import cn.sdh.backend.graph.node.EntityNode;
+import cn.sdh.backend.graph.node.KeywordNode;
+import cn.sdh.backend.graph.repository.ConceptNodeRepository;
+import cn.sdh.backend.graph.repository.EntityNodeRepository;
+import cn.sdh.backend.graph.repository.GraphRepository;
+import cn.sdh.backend.graph.repository.KeywordNodeRepository;
 import cn.sdh.backend.service.GraphService;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 图谱服务实现
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
-public class GraphServiceImpl extends ServiceImpl<GraphNodeMapper, GraphNode> implements GraphService {
+public class GraphServiceImpl implements GraphService {
 
-    private final GraphNodeMapper graphNodeMapper;
-    private final GraphEdgeMapper graphEdgeMapper;
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public GraphNode createNode(GraphNode node) {
-        node.setWeight(node.getWeight() != null ? node.getWeight() : 1);
-        node.setStatus(node.getStatus() != null ? node.getStatus() : 1);
-        save(node);
-        return node;
-    }
+    private final GraphRepository graphRepository;
+    private final EntityNodeRepository entityNodeRepository;
+    private final ConceptNodeRepository conceptNodeRepository;
+    private final KeywordNodeRepository keywordNodeRepository;
 
     @Override
-    public GraphNode getNodeById(Long id) {
-        return getById(id);
-    }
-
-    @Override
-    public List<GraphNode> getNodesByType(String nodeType, int limit) {
-        return graphNodeMapper.selectTopByType(nodeType, limit);
-    }
-
-    @Override
-    public List<GraphNode> getNodesByDocument(Long documentId) {
-        return graphNodeMapper.selectByDocumentId(documentId);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public GraphEdge createEdge(GraphEdge edge) {
-        graphEdgeMapper.insert(edge);
-        return edge;
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void deleteEdge(Long id) {
-        graphEdgeMapper.deleteById(id);
-    }
-
-    @Override
-    public List<GraphEdge> getEdgesByNodeId(Long nodeId) {
-        return graphEdgeMapper.selectByNodeId(nodeId);
-    }
-
-    @Override
-    public Map<String, Object> getGraphData(Long centerNodeId, int depth) {
-        List<GraphNode> nodes = new ArrayList<>();
-        List<GraphEdge> edges = new ArrayList<>();
-        Set<Long> visitedNodeIds = new HashSet<>();
+    public GraphDataResponse getGraphData(Long centerNodeId, int depth) {
+        List<GraphDataResponse.NodeData> nodes = new ArrayList<>();
+        List<GraphDataResponse.EdgeData> edges = new ArrayList<>();
 
         if (centerNodeId != null) {
-            collectGraphData(centerNodeId, depth, nodes, edges, visitedNodeIds);
+            // 以指定节点为中心展开
+            Map<String, Object> result = graphRepository.expandFromNode(centerNodeId, depth);
+            return parseGraphResult(result);
         } else {
-            LambdaQueryWrapper<GraphNode> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(GraphNode::getStatus, 1).orderByDesc(GraphNode::getWeight).last("LIMIT 100");
-            nodes = list(wrapper);
-            
-            if (!nodes.isEmpty()) {
-                String nodeIds = nodes.stream()
-                    .map(n -> String.valueOf(n.getId()))
-                    .collect(Collectors.joining(","));
-                edges = graphEdgeMapper.selectByNodeIds(nodeIds);
+            // 获取全图概览
+            Map<String, Object> result = graphRepository.getGraphOverview(100);
+            return parseGraphResult(result);
+        }
+    }
+
+    @Override
+    public List<GraphDataResponse.NodeData> searchNodes(String keyword) {
+        List<GraphDataResponse.NodeData> results = new ArrayList<>();
+
+        // 搜索实体
+        List<EntityNode> entities = entityNodeRepository.searchByName(keyword, 20);
+        results.addAll(entities.stream()
+                .map(this::convertEntityToNodeData)
+                .collect(Collectors.toList()));
+
+        // 搜索概念
+        List<ConceptNode> concepts = conceptNodeRepository.searchByName(keyword, 10);
+        results.addAll(concepts.stream()
+                .map(this::convertConceptToNodeData)
+                .collect(Collectors.toList()));
+
+        // 搜索关键词
+        List<KeywordNode> keywords = keywordNodeRepository.searchByName(keyword, 10);
+        results.addAll(keywords.stream()
+                .map(this::convertKeywordToNodeData)
+                .collect(Collectors.toList()));
+
+        return results.stream().limit(50).collect(Collectors.toList());
+    }
+
+    @Override
+    public GraphDataResponse.NodeData getNodeDetail(Long nodeId) {
+        // 尝试从各类节点中查找
+        Optional<EntityNode> entity = entityNodeRepository.findByIdWithRelationships(nodeId);
+        if (entity.isPresent()) {
+            return convertEntityToNodeData(entity.get());
+        }
+
+        Optional<ConceptNode> concept = conceptNodeRepository.findByIdWithRelationships(nodeId);
+        if (concept.isPresent()) {
+            return convertConceptToNodeData(concept.get());
+        }
+
+        Optional<KeywordNode> keyword = keywordNodeRepository.findById(nodeId);
+        if (keyword.isPresent()) {
+            return convertKeywordToNodeData(keyword.get());
+        }
+
+        return null;
+    }
+
+    @Override
+    public GraphDataResponse getNeighbors(Long nodeId) {
+        Map<String, Object> result = graphRepository.findNeighbors(nodeId);
+        return parseGraphResult(result);
+    }
+
+    @Override
+    public GraphPathResponse getShortestPath(Long startId, Long endId) {
+        Map<String, Object> result = graphRepository.findShortestPath(startId, endId);
+
+        if (result == null || result.isEmpty()) {
+            return null;
+        }
+
+        List<Map<String, Object>> nodesData = (List<Map<String, Object>>) result.get("nodes");
+        List<Map<String, Object>> relationsData = (List<Map<String, Object>>) result.get("relationships");
+
+        List<GraphPathResponse.NodeInfo> nodes = new ArrayList<>();
+        if (nodesData != null) {
+            for (Map<String, Object> n : nodesData) {
+                nodes.add(GraphPathResponse.NodeInfo.builder()
+                        .id(((Number) n.get("id")).longValue())
+                        .labels((List<String>) n.get("labels"))
+                        .name((String) n.get("name"))
+                        .entityType((String) n.get("entityType"))
+                        .build());
             }
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("nodes", nodes);
-        result.put("edges", edges);
-        return result;
-    }
-
-    private void collectGraphData(Long nodeId, int depth, List<GraphNode> nodes, 
-                                   List<GraphEdge> edges, Set<Long> visitedNodeIds) {
-        if (depth < 0 || visitedNodeIds.contains(nodeId)) {
-            return;
+        List<GraphPathResponse.RelationInfo> relationships = new ArrayList<>();
+        if (relationsData != null) {
+            for (Map<String, Object> r : relationsData) {
+                relationships.add(GraphPathResponse.RelationInfo.builder()
+                        .type((String) r.get("type"))
+                        .source(((Number) r.get("source")).longValue())
+                        .target(((Number) r.get("target")).longValue())
+                        .build());
+            }
         }
 
-        GraphNode node = getById(nodeId);
-        if (node == null) {
-            return;
-        }
-
-        nodes.add(node);
-        visitedNodeIds.add(nodeId);
-
-        List<GraphEdge> relatedEdges = graphEdgeMapper.selectByNodeId(nodeId);
-        edges.addAll(relatedEdges);
-
-        for (GraphEdge edge : relatedEdges) {
-            Long nextNodeId = edge.getSourceId().equals(nodeId) ? edge.getTargetId() : edge.getSourceId();
-            collectGraphData(nextNodeId, depth - 1, nodes, edges, visitedNodeIds);
-        }
+        return GraphPathResponse.builder()
+                .nodes(nodes)
+                .relationships(relationships)
+                .length(nodes.size() - 1)
+                .build();
     }
 
     @Override
-    public List<GraphNode> searchNodes(String keyword) {
-        LambdaQueryWrapper<GraphNode> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(GraphNode::getStatus, 1)
-               .like(GraphNode::getName, keyword)
-               .or()
-               .like(GraphNode::getDescription, keyword)
-               .orderByDesc(GraphNode::getWeight)
-               .last("LIMIT 50");
-        return list(wrapper);
+    public GraphStatsResponse getStats() {
+        Long totalNodes = graphRepository.countNodes();
+        Long totalRelationships = graphRepository.countRelationships();
+        List<Map<String, Object>> nodesByType = graphRepository.countNodesByType();
+        List<Map<String, Object>> relationshipsByType = graphRepository.countRelationshipsByType();
+
+        return GraphStatsResponse.builder()
+                .totalNodes(totalNodes)
+                .totalRelationships(totalRelationships)
+                .nodesByType(nodesByType)
+                .relationshipsByType(relationshipsByType)
+                .build();
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void buildGraphFromDocument(Long documentId) {
-        // TODO: 实现文档到知识图谱的自动构建
-        // 1. 提取文档中的实体
-        // 2. 创建节点
-        // 3. 创建关系
+    public List<GraphDataResponse.NodeData> getNodesByType(String nodeType, int limit) {
+        List<GraphDataResponse.NodeData> results = new ArrayList<>();
+
+        switch (nodeType.toUpperCase()) {
+            case "ENTITY":
+                List<EntityNode> entities = entityNodeRepository.findAll();
+                results.addAll(entities.stream()
+                        .limit(limit)
+                        .map(this::convertEntityToNodeData)
+                        .collect(Collectors.toList()));
+                break;
+            case "CONCEPT":
+                List<ConceptNode> concepts = conceptNodeRepository.findTopConcepts(limit);
+                results.addAll(concepts.stream()
+                        .map(this::convertConceptToNodeData)
+                        .collect(Collectors.toList()));
+                break;
+            case "KEYWORD":
+                List<KeywordNode> keywords = keywordNodeRepository.findTopKeywords(limit);
+                results.addAll(keywords.stream()
+                        .map(this::convertKeywordToNodeData)
+                        .collect(Collectors.toList()));
+                break;
+        }
+
+        return results;
+    }
+
+    private GraphDataResponse parseGraphResult(Map<String, Object> result) {
+        List<GraphDataResponse.NodeData> nodes = new ArrayList<>();
+        List<GraphDataResponse.EdgeData> edges = new ArrayList<>();
+
+        if (result == null) {
+            return GraphDataResponse.builder().nodes(nodes).edges(edges).build();
+        }
+
+        List<Map<String, Object>> nodesData = (List<Map<String, Object>>) result.get("nodes");
+        List<Map<String, Object>> relationshipsData = (List<Map<String, Object>>) result.get("relationships");
+
+        if (nodesData != null) {
+            Set<Long> addedIds = new HashSet<>();
+            for (Map<String, Object> n : nodesData) {
+                Long id = ((Number) n.get("id")).longValue();
+                if (addedIds.contains(id)) {
+                    continue;
+                }
+                addedIds.add(id);
+
+                List<String> labels = (List<String>) n.get("labels");
+                String type = labels != null && !labels.isEmpty() ? labels.get(0) : "Unknown";
+
+                nodes.add(GraphDataResponse.NodeData.builder()
+                        .id(id)
+                        .label((String) n.get("name"))
+                        .type(type)
+                        .entityType((String) n.get("entityType"))
+                        .description((String) n.get("description"))
+                        .documentId(n.get("documentId") != null ? ((Number) n.get("documentId")).longValue() : null)
+                        .weight(n.get("weight") != null ? ((Number) n.get("weight")).intValue() : 0)
+                        .frequency(n.get("frequency") != null ? ((Number) n.get("frequency")).intValue() : 0)
+                        .build());
+            }
+        }
+
+        if (relationshipsData != null) {
+            Set<String> addedEdges = new HashSet<>();
+            for (Map<String, Object> r : relationshipsData) {
+                Long source = ((Number) r.get("source")).longValue();
+                Long target = ((Number) r.get("target")).longValue();
+                String type = (String) r.get("type");
+                String edgeId = source + "-" + type + "-" + target;
+
+                if (addedEdges.contains(edgeId)) {
+                    continue;
+                }
+                addedEdges.add(edgeId);
+
+                edges.add(GraphDataResponse.EdgeData.builder()
+                        .id(edgeId)
+                        .source(source)
+                        .target(target)
+                        .relationType(type)
+                        .weight(r.get("weight") != null ? ((Number) r.get("weight")).doubleValue() : 1.0)
+                        .build());
+            }
+        }
+
+        return GraphDataResponse.builder().nodes(nodes).edges(edges).build();
+    }
+
+    private GraphDataResponse.NodeData convertEntityToNodeData(EntityNode entity) {
+        return GraphDataResponse.NodeData.builder()
+                .id(entity.getId())
+                .label(entity.getName())
+                .type("Entity")
+                .entityType(entity.getEntityType())
+                .description(entity.getDescription())
+                .sourceDocumentId(entity.getSourceDocumentId())
+                .frequency(entity.getFrequency())
+                .build();
+    }
+
+    private GraphDataResponse.NodeData convertConceptToNodeData(ConceptNode concept) {
+        return GraphDataResponse.NodeData.builder()
+                .id(concept.getId())
+                .label(concept.getName())
+                .type("Concept")
+                .description(concept.getDescription())
+                .weight(concept.getWeight())
+                .build();
+    }
+
+    private GraphDataResponse.NodeData convertKeywordToNodeData(KeywordNode keyword) {
+        return GraphDataResponse.NodeData.builder()
+                .id(keyword.getId())
+                .label(keyword.getName())
+                .type("Keyword")
+                .sourceDocumentId(keyword.getSourceDocumentId())
+                .frequency(keyword.getFrequency())
+                .build();
     }
 }

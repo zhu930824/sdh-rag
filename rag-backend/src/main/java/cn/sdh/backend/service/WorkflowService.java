@@ -9,7 +9,7 @@ public interface WorkflowService {
 
     Workflow getById(Long id);
 
-    void save(Workflow workflow);
+    boolean save(Workflow workflow);
 
     void update(Workflow workflow);
 

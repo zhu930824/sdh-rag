@@ -48,6 +48,17 @@ public class KnowledgeDocument implements Serializable {
     private Long categoryId;
 
     /**
+     * 知识库ID
+     */
+    @TableField("knowledge_id")
+    private Long knowledgeId;
+
+    /**
+     * 分类（标签）
+     */
+    private String category;
+
+    /**
      * 上传用户ID
      */
     @TableField("user_id")

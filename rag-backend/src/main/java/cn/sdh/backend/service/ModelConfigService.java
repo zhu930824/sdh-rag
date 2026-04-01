@@ -9,7 +9,7 @@ public interface ModelConfigService {
 
     ModelConfig getById(Long id);
 
-    void save(ModelConfig config);
+    boolean save(ModelConfig config);
 
     void update(ModelConfig config);
 

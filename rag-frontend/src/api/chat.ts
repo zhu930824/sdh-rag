@@ -37,7 +37,7 @@ export interface StreamEvent {
 
 // 发起问答（流式响应）
 export async function askQuestion(
-  data: { question: string; sessionId?: string },
+  data: { question: string; sessionId?: string; knowledgeId?: number | null },
   onMessage: (event: StreamEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {

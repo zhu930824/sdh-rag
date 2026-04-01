@@ -55,15 +55,54 @@ public class SensitiveWordServiceImpl extends ServiceImpl<SensitiveWordMapper, S
         if (!StringUtils.hasText(text)) {
             return found;
         }
-        
+
         List<SensitiveWord> words = list(new LambdaQueryWrapper<SensitiveWord>()
                 .eq(SensitiveWord::getStatus, 1));
-        
+
         for (SensitiveWord sw : words) {
             if (text.contains(sw.getWord())) {
                 found.add(sw.getWord());
             }
         }
         return found;
+    }
+
+    @Override
+    public cn.sdh.backend.entity.SensitiveWord getById(Long id) {
+        return super.getById(id);
+    }
+
+    @Override
+    public boolean save(SensitiveWord sensitiveWord) {
+        return super.save(sensitiveWord);
+    }
+
+    @Override
+    public void removeById(Long id) {
+        super.removeById(id);
+    }
+
+    @Override
+    public void removeByIds(List<Long> ids) {
+        super.removeByIds(ids);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        super.removeById(id);
+    }
+
+    @Override
+    public void deleteBatch(List<Long> ids) {
+        super.removeByIds(ids);
+    }
+
+    @Override
+    public void toggleStatus(Long id) {
+        SensitiveWord word = getById(id);
+        if (word != null) {
+            word.setStatus(word.getStatus() == 1 ? 0 : 1);
+            super.updateById(word);
+        }
     }
 }

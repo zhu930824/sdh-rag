@@ -1,66 +1,110 @@
 import request from '@/utils/request'
 import type { ApiResponse } from '@/types'
 
-export interface GraphNode {
+export interface NodeData {
   id: number
-  nodeType: string
-  name: string
+  label: string
+  type: string
+  entityType?: string
   description?: string
   documentId?: number
-  properties?: string
-  weight: number
-  status: number
-  createTime?: string
-  updateTime?: string
+  sourceDocumentId?: number
+  weight?: number
+  frequency?: number
+  properties?: Record<string, any>
 }
 
-export interface GraphEdge {
-  id: number
-  sourceId: number
-  targetId: number
+export interface EdgeData {
+  id: string
+  source: number
+  target: number
   relationType: string
-  weight: number
-  properties?: string
-  createTime?: string
+  weight?: number
 }
 
 export interface GraphData {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
+  nodes: NodeData[]
+  edges: EdgeData[]
 }
 
+export interface GraphStats {
+  totalNodes: number
+  totalRelationships: number
+  nodesByType: Array<{ type: string; count: number }>
+  relationshipsByType: Array<{ type: string; count: number }>
+}
+
+export interface GraphPath {
+  nodes: Array<{
+    id: number
+    labels: string[]
+    name: string
+    entityType?: string
+  }>
+  relationships: Array<{
+    type: string
+    source: number
+    target: number
+  }>
+  length: number
+}
+
+export interface GraphBuildResult {
+  success: boolean
+  message: string
+  documentId: number
+  entityCount: number
+  relationCount: number
+  conceptCount: number
+  keywordCount: number
+}
+
+// 获取图谱数据
 export function getGraphData(centerNodeId?: number, depth: number = 2): Promise<ApiResponse<GraphData>> {
   return request.get('/api/graph/data', { params: { centerNodeId, depth } })
 }
 
-export function searchNodes(keyword: string): Promise<ApiResponse<GraphNode[]>> {
+// 搜索节点
+export function searchNodes(keyword: string): Promise<ApiResponse<NodeData[]>> {
   return request.get('/api/graph/nodes', { params: { keyword } })
 }
 
-export function getNode(id: number): Promise<ApiResponse<GraphNode>> {
+// 获取节点详情
+export function getNode(id: number): Promise<ApiResponse<NodeData>> {
   return request.get(`/api/graph/nodes/${id}`)
 }
 
-export function createNode(data: Partial<GraphNode>): Promise<ApiResponse<GraphNode>> {
-  return request.post('/api/graph/nodes', data)
+// 获取节点邻居
+export function getNodeNeighbors(nodeId: number): Promise<ApiResponse<GraphData>> {
+  return request.get(`/api/graph/nodes/${nodeId}/neighbors`)
 }
 
-export function deleteNode(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/graph/nodes/${id}`)
+// 获取最短路径
+export function getShortestPath(startId: number, endId: number): Promise<ApiResponse<GraphPath>> {
+  return request.get('/api/graph/path', { params: { startId, endId } })
 }
 
-export function createEdge(data: Partial<GraphEdge>): Promise<ApiResponse<GraphEdge>> {
-  return request.post('/api/graph/edges', data)
+// 获取统计信息
+export function getGraphStats(): Promise<ApiResponse<GraphStats>> {
+  return request.get('/api/graph/stats')
 }
 
-export function deleteEdge(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/graph/edges/${id}`)
+// 按类型获取节点
+export function getNodesByType(nodeType: string, limit: number = 50): Promise<ApiResponse<NodeData[]>> {
+  return request.get(`/api/graph/nodes/type/${nodeType}`, { params: { limit } })
 }
 
-export function getNodeEdges(nodeId: number): Promise<ApiResponse<GraphEdge[]>> {
-  return request.get(`/api/graph/nodes/${nodeId}/edges`)
-}
-
-export function buildGraphFromDocument(documentId: number): Promise<ApiResponse<null>> {
+// 从文档构建图谱
+export function buildGraphFromDocument(documentId: number): Promise<ApiResponse<GraphBuildResult>> {
   return request.post(`/api/graph/build/${documentId}`)
+}
+
+// 重建文档图谱
+export function rebuildGraphFromDocument(documentId: number): Promise<ApiResponse<GraphBuildResult>> {
+  return request.post(`/api/graph/rebuild/${documentId}`)
+}
+
+// 批量构建图谱
+export function batchBuildGraph(documentIds: number[]): Promise<ApiResponse<void>> {
+  return request.post('/api/graph/build/batch', documentIds)
 }

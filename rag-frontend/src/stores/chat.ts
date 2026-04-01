@@ -7,6 +7,9 @@ export const useChatStore = defineStore('chat', () => {
   // 当前会话ID
   const currentSessionId = ref<string | null>(null)
 
+  // 当前选择的知识库ID
+  const selectedKnowledgeId = ref<number | null>(null)
+
   // 消息列表
   const messages = ref<ChatMessage[]>([])
 
@@ -166,7 +169,7 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       await askQuestion(
-        { question: question.trim(), sessionId },
+        { question: question.trim(), sessionId, knowledgeId: selectedKnowledgeId.value },
         (event) => {
           // 处理流式事件
           const targetMessage = messages.value.find((m) => m.id === aiMessageId)
@@ -234,10 +237,16 @@ export const useChatStore = defineStore('chat', () => {
     isGenerating.value = false
     generatingContent.value = ''
     generatingSources.value = []
+    selectedKnowledgeId.value = null
     if (abortController) {
       abortController.abort()
       abortController = null
     }
+  }
+
+  // 设置选中的知识库
+  function setKnowledgeId(knowledgeId: number | null): void {
+    selectedKnowledgeId.value = knowledgeId
   }
 
   return {
@@ -252,6 +261,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionPage,
     sessionPageSize,
     sessionTotal,
+    selectedKnowledgeId,
 
     // 计算属性
     hasMoreSessions,
@@ -266,5 +276,6 @@ export const useChatStore = defineStore('chat', () => {
     stopGeneration,
     clearMessages,
     reset,
+    setKnowledgeId,
   }
 })

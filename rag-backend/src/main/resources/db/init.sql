@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS `role_menu` (
 
 -- 插入默认用户（密码：123456，使用BCrypt加密）
 INSERT INTO `user` (`username`, `password`, `nickname`, `status`) VALUES
-('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '管理员', 1);
+('admin', '$2a$10$sP2HwA2xtb7r44xmI.5ukO2fw7C6n72WOWyqkbIb/SYQpQP0w7wly', '管理员', 1);
 
 -- 插入默认分类
 INSERT INTO `document_category` (`name`, `description`, `parent_id`, `sort`) VALUES

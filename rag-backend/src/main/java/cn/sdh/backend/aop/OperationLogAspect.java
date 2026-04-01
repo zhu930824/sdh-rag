@@ -57,8 +57,8 @@ public class OperationLogAspect {
             OperationLog operationLog = new OperationLog();
             operationLog.setCreateTime(LocalDateTime.now());
 
-            Long userId = UserContext.getUserId();
-            String username = UserContext.getUsername();
+            Long userId = UserContext.getCurrentUserId();
+            String username = UserContext.getCurrentUsername();
             operationLog.setUserId(userId);
             operationLog.setUsername(username != null ? username : "anonymous");
 

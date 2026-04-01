@@ -2,9 +2,11 @@ package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.KnowledgeDocument;
+import cn.sdh.backend.entity.StatsDaily;
 import cn.sdh.backend.entity.User;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
+import cn.sdh.backend.mapper.StatsDailyMapper;
 import cn.sdh.backend.mapper.UserMapper;
 import cn.sdh.backend.service.StatsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -18,7 +20,7 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class StatsServiceImpl extends ServiceImpl<UserMapper, User> implements StatsService {
+public class StatsServiceImpl extends ServiceImpl<StatsDailyMapper, StatsDaily> implements StatsService {
 
     private final KnowledgeDocumentMapper documentMapper;
     private final ChatHistoryMapper chatHistoryMapper;

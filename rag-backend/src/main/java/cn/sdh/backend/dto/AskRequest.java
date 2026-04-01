@@ -13,4 +13,11 @@ public class AskRequest {
     private String question;
 
     private String sessionId;
+
+    /**
+     * 关联的知识库ID（可选）
+     * 如果指定，则只从该知识库召回
+     * 如果不指定，则从所有知识库查询
+     */
+    private Long knowledgeId;
 }

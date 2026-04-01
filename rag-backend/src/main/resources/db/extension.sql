@@ -642,17 +642,19 @@ CREATE TABLE IF NOT EXISTS `api_quota` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API配额表';
 
 CREATE TABLE IF NOT EXISTS `rate_limit_log` (
-    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '日志ID',
-    `user_id` BIGINT NOT NULL COMMENT '用户ID',
-    `api_type` VARCHAR(50) NOT NULL COMMENT 'API类型',
-    `endpoint` VARCHAR(255) COMMENT 'API端点',
-    `ip_address` VARCHAR(50) COMMENT 'IP地址',
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '日志 ID',
+    `user_id` BIGINT NOT NULL COMMENT '用户 ID',
+    `api_type` VARCHAR(50) NOT NULL COMMENT 'API 类型',
+    `endpoint` VARCHAR(255) COMMENT 'API 端点',
+    `ip_address` VARCHAR(50) COMMENT 'IP 地址',
     `request_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '请求时间',
-    `response_time` INT COMMENT '响应时间(毫秒)',
-    `status` TINYINT DEFAULT 1 COMMENT '状态: 0-限流拒绝, 1-正常',
+    `response_time` INT COMMENT '响应时间 (毫秒)',
+    `status` TINYINT DEFAULT 1 COMMENT '状态：0-限流拒绝，1-正常',
+    PRIMARY KEY (`id`),
     KEY `idx_user_time` (`user_id`, `request_time`),
     KEY `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API限流日志表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API 限流日志表';
+
 
 -- =====================================================
 -- 15. 聊天会话管理

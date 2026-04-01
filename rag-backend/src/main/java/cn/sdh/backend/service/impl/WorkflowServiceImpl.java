@@ -34,4 +34,24 @@ public class WorkflowServiceImpl extends ServiceImpl<WorkflowMapper, Workflow> i
             updateById(workflow);
         }
     }
+
+    @Override
+    public Workflow getById(Long id) {
+        return super.getById(id);
+    }
+
+    @Override
+    public boolean save(Workflow workflow) {
+        return super.save(workflow);
+    }
+
+    @Override
+    public void update(Workflow workflow) {
+        updateById(workflow);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        removeById(id);
+    }
 }

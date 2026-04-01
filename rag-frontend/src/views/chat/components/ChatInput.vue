@@ -1,6 +1,29 @@
 <template>
   <div class="chat-input">
     <div class="input-wrapper">
+      <div class="knowledge-selector">
+        <a-select
+          v-model:value="selectedKnowledgeId"
+          placeholder="选择知识库（可选）"
+          allow-clear
+          style="width: 200px"
+          :loading="knowledgeLoading"
+          @change="handleKnowledgeChange"
+        >
+          <a-select-option :value="null">全部知识库</a-select-option>
+          <a-select-option
+            v-for="kb in knowledgeList"
+            :key="kb.id"
+            :value="kb.id"
+          >
+            {{ kb.name }}
+          </a-select-option>
+        </a-select>
+        <span class="knowledge-hint">
+          {{ selectedKnowledgeId ? '将从选定知识库检索' : '将从所有知识库检索' }}
+        </span>
+      </div>
+
       <a-textarea
         ref="textareaRef"
         v-model:value="inputText"
@@ -45,12 +68,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import {
   SendOutlined,
   PauseCircleOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
+import { getCategories } from '@/api/knowledge'
+import type { DocumentCategory } from '@/api/knowledge'
 
 const props = withDefaults(
   defineProps<{
@@ -58,26 +83,48 @@ const props = withDefaults(
     placeholder?: string
     sending?: boolean
     isGenerating?: boolean
+    knowledgeId?: number | null
   }>(),
   {
     disabled: false,
     placeholder: '输入您的问题...',
     sending: false,
     isGenerating: false,
+    knowledgeId: null,
   }
 )
 
 const emit = defineEmits<{
   (e: 'send', message: string): void
   (e: 'stop'): void
+  (e: 'knowledgeChange', knowledgeId: number | null): void
 }>()
 
 const textareaRef = ref()
 const inputText = ref('')
+const selectedKnowledgeId = ref<number | null>(props.knowledgeId)
+const knowledgeList = ref<DocumentCategory[]>([])
+const knowledgeLoading = ref(false)
 
 const canSend = computed(() => {
   return inputText.value.trim().length > 0 && !props.disabled && !props.sending
 })
+
+async function fetchKnowledgeList(): Promise<void> {
+  knowledgeLoading.value = true
+  try {
+    const res = await getCategories()
+    knowledgeList.value = res.data || []
+  } catch (error) {
+    console.error('获取知识库列表失败:', error)
+  } finally {
+    knowledgeLoading.value = false
+  }
+}
+
+function handleKnowledgeChange(value: number | null): void {
+  emit('knowledgeChange', value)
+}
 
 function adjustHeight(): void {
   nextTick(() => {
@@ -119,6 +166,10 @@ function focus(): void {
   textareaRef.value?.focus()
 }
 
+onMounted(() => {
+  fetchKnowledgeList()
+})
+
 defineExpose({
   focus,
 })
@@ -140,6 +191,19 @@ defineExpose({
 
     &:focus-within {
       border-color: var(--primary-color);
+    }
+
+    .knowledge-selector {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-lighter);
+
+      .knowledge-hint {
+        font-size: 12px;
+        color: var(--text-placeholder);
+      }
     }
 
     .input-textarea {
@@ -186,6 +250,22 @@ defineExpose({
       .input-buttons {
         display: flex;
         gap: 8px;
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .chat-input {
+    .input-wrapper {
+      .knowledge-selector {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+
+        .ant-select {
+          width: 100% !important;
+        }
       }
     }
   }

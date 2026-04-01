@@ -10,7 +10,7 @@ public interface OperationLogService {
 
     OperationLog getById(Long id);
 
-    void save(OperationLog log);
+    boolean save(OperationLog log);
 
     void asyncSaveLog(OperationLog log);
 }

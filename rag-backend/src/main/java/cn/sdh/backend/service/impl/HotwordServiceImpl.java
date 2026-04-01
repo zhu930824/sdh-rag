@@ -1,5 +1,6 @@
 package cn.sdh.backend.service.impl;
 
+import cn.sdh.backend.dto.HotwordStatsResponse;
 import cn.sdh.backend.entity.HotwordRecord;
 import cn.sdh.backend.mapper.HotwordRecordMapper;
 import cn.sdh.backend.service.HotwordService;
@@ -19,22 +20,22 @@ public class HotwordServiceImpl implements HotwordService {
     private final HotwordRecordMapper hotwordRecordMapper;
 
     @Override
-    public Map<String, Object> getStats(LocalDate startDate, LocalDate endDate) {
+    public HotwordStatsResponse getStats(LocalDate startDate, LocalDate endDate) {
         LambdaQueryWrapper<HotwordRecord> wrapper = new LambdaQueryWrapper<>();
         wrapper.ge(HotwordRecord::getQueryDate, startDate)
                .le(HotwordRecord::getQueryDate, endDate);
-        
+
         List<HotwordRecord> records = hotwordRecordMapper.selectList(wrapper);
-        
+
         long totalCount = records.stream().mapToInt(HotwordRecord::getCount).sum();
         long uniqueWords = records.stream().map(HotwordRecord::getWord).distinct().count();
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("totalQueries", totalCount);
-        result.put("uniqueWords", (int) uniqueWords);
-        result.put("avgQueries", uniqueWords > 0 ? Math.round(totalCount * 100.0 / uniqueWords) : 0.0);
-        
-        return result;
+
+        HotwordStatsResponse response = new HotwordStatsResponse();
+        response.setTotalQueries(totalCount);
+        response.setUniqueWords(uniqueWords);
+        response.setAvgQueries(uniqueWords > 0 ? Math.round(totalCount * 100.0 / uniqueWords) / 100.0 : 0.0);
+
+        return response;
     }
 
     @Override
@@ -42,14 +43,14 @@ public class HotwordServiceImpl implements HotwordService {
         LambdaQueryWrapper<HotwordRecord> wrapper = new LambdaQueryWrapper<>();
         wrapper.ge(HotwordRecord::getQueryDate, startDate)
                .le(HotwordRecord::getQueryDate, endDate);
-        
+
         List<HotwordRecord> records = hotwordRecordMapper.selectList(wrapper);
-        
+
         Map<String, Integer> wordCount = records.stream()
             .collect(Collectors.groupingBy(HotwordRecord::getWord, Collectors.summingInt(HotwordRecord::getCount)));
-        
+
         int total = wordCount.values().stream().mapToInt(Integer::intValue).sum();
-        
+
         List<Map<String, Object>> ranking = new ArrayList<>();
         wordCount.entrySet().stream()
             .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
@@ -61,7 +62,7 @@ public class HotwordServiceImpl implements HotwordService {
                 item.put("percent", total > 0 ? Math.round(entry.getValue() * 1000.0 / total) / 10.0 : 0);
                 ranking.add(item);
             });
-        
+
         return ranking;
     }
 
@@ -72,9 +73,9 @@ public class HotwordServiceImpl implements HotwordService {
                .ge(HotwordRecord::getQueryDate, startDate)
                .le(HotwordRecord::getQueryDate, endDate)
                .orderByAsc(HotwordRecord::getQueryDate);
-        
+
         List<HotwordRecord> records = hotwordRecordMapper.selectList(wrapper);
-        
+
         List<Map<String, Object>> trend = new ArrayList<>();
         for (HotwordRecord record : records) {
             Map<String, Object> item = new HashMap<>();
@@ -82,15 +83,15 @@ public class HotwordServiceImpl implements HotwordService {
             item.put("count", record.getCount());
             trend.add(item);
         }
-        
+
         return trend;
     }
 
     @Override
     public List<Map<String, Object>> getList(Integer page, Integer pageSize, String keyword, LocalDate startDate, LocalDate endDate) {
         return getRanking(
-            startDate != null ? startDate : LocalDate.now().minusDays(30), 
-            endDate != null ? endDate : LocalDate.now(), 
+            startDate != null ? startDate : LocalDate.now().minusDays(30),
+            endDate != null ? endDate : LocalDate.now(),
             pageSize != null ? pageSize : 10
         );
     }
@@ -100,14 +101,14 @@ public class HotwordServiceImpl implements HotwordService {
         if (!StringUtils.hasText(word)) {
             return;
         }
-        
+
         LocalDate today = LocalDate.now();
         LambdaQueryWrapper<HotwordRecord> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(HotwordRecord::getWord, word)
                .eq(HotwordRecord::getQueryDate, today);
-        
+
         HotwordRecord record = hotwordRecordMapper.selectOne(wrapper);
-        
+
         if (record != null) {
             record.setCount(record.getCount() + 1);
             hotwordRecordMapper.updateById(record);

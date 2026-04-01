@@ -66,7 +66,7 @@
         </a-menu-item>
 
         <a-menu-item key="/workflow">
-          <template #icon><BranchOutlined /></template>
+          <template #icon><ForkOutlined /></template>
           <span>工作流编排</span>
         </a-menu-item>
 
@@ -206,7 +206,7 @@
         </a-menu-item>
 
         <a-menu-item key="/workflow">
-          <template #icon><BranchOutlined /></template>
+          <template #icon><ForkOutlined /></template>
           <span>工作流编排</span>
         </a-menu-item>
 
@@ -300,7 +300,7 @@ import {
   WarningOutlined,
   LineChartOutlined,
   ApiOutlined,
-  BranchOutlined,
+  ForkOutlined,
   SearchOutlined,
   CodeOutlined,
   ApartmentOutlined,

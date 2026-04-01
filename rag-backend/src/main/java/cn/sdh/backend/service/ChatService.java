@@ -14,9 +14,10 @@ public interface ChatService {
      * @param question 问题
      * @param sessionId 会话ID
      * @param userId 用户ID
+     * @param knowledgeId 知识库ID（可选）
      * @return 流式响应
      */
-    Flux<String> ask(String question, String sessionId, Long userId);
+    Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId);
 
     /**
      * 获取历史对话
@@ -42,4 +43,13 @@ public interface ChatService {
      * @return 是否成功
      */
     boolean saveChatHistory(ChatHistory chatHistory);
+
+    /**
+     * 同步聊天接口
+     * @param userId 用户ID
+     * @param question 问题
+     * @param sessionId 会话ID
+     * @return 回答
+     */
+    String chat(Long userId, String question, String sessionId);
 }

@@ -38,4 +38,24 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
     public ModelConfig getDefault() {
         return getOne(new LambdaQueryWrapper<ModelConfig>().eq(ModelConfig::getIsDefault, 1));
     }
+
+    @Override
+    public ModelConfig getById(Long id) {
+        return super.getById(id);
+    }
+
+    @Override
+    public boolean save(ModelConfig config) {
+        return super.save(config);
+    }
+
+    @Override
+    public void update(ModelConfig config) {
+        updateById(config);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        removeById(id);
+    }
 }

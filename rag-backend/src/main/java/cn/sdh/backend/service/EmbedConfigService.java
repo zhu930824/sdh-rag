@@ -9,7 +9,7 @@ public interface EmbedConfigService {
 
     EmbedConfig getById(Long id);
 
-    void save(EmbedConfig config);
+    boolean save(EmbedConfig config);
 
     void update(EmbedConfig config);
 

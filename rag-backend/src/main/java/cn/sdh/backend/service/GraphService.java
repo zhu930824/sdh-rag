@@ -1,31 +1,65 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.dto.GraphDataResponse;
+import cn.sdh.backend.dto.GraphPathResponse;
+import cn.sdh.backend.dto.GraphStatsResponse;
 import cn.sdh.backend.entity.GraphNode;
-import cn.sdh.backend.entity.GraphEdge;
-import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.util.List;
-import java.util.Map;
 
-public interface GraphService extends IService<GraphNode> {
+/**
+ * 图谱服务接口
+ */
+public interface GraphService {
 
-    GraphNode createNode(GraphNode node);
+    /**
+     * 获取图谱数据（用于可视化）
+     * @param centerNodeId 中心节点ID
+     * @param depth 展开深度
+     * @return 图谱数据
+     */
+    GraphDataResponse getGraphData(Long centerNodeId, int depth);
 
-    GraphNode getNodeById(Long id);
+    /**
+     * 搜索节点
+     * @param keyword 关键词
+     * @return 节点列表
+     */
+    List<GraphDataResponse.NodeData> searchNodes(String keyword);
 
-    List<GraphNode> getNodesByType(String nodeType, int limit);
+    /**
+     * 获取节点详情
+     * @param nodeId 节点ID
+     * @return 节点数据
+     */
+    GraphDataResponse.NodeData getNodeDetail(Long nodeId);
 
-    List<GraphNode> getNodesByDocument(Long documentId);
+    /**
+     * 获取节点的邻居节点
+     * @param nodeId 节点ID
+     * @return 图谱数据
+     */
+    GraphDataResponse getNeighbors(Long nodeId);
 
-    GraphEdge createEdge(GraphEdge edge);
+    /**
+     * 获取两个节点之间的最短路径
+     * @param startId 起始节点ID
+     * @param endId 结束节点ID
+     * @return 路径数据
+     */
+    GraphPathResponse getShortestPath(Long startId, Long endId);
 
-    void deleteEdge(Long id);
+    /**
+     * 获取图谱统计信息
+     * @return 统计数据
+     */
+    GraphStatsResponse getStats();
 
-    List<GraphEdge> getEdgesByNodeId(Long nodeId);
-
-    Map<String, Object> getGraphData(Long centerNodeId, int depth);
-
-    List<GraphNode> searchNodes(String keyword);
-
-    void buildGraphFromDocument(Long documentId);
+    /**
+     * 获取指定类型的节点
+     * @param nodeType 节点类型
+     * @param limit 数量限制
+     * @return 节点列表
+     */
+    List<GraphDataResponse.NodeData> getNodesByType(String nodeType, int limit);
 }

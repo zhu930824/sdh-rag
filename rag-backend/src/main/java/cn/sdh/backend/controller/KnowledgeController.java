@@ -129,7 +129,7 @@ public class KnowledgeController {
     /**
      * 获取分类列表
      */
-    @GetMapping("/categories")
+    @GetMapping("/category/list")
     public Result<List<DocumentCategory>> getCategories() {
         List<DocumentCategory> categories = knowledgeService.getAllCategories();
         return Result.success(categories);

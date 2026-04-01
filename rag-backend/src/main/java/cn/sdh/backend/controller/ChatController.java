@@ -30,11 +30,12 @@ public class ChatController {
     public Flux<String> ask(@RequestBody AskRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
-            return Flux.just("data: {\"error\":\"未授权\"}\n\n");
+            return Flux.just("data: {\"type\":\"error\",\"message\":\"未授权\"}\n\n");
         }
 
         String sessionId = request.getSessionId();
-        return chatService.ask(request.getQuestion(), sessionId, userId);
+        Long knowledgeId = request.getKnowledgeId();
+        return chatService.ask(request.getQuestion(), sessionId, userId, knowledgeId);
     }
 
     /**

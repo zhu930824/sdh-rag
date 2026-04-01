@@ -48,3 +48,7 @@ export function deleteModel(id: number): Promise<ApiResponse<null>> {
 export function setModelDefault(id: number): Promise<ApiResponse<null>> {
   return request.put(`/api/model/${id}/default`)
 }
+
+export function getActiveModels(): Promise<ApiResponse<ModelConfig[]>> {
+  return request.get('/api/model/active')
+}

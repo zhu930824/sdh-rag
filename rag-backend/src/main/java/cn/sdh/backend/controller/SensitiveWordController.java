@@ -57,13 +57,11 @@ public class SensitiveWordController {
         if (existing == null) {
             return Result.notFound("敏感词不存在");
         }
-        
-        SensitiveWord word = new SensitiveWord();
-        word.setId(id);
-        word.setWord(request.getWord());
-        word.setCategory(request.getCategory());
-        word.setStatus(request.getStatus());
-        sensitiveWordService.updateById(word);
+
+        existing.setWord(request.getWord());
+        existing.setCategory(request.getCategory());
+        existing.setStatus(request.getStatus());
+        sensitiveWordService.save(existing);
         return Result.success();
     }
 
@@ -73,7 +71,7 @@ public class SensitiveWordController {
         if (word == null) {
             return Result.notFound("敏感词不存在");
         }
-        sensitiveWordService.removeById(id);
+        sensitiveWordService.deleteById(id);
         return Result.success();
     }
 
@@ -82,7 +80,7 @@ public class SensitiveWordController {
         if (ids == null || ids.isEmpty()) {
             return Result.error("请选择要删除的敏感词");
         }
-        sensitiveWordService.removeByIds(ids);
+        sensitiveWordService.deleteBatch(ids);
         return Result.success();
     }
 

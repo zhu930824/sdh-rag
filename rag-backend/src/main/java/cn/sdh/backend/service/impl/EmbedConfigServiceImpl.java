@@ -39,4 +39,24 @@ public class EmbedConfigServiceImpl extends ServiceImpl<EmbedConfigMapper, Embed
     public EmbedConfig getActive() {
         return getOne(new LambdaQueryWrapper<EmbedConfig>().eq(EmbedConfig::getStatus, 1));
     }
+
+    @Override
+    public EmbedConfig getById(Long id) {
+        return super.getById(id);
+    }
+
+    @Override
+    public boolean save(EmbedConfig config) {
+        return super.save(config);
+    }
+
+    @Override
+    public void update(EmbedConfig config) {
+        updateById(config);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        removeById(id);
+    }
 }
