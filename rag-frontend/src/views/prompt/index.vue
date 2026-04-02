@@ -36,7 +36,7 @@
       </a-table>
     </a-card>
 
-    <a-modal v-model:open="modalVisible" :title="isEdit ? '编辑模板' : '新建模板'" width="800px" @ok="handleSubmit">
+    <a-modal v-model:open="modalVisible" :title="isEdit ? '编辑模板' : '新建模板'" width="800px" ok-text="确认" cancel-text="取消" @ok="handleSubmit">
       <a-form :model="formData" :labelCol="{ span: 4 }" :wrapperCol="{ span: 18 }">
         <a-form-item label="模板名称" required>
           <a-input v-model:value="formData.name" placeholder="请输入模板名称" />

@@ -54,7 +54,7 @@
       </div>
     </a-card>
 
-    <a-modal v-model:open="dialogVisible" :title="dialogTitle" :width="700" @ok="handleSubmit">
+    <a-modal v-model:open="dialogVisible" :title="dialogTitle" :width="700" ok-text="确认" cancel-text="取消" @ok="handleSubmit">
       <a-form :model="formData" :label-col="{ span: 4 }" :wrapper-col="{ span: 18 }">
         <a-form-item label="工作流名称" required>
           <a-input v-model:value="formData.name" placeholder="请输入工作流名称" />

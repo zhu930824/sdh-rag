@@ -10,6 +10,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+
 @Service
 public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, ModelConfig> implements ModelConfigService {
 
@@ -57,5 +59,13 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
     @Override
     public void deleteById(Long id) {
         removeById(id);
+    }
+
+    @Override
+    public List<ModelConfig> getActiveList() {
+        return list(new LambdaQueryWrapper<ModelConfig>()
+                .eq(ModelConfig::getStatus, 1)
+                .eq(ModelConfig::getModelType, "chat")
+                .orderByDesc(ModelConfig::getSort));
     }
 }

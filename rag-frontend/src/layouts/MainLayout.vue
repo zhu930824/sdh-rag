@@ -83,21 +83,23 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .app-layout {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg-body);
 }
 
 .app-main {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg-body);
 }
 
 .app-content {
   flex: 1;
   padding: 16px;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--bg-body);
 }
 

@@ -73,6 +73,8 @@
       title="编辑分类"
       :width="400"
       :mask-closable="false"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleUpdate"
     >
       <a-form ref="editFormRef" :model="editForm" :rules="rules" :label-col="{ span: 4 }">

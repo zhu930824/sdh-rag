@@ -1,8 +1,8 @@
 <template>
   <div class="graph-filter">
-    <a-card title="筛选" size="small" :bordered="false">
-      <div class="filter-section">
-        <div class="filter-label">节点类型</div>
+    <div class="filter-section">
+      <div class="filter-label">节点类型</div>
+      <div class="checkbox-grid">
         <a-checkbox-group v-model:value="selectedNodeTypes">
           <a-checkbox v-for="item in nodeTypes" :key="item.value" :value="item.value">
             <span class="node-type-dot" :style="{ backgroundColor: item.color }"></span>
@@ -10,24 +10,26 @@
           </a-checkbox>
         </a-checkbox-group>
       </div>
+    </div>
 
-      <div class="filter-section">
-        <div class="filter-label">关系类型</div>
+    <div class="filter-section">
+      <div class="filter-label">关系类型</div>
+      <div class="checkbox-grid">
         <a-checkbox-group v-model:value="selectedRelationTypes">
           <a-checkbox v-for="item in relationTypes" :key="item.value" :value="item.value">
             {{ item.label }}
           </a-checkbox>
         </a-checkbox-group>
       </div>
+    </div>
 
-      <div class="filter-section">
-        <div class="filter-label">显示数量</div>
-        <a-slider v-model:value="maxNodes" :min="50" :max="500" :step="50" />
-        <div class="slider-label">最多显示 {{ maxNodes }} 个节点</div>
-      </div>
+    <div class="filter-section">
+      <div class="filter-label">显示数量</div>
+      <a-slider v-model:value="maxNodes" :min="50" :max="500" :step="50" />
+      <div class="slider-label">最多显示 {{ maxNodes }} 个节点</div>
+    </div>
 
-      <a-button type="primary" block @click="handleApply">应用筛选</a-button>
-    </a-card>
+    <a-button type="primary" block @click="handleApply">应用筛选</a-button>
   </div>
 </template>
 
@@ -77,7 +79,20 @@ onMounted(() => {
     .filter-label {
       font-weight: 500;
       margin-bottom: 8px;
-      color: var(--text-color);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+  }
+
+  .checkbox-grid {
+    :deep(.ant-checkbox-group) {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px 12px;
+    }
+
+    :deep(.ant-checkbox-wrapper) {
+      margin: 0;
     }
   }
 
@@ -91,13 +106,8 @@ onMounted(() => {
 
   .slider-label {
     text-align: center;
-    color: var(--text-color-secondary);
+    color: var(--text-secondary);
     font-size: 12px;
-  }
-
-  :deep(.ant-checkbox-wrapper) {
-    display: block;
-    margin-bottom: 4px;
   }
 }
 </style>

@@ -403,6 +403,8 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .dashboard {
+  height: calc(100vh - 56px - 32px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--card-gap);
@@ -415,6 +417,7 @@ onMounted(() => {
   padding: 24px 32px;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 
   html.dark & {
     background: linear-gradient(135deg, #065F46 0%, #064E3B 50%, #022C22 100%);

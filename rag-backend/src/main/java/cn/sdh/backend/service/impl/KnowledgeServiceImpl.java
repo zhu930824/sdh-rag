@@ -136,4 +136,24 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         }
         log.info("索引重建任务已提交，共 {} 个文档", documents.size());
     }
+
+    @Override
+    public Page<KnowledgeDocument> getAllDocuments(Long userId, int page, int size) {
+        return null;
+    }
+
+    @Override
+    public boolean updateCategory(DocumentCategory category) {
+        return false;
+    }
+
+    @Override
+    public boolean deleteCategory(Long id) {
+        return false;
+    }
+
+    @Override
+    public List<KnowledgeDocument> getRelatedDocuments(Long documentId, int limit) {
+        return List.of();
+    }
 }

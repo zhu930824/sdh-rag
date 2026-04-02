@@ -1,119 +1,149 @@
 <template>
-  <div class="model-page">
-    <div class="page-sidebar">
-      <div class="filter-tabs">
-        <a-radio-group v-model:value="filterType" button-style="solid" size="small">
-          <a-radio-button value="all">全部</a-radio-button>
-          <a-radio-button value="public">公有</a-radio-button>
-          <a-radio-button value="local">本地</a-radio-button>
-        </a-radio-group>
-        <a-button type="text" size="small" @click="showSettings = true">
-          <template #icon><SettingOutlined /></template>
-        </a-button>
-      </div>
-
-      <div class="provider-list">
-        <div
-          v-for="provider in providers"
-          :key="provider.key"
-          class="provider-item"
-          :class="{ active: selectedProvider === provider.key }"
-          @click="selectedProvider = provider.key"
-        >
-          <component :is="provider.icon" class="provider-icon" />
-          <span class="provider-name">{{ provider.name }}</span>
+  <div class="model-container">
+    <div class="provider-panel">
+      <a-card :bordered="false">
+        <template #title>
+          <div class="panel-header">
+            <span class="panel-title">模型提供商</span>
+          </div>
+        </template>
+        <div class="filter-tabs">
+          <a-radio-group v-model:value="filterType" button-style="solid" size="small">
+            <a-radio-button value="all">全部</a-radio-button>
+            <a-radio-button value="public">公有</a-radio-button>
+            <a-radio-button value="local">本地</a-radio-button>
+          </a-radio-group>
         </div>
-      </div>
+        <div class="provider-list">
+          <div
+            v-for="provider in providers"
+            :key="provider.key"
+            class="provider-item"
+            :class="{ active: selectedProvider === provider.key }"
+            @click="selectedProvider = provider.key"
+          >
+            <component :is="provider.icon" class="provider-icon" />
+            <span class="provider-name">{{ provider.name }}</span>
+            <span class="provider-count">{{ getProviderCount(provider.key) }}</span>
+          </div>
+        </div>
+      </a-card>
     </div>
 
-    <div class="page-content">
-      <div class="page-header">
-        <h2 class="page-title">模型</h2>
-        <div class="header-actions">
-          <a-input-search
-            v-model:value="searchKeyword"
-            placeholder="请输入关键词"
-            style="width: 200px"
-            @search="handleSearch"
-          />
-          <a-button type="primary" @click="handleAdd">
-            <template #icon><PlusOutlined /></template>
-            新增模型
-          </a-button>
-        </div>
-      </div>
-
-      <div class="model-grid">
-        <div
-          v-for="model in filteredModels"
-          :key="model.id"
-          class="model-card"
-          :class="{ 'is-default': model.isDefault }"
-        >
+    <div class="content-panel">
+      <a-card :bordered="false">
+        <template #title>
           <div class="card-header">
-            <div class="model-icon">
-              <img v-if="model.icon" :src="model.icon" :alt="model.name" />
-              <RobotOutlined v-else />
-            </div>
-            <div class="model-info">
-              <div class="model-name">
-                {{ model.name }}
-                <a-tag v-if="model.isBuiltIn" color="orange">内置</a-tag>
-              </div>
-              <div class="model-tags">
-                <a-tag :color="getModelTypeColor(model.modelType)">{{ getModelTypeText(model.modelType) }}</a-tag>
-                <a-tag v-if="model.isLocal">本地</a-tag>
-                <a-tag v-else color="blue">公有</a-tag>
-              </div>
-            </div>
-            <a-button
-              type="text"
-              class="star-btn"
-              :class="{ active: model.isDefault }"
-              @click="handleSetDefault(model)"
-            >
-              <template #icon><StarFilled v-if="model.isDefault" /><StarOutlined v-else /></template>
+            <span class="card-title">模型列表</span>
+            <a-button type="primary" @click="handleAdd">
+              <template #icon><PlusOutlined /></template>
+              新增模型
             </a-button>
           </div>
+        </template>
 
-          <div class="card-body">
-            <div class="model-detail">
-              <span class="detail-label">基础模型</span>
-              <span class="detail-value">{{ model.modelId }}</span>
-            </div>
-            <div class="model-detail">
-              <span class="detail-label">状态</span>
-              <span class="detail-value status" :class="{ enabled: model.status === 1 }">
-                <span class="status-dot"></span>
-                {{ model.status === 1 ? '启用' : '禁用' }}
-              </span>
-            </div>
-          </div>
-
-          <div class="card-actions">
-            <a-button type="link" size="small" @click="handleEdit(model)">编辑</a-button>
-            <a-switch
-              :checked="model.status === 1"
-              size="small"
-              @change="(checked: boolean) => handleStatusChange(model, checked)"
-            />
-            <a-popconfirm title="确定要删除该模型吗？" @confirm="handleDelete(model)">
-              <a-button type="link" size="small" danger>删除</a-button>
-            </a-popconfirm>
-          </div>
+        <div class="search-form">
+          <a-input-search
+            v-model:value="searchKeyword"
+            placeholder="搜索模型名称或ID"
+            allow-clear
+            style="width: 300px"
+            @search="handleSearch"
+            @press-enter="handleSearch"
+          />
+          <a-button style="margin-left: 8px" @click="handleReset">
+            <template #icon><ReloadOutlined /></template>
+            重置
+          </a-button>
         </div>
 
-        <div class="model-card add-card" @click="handleAdd">
-          <PlusOutlined />
-          <span>新增模型</span>
-        </div>
-      </div>
+        <a-spin :spinning="loading">
+          <div class="model-list">
+            <a-empty v-if="!loading && filteredModels.length === 0" description="暂无模型数据">
+              <a-button type="primary" @click="handleAdd">新增模型</a-button>
+            </a-empty>
+
+            <div v-else class="model-grid">
+              <div
+                v-for="model in filteredModels"
+                :key="model.id"
+                class="model-card"
+                :class="{ 'is-default': model.isDefault }"
+              >
+                <div class="card-header-inner">
+                  <div class="model-icon">
+                    <img v-if="model.icon" :src="model.icon" :alt="model.name" />
+                    <RobotOutlined v-else />
+                  </div>
+                  <div class="model-info">
+                    <div class="model-name">
+                      {{ model.name }}
+                      <a-tag v-if="model.isBuiltIn" color="orange" size="small">内置</a-tag>
+                    </div>
+                    <div class="model-tags">
+                      <a-tag :color="getModelTypeColor(model.modelType)" size="small">
+                        {{ getModelTypeText(model.modelType) }}
+                      </a-tag>
+                      <a-tag v-if="model.isLocal" size="small">本地</a-tag>
+                      <a-tag v-else color="blue" size="small">公有</a-tag>
+                    </div>
+                  </div>
+                  <a-button
+                    type="text"
+                    class="star-btn"
+                    :class="{ active: model.isDefault }"
+                    @click="handleSetDefault(model)"
+                  >
+                    <template #icon><StarFilled v-if="model.isDefault" /><StarOutlined v-else /></template>
+                  </a-button>
+                </div>
+
+                <div class="card-body">
+                  <div class="model-detail">
+                    <span class="detail-label">基础模型</span>
+                    <span class="detail-value">{{ model.modelId }}</span>
+                  </div>
+                  <div class="model-detail">
+                    <span class="detail-label">状态</span>
+                    <span class="detail-value status" :class="{ enabled: model.status === 1 }">
+                      <span class="status-dot"></span>
+                      {{ model.status === 1 ? '启用' : '禁用' }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="card-footer">
+                  <span class="time">{{ formatDate(model.createTime) }}</span>
+                  <div class="actions" @click.stop>
+                    <a-button type="link" size="small" @click="handleEdit(model)">编辑</a-button>
+                    <a-switch
+                      :checked="model.status === 1"
+                      size="small"
+                      @change="(checked: boolean) => handleStatusChange(model, checked)"
+                    />
+                    <a-popconfirm title="确定要删除该模型吗？" @confirm="handleDelete(model)">
+                      <a-button type="link" size="small" danger>删除</a-button>
+                    </a-popconfirm>
+                  </div>
+                </div>
+              </div>
+
+              <div class="model-card add-card" @click="handleAdd">
+                <PlusOutlined />
+                <span>新增模型</span>
+              </div>
+            </div>
+          </div>
+        </a-spin>
+      </a-card>
     </div>
 
     <a-modal
       v-model:open="dialogVisible"
       :title="dialogTitle"
       :width="600"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleSubmit"
       @cancel="dialogVisible = false"
     >
@@ -174,7 +204,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
   PlusOutlined,
-  SettingOutlined,
   StarOutlined,
   StarFilled,
   RobotOutlined,
@@ -183,6 +212,7 @@ import {
   ThunderboltOutlined,
   ApiOutlined,
   SafetyOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { getModelList, createModel, updateModel, deleteModel, setModelDefault } from '@/api/model'
@@ -198,7 +228,6 @@ const loading = ref(false)
 const searchKeyword = ref('')
 const filterType = ref('all')
 const selectedProvider = ref('all')
-const showSettings = ref(false)
 const tableData = ref<ExtendedModelConfig[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加模型')
@@ -219,7 +248,7 @@ const formData = reactive<Partial<ExtendedModelConfig>>({
 })
 
 const providers = [
-  { key: 'all', name: 'Local (内置)', icon: CloudOutlined },
+  { key: 'all', name: '全部', icon: CloudOutlined },
   { key: 'openai', name: 'OpenAI', icon: ApiOutlined },
   { key: 'gemini', name: 'Gemini', icon: ThunderboltOutlined },
   { key: 'ollama', name: 'Ollama', icon: CodeOutlined },
@@ -257,6 +286,11 @@ const filteredModels = computed(() => {
   return models
 })
 
+function getProviderCount(providerKey: string): number {
+  if (providerKey === 'all') return tableData.value.length
+  return tableData.value.filter(m => m.provider === providerKey).length
+}
+
 function getModelTypeColor(type: string): string {
   const map: Record<string, string> = {
     chat: 'blue',
@@ -273,6 +307,16 @@ function getModelTypeText(type: string): string {
     reranker: '多路召回',
   }
   return map[type] || type
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
 }
 
 async function loadData() {
@@ -292,7 +336,13 @@ async function loadData() {
 }
 
 function handleSearch() {
-  loadData()
+  // 搜索已通过 computed 实现
+}
+
+function handleReset() {
+  searchKeyword.value = ''
+  filterType.value = 'all'
+  selectedProvider.value = 'all'
 }
 
 function handleAdd() {
@@ -369,26 +419,49 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.model-page {
+.model-container {
   display: flex;
-  height: calc(100vh - 100px);
-  background-color: var(--bg-page);
+  gap: 16px;
+  height: calc(100vh - 56px - 32px);
 
-  .page-sidebar {
-    width: 200px;
-    background-color: var(--bg-color);
-    border-right: 1px solid var(--border-lighter);
-    padding: 16px;
-    margin-right: 10px;
+  .provider-panel {
+    width: 260px;
+    flex-shrink: 0;
+    overflow: hidden;
+
+    :deep(.ant-card) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      .ant-card-body {
+        flex: 1;
+        overflow: auto;
+      }
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .panel-title {
+        font-size: 16px;
+        font-weight: 500;
+      }
+    }
 
     .filter-tabs {
-      display: flex;
-      align-items: center;
-      gap: 8px;
       margin-bottom: 16px;
 
       :deep(.ant-radio-group) {
+        width: 100%;
+        display: flex;
+      }
+
+      :deep(.ant-radio-button-wrapper) {
         flex: 1;
+        text-align: center;
       }
     }
 
@@ -398,94 +471,114 @@ onMounted(() => {
         align-items: center;
         gap: 10px;
         padding: 10px 12px;
-        border-radius: var(--border-radius-base);
+        border-radius: 8px;
         cursor: pointer;
-        transition: all var(--transition-duration);
+        transition: all 0.3s;
 
         &:hover {
-          background-color: var(--bg-page);
+          background-color: #f5f7fa;
         }
 
         &.active {
-          background-color: var(--primary-light-9);
-          color: var(--primary-color);
+          background-color: #e6f4ff;
+          color: #1890ff;
         }
 
         .provider-icon {
           width: 20px;
           height: 20px;
-          color: var(--text-secondary);
+          color: inherit;
         }
 
         .provider-name {
+          flex: 1;
           font-size: 14px;
+        }
+
+        .provider-count {
+          font-size: 12px;
+          color: #909399;
         }
       }
     }
   }
 
-  .page-content {
+  .content-panel {
     flex: 1;
-    padding: 24px;
-    overflow-y: auto;
+    overflow: hidden;
 
-    .page-header {
+    :deep(.ant-card) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      .ant-card-body {
+        flex: 1;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+      }
+    }
+
+    .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 24px;
 
-      .page-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 0;
+      .card-title {
+        font-size: 16px;
+        font-weight: 500;
       }
+    }
 
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
+    .search-form {
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+    }
+
+    .model-list {
+      flex: 1;
+      min-height: 0;
     }
 
     .model-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
     }
 
     .model-card {
-      background-color: var(--bg-color);
-      border: 1px solid var(--border-lighter);
-      border-radius: var(--border-radius-large);
+      background: #fff;
+      border: 1px solid #e4e7ed;
+      border-radius: 8px;
       padding: 16px;
-      transition: all var(--transition-duration);
+      transition: all 0.3s;
 
       &:hover {
-        box-shadow: var(--box-shadow);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       }
 
       &.is-default {
-        border-color: var(--primary-color);
+        border-color: #1890ff;
       }
 
-      .card-header {
+      .card-header-inner {
         display: flex;
         align-items: flex-start;
         gap: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
 
         .model-icon {
           width: 48px;
           height: 48px;
-          background-color: var(--bg-page);
-          border-radius: var(--border-radius-base);
+          background-color: #f5f7fa;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 24px;
-          color: var(--primary-color);
+          color: #1890ff;
 
           img {
             width: 32px;
@@ -500,7 +593,6 @@ onMounted(() => {
           .model-name {
             font-size: 15px;
             font-weight: 500;
-            color: var(--text-primary);
             margin-bottom: 8px;
             display: flex;
             align-items: center;
@@ -515,16 +607,16 @@ onMounted(() => {
         }
 
         .star-btn {
-          color: var(--text-secondary);
+          color: #909399;
 
           &.active {
-            color: var(--warning-color);
+            color: #faad14;
           }
         }
       }
 
       .card-body {
-        margin-bottom: 16px;
+        margin-bottom: 12px;
 
         .model-detail {
           display: flex;
@@ -533,11 +625,11 @@ onMounted(() => {
           font-size: 13px;
 
           .detail-label {
-            color: var(--text-secondary);
+            color: #909399;
           }
 
           .detail-value {
-            color: var(--text-primary);
+            color: #303133;
 
             &.status {
               display: flex;
@@ -548,14 +640,14 @@ onMounted(() => {
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
-                background-color: var(--text-secondary);
+                background-color: #909399;
               }
 
               &.enabled {
-                color: var(--success-color);
+                color: #67c23a;
 
                 .status-dot {
-                  background-color: var(--success-color);
+                  background-color: #67c23a;
                 }
               }
             }
@@ -563,13 +655,23 @@ onMounted(() => {
         }
       }
 
-      .card-actions {
+      .card-footer {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
         padding-top: 12px;
-        border-top: 1px solid var(--border-lighter);
+        border-top: 1px solid #f0f0f0;
+
+        .time {
+          font-size: 12px;
+          color: #909399;
+        }
+
+        .actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
       }
 
       &.add-card {
@@ -578,14 +680,14 @@ onMounted(() => {
         align-items: center;
         justify-content: center;
         gap: 8px;
-        min-height: 180px;
+        min-height: 160px;
         border-style: dashed;
         cursor: pointer;
-        color: var(--text-secondary);
+        color: #909399;
 
         &:hover {
-          color: var(--primary-color);
-          border-color: var(--primary-color);
+          color: #1890ff;
+          border-color: #1890ff;
         }
 
         :deep(.anticon) {
@@ -596,14 +698,33 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 768px) {
-  .model-page {
+@media (max-width: 1200px) {
+  .model-container {
     flex-direction: column;
+    height: auto;
 
-    .page-sidebar {
+    .provider-panel {
       width: 100%;
-      border-right: none;
-      border-bottom: 1px solid var(--border-lighter);
+
+      .provider-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+
+        .provider-item {
+          padding: 8px 12px;
+
+          .provider-count {
+            display: none;
+          }
+        }
+      }
+    }
+
+    .content-panel {
+      .model-grid {
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      }
     }
   }
 }

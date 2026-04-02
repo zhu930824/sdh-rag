@@ -27,16 +27,22 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '首页', icon: 'Odometer', requiresAuth: true } as RouteMeta,
       },
       {
+        path: 'knowledge-base',
+        name: 'KnowledgeBase',
+        component: () => import('@/views/knowledge-base/index.vue'),
+        meta: { title: '知识库', icon: 'Folder', requiresAuth: true } as RouteMeta,
+      },
+      {
         path: 'knowledge',
         name: 'Knowledge',
         component: () => import('@/views/knowledge/index.vue'),
-        meta: { title: '知识库', icon: 'Folder', requiresAuth: true } as RouteMeta,
+        meta: { title: '文档管理', icon: 'Document', requiresAuth: true } as RouteMeta,
       },
       {
         path: 'document',
         name: 'Document',
         component: () => import('@/views/document/index.vue'),
-        meta: { title: '文档管理', icon: 'Document', requiresAuth: true, hidden: true } as RouteMeta,
+        meta: { title: '文档详情', icon: 'Document', requiresAuth: true, hidden: true } as RouteMeta,
       },
       {
         path: 'chat',
@@ -93,12 +99,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '自然语言查询', icon: 'Search', requiresAuth: true } as RouteMeta,
       },
       {
-        path: 'embed',
-        name: 'Embed',
-        component: () => import('@/views/embed/index.vue'),
-        meta: { title: '嵌入聊天配置', icon: 'Code', requiresAuth: true } as RouteMeta,
-      },
-      {
         path: 'graph',
         name: 'Graph',
         component: () => import('@/views/graph/index.vue'),
@@ -109,12 +109,6 @@ const routes: RouteRecordRaw[] = [
         name: 'Feedback',
         component: () => import('@/views/feedback/index.vue'),
         meta: { title: '问答评价', icon: 'Like', requiresAuth: true } as RouteMeta,
-      },
-      {
-        path: 'assistant',
-        name: 'Assistant',
-        component: () => import('@/views/assistant/index.vue'),
-        meta: { title: '助手市场', icon: 'Robot', requiresAuth: true } as RouteMeta,
       },
       {
         path: 'stats',
@@ -133,18 +127,6 @@ const routes: RouteRecordRaw[] = [
         name: 'Approval',
         component: () => import('@/views/approval/index.vue'),
         meta: { title: '审核中心', icon: 'Audit', requiresAuth: true } as RouteMeta,
-      },
-      {
-        path: 'points',
-        name: 'Points',
-        component: () => import('@/views/points/index.vue'),
-        meta: { title: '积分商城', icon: 'Gift', requiresAuth: true } as RouteMeta,
-      },
-      {
-        path: 'channel',
-        name: 'Channel',
-        component: () => import('@/views/channel/index.vue'),
-        meta: { title: '渠道管理', icon: 'Api', requiresAuth: true } as RouteMeta,
       },
       {
         path: 'process-task',
@@ -187,12 +169,6 @@ const routes: RouteRecordRaw[] = [
         name: 'Webhook',
         component: () => import('@/views/webhook/index.vue'),
         meta: { title: 'Webhook管理', icon: 'Api', requiresAuth: true } as RouteMeta,
-      },
-      {
-        path: 'comparison',
-        name: 'Comparison',
-        component: () => import('@/views/comparison/index.vue'),
-        meta: { title: '文档对比', icon: 'Diff', requiresAuth: true } as RouteMeta,
       },
       {
         path: 'profile',

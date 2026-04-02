@@ -12,61 +12,62 @@
       </template>
 
       <!-- 搜索栏 -->
-      <a-form layout="inline" :model="searchForm" class="search-form">
-        <a-form-item label="敏感词">
-          <a-input
-            v-model:value="searchForm.keyword"
-            placeholder="请输入敏感词"
-            allow-clear
-            @pressEnter="handleSearch"
-          />
-        </a-form-item>
-        <a-form-item label="分类">
-          <a-select
-            v-model:value="searchForm.category"
-            placeholder="请选择分类"
-            allow-clear
-            style="width: 120px"
-          >
-            <a-select-option value="politics">政治</a-select-option>
-            <a-select-option value="porn">色情</a-select-option>
-            <a-select-option value="violence">暴力</a-select-option>
-            <a-select-option value="ad">广告</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item>
+      <div class="search-toolbar">
+        <a-form layout="inline" :model="searchForm" class="search-form">
+          <a-form-item label="敏感词">
+            <a-input
+              v-model:value="searchForm.keyword"
+              placeholder="请输入敏感词"
+              allow-clear
+              @pressEnter="handleSearch"
+            />
+          </a-form-item>
+          <a-form-item label="分类">
+            <a-select
+              v-model:value="searchForm.category"
+              placeholder="请选择分类"
+              allow-clear
+              style="width: 120px"
+            >
+              <a-select-option value="politics">政治</a-select-option>
+              <a-select-option value="porn">色情</a-select-option>
+              <a-select-option value="violence">暴力</a-select-option>
+              <a-select-option value="ad">广告</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item>
+            <a-space>
+              <a-button type="primary" @click="handleSearch">
+                <template #icon><SearchOutlined /></template>
+                搜索
+              </a-button>
+              <a-button @click="handleReset">
+                <template #icon><ReloadOutlined /></template>
+                重置
+              </a-button>
+            </a-space>
+          </a-form-item>
+        </a-form>
+        <div class="toolbar-actions">
           <a-space>
-            <a-button type="primary" @click="handleSearch">
-              <template #icon><SearchOutlined /></template>
-              搜索
+            <a-button
+              v-if="selectedRowKeys.length > 0"
+              danger
+              @click="handleBatchDelete"
+            >
+              <template #icon><DeleteOutlined /></template>
+              批量删除 ({{ selectedRowKeys.length }})
             </a-button>
-            <a-button @click="handleReset">
-              <template #icon><ReloadOutlined /></template>
-              重置
-            </a-button>
+            <TableToolbar
+              :columns="tableColumns"
+              :density="tableDensity"
+              @refresh="loadData"
+              @column-change="handleColumnChange"
+              @density-change="handleDensityChange"
+            />
           </a-space>
-        </a-form-item>
-      </a-form>
-
-      <!-- 表格工具栏 -->
-      <TableToolbar
-        :columns="tableColumns"
-        :density="tableDensity"
-        @refresh="loadData"
-        @column-change="handleColumnChange"
-        @density-change="handleDensityChange"
-      >
-        <template #left>
-          <a-button
-            v-if="selectedRowKeys.length > 0"
-            danger
-            @click="handleBatchDelete"
-          >
-            <template #icon><DeleteOutlined /></template>
-            批量删除 ({{ selectedRowKeys.length }})
-          </a-button>
-        </template>
-      </TableToolbar>
+        </div>
+      </div>
 
       <!-- 表格 -->
       <a-table
@@ -416,6 +417,27 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .sensitive-container {
+  height: calc(100vh - 56px - 32px);
+  overflow: hidden;
+
+  :deep(.ant-card) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+
+    .ant-card-head {
+      flex-shrink: 0;
+    }
+
+    .ant-card-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+  }
+
   :deep(.ant-card-head-title) {
     width: 100%;
   }
@@ -431,14 +453,67 @@ onMounted(() => {
     }
   }
 
+  .search-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
   .search-form {
-    margin-bottom: 20px;
+    flex: 1;
+  }
+
+  .toolbar-actions {
+    flex-shrink: 0;
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
+
+    :deep(.table-toolbar) {
+      display: inline-flex;
+    }
+  }
+
+  :deep(.ant-table-wrapper) {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    .ant-spin-nested-loading {
+      height: 100%;
+    }
+
+    .ant-spin-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-table {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-table-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-table-body {
+      flex: 1;
+      overflow: auto !important;
+    }
   }
 
   .pagination {
-    margin-top: 20px;
+    margin-top: 16px;
     display: flex;
     justify-content: flex-end;
+    flex-shrink: 0;
   }
 }
 </style>

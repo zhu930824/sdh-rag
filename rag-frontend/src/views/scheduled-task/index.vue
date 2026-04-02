@@ -42,7 +42,7 @@
       </a-table>
     </a-card>
 
-    <a-modal v-model:open="modalVisible" :title="isEdit ? '编辑任务' : '新建任务'" width="600px" @ok="handleSubmit">
+    <a-modal v-model:open="modalVisible" :title="isEdit ? '编辑任务' : '新建任务'" width="600px" ok-text="确认" cancel-text="取消" @ok="handleSubmit">
       <a-form :model="formData" :labelCol="{ span: 6 }">
         <a-form-item label="任务名称" required>
           <a-input v-model:value="formData.name" placeholder="请输入任务名称" />

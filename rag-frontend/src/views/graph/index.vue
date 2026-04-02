@@ -1,67 +1,127 @@
 <template>
   <div class="graph-page">
-    <div class="page-header">
-      <h2>知识图谱</h2>
-      <a-space>
-        <a-input-search
-          v-model:value="searchKeyword"
-          placeholder="搜索节点..."
-          style="width: 280px"
-          @search="handleSearch"
-        />
-        <a-button type="primary" @click="handleRefresh">
-          <template #icon><ReloadOutlined /></template>
-          刷新
-        </a-button>
-      </a-space>
+    <!-- 统计概览 -->
+    <div class="stats-grid">
+      <div
+        v-for="(stat, index) in statsData"
+        :key="stat.label"
+        class="stat-card"
+        :style="{ animationDelay: `${index * 0.1}s` }"
+      >
+        <div class="stat-icon" :style="{ backgroundColor: stat.color }">
+          <ApartmentOutlined v-if="stat.icon === ApartmentOutlined" />
+          <BranchesOutlined v-else-if="stat.icon === BranchesOutlined" />
+          <FileTextOutlined v-else-if="stat.icon === FileTextOutlined" />
+          <TagOutlined v-else />
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ stat.value }}</div>
+          <div class="stat-label">{{ stat.label }}</div>
+        </div>
+      </div>
     </div>
 
-    <GraphToolbar
-      :graph="graph"
-      @refresh="handleRefresh"
-      @layout-change="handleLayoutChange"
-    />
+    <!-- 工具栏 -->
+    <div class="toolbar-card">
+      <div class="toolbar-content">
+        <div class="toolbar-left">
+          <a-input-search
+            v-model:value="searchKeyword"
+            placeholder="搜索节点..."
+            style="width: 280px"
+            @search="handleSearch"
+          />
+          <GraphToolbar
+            :graph="graph"
+            @refresh="handleRefresh"
+            @layout-change="handleLayoutChange"
+          />
+        </div>
+        <div class="toolbar-right">
+          <a-button type="primary" @click="handleRefresh">
+            <template #icon><ReloadOutlined /></template>
+            刷新
+          </a-button>
+        </div>
+      </div>
+    </div>
 
-    <div class="graph-container">
-      <div class="graph-sidebar">
-        <GraphFilter @apply="handleFilterApply" />
+    <!-- 图谱内容 -->
+    <div class="content-grid">
+      <!-- 左侧边栏 -->
+      <div class="sidebar-card">
+        <div class="sidebar-section">
+          <div class="section-header">
+            <h3 class="section-title">
+              <FilterOutlined />
+              筛选条件
+            </h3>
+          </div>
+          <GraphFilter @apply="handleFilterApply" />
+        </div>
 
-        <a-card title="统计信息" size="small" :bordered="false" style="margin-top: 12px">
+        <a-divider style="margin: 16px 0" />
+
+        <div class="sidebar-section">
+          <div class="section-header">
+            <h3 class="section-title">
+              <PieChartOutlined />
+              统计信息
+            </h3>
+          </div>
           <a-spin :spinning="statsLoading">
-            <a-statistic title="总节点数" :value="stats.totalNodes" />
-            <a-statistic title="总关系数" :value="stats.totalRelationships" style="margin-top: 8px" />
-            <a-divider style="margin: 12px 0" />
+            <div class="stats-list">
+              <div class="stats-item">
+                <span class="stats-label">总节点数</span>
+                <span class="stats-value">{{ stats.totalNodes }}</span>
+              </div>
+              <div class="stats-item">
+                <span class="stats-label">总关系数</span>
+                <span class="stats-value">{{ stats.totalRelationships }}</span>
+              </div>
+            </div>
             <div class="stats-chart">
-              <div v-for="item in stats.nodesByType" :key="item.type" class="stats-item">
+              <div v-for="item in stats.nodesByType" :key="item.type" class="stats-chart-item">
                 <span class="stats-label">{{ item.type }}</span>
                 <a-progress :percent="(item.count / stats.totalNodes) * 100" :show-info="false" />
                 <span class="stats-count">{{ item.count }}</span>
               </div>
             </div>
           </a-spin>
-        </a-card>
+        </div>
 
-        <a-card title="图例" size="small" :bordered="false" style="margin-top: 12px">
-          <div class="legend-item">
-            <span class="legend-dot" style="backgroundColor: #13c2c2"></span>
-            <span>文档</span>
+        <a-divider style="margin: 16px 0" />
+
+        <div class="sidebar-section">
+          <div class="section-header">
+            <h3 class="section-title">
+              <BgColorsOutlined />
+              图例
+            </h3>
           </div>
-          <div class="legend-item">
-            <span class="legend-dot" style="backgroundColor: #52c41a"></span>
-            <span>实体</span>
+          <div class="legend-list">
+            <div class="legend-item">
+              <span class="legend-dot" style="backgroundColor: #13c2c2"></span>
+              <span>文档</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="backgroundColor: #52c41a"></span>
+              <span>实体</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="backgroundColor: #eb2f96"></span>
+              <span>概念</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="backgroundColor: #faad14"></span>
+              <span>关键词</span>
+            </div>
           </div>
-          <div class="legend-item">
-            <span class="legend-dot" style="backgroundColor: #eb2f96"></span>
-            <span>概念</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot" style="backgroundColor: #faad14"></span>
-            <span>关键词</span>
-          </div>
-        </a-card>
+        </div>
       </div>
 
-      <div class="graph-main">
+      <!-- 图谱主体 -->
+      <div class="graph-card">
         <div ref="graphContainerRef" class="graph-canvas"></div>
         <NodeDetail
           :node="selectedNode"
@@ -76,6 +136,8 @@
     <a-modal
       v-model:open="pathModalVisible"
       title="查找路径"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handlePathSearch"
     >
       <a-form layout="vertical">
@@ -103,9 +165,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
-import { ReloadOutlined } from '@ant-design/icons-vue'
+import {
+  ReloadOutlined,
+  ApartmentOutlined,
+  BranchesOutlined,
+  FileTextOutlined,
+  TagOutlined,
+  FilterOutlined,
+  PieChartOutlined,
+  BgColorsOutlined,
+} from '@ant-design/icons-vue'
 import G6 from '@antv/g6'
 import GraphToolbar from './components/GraphToolbar.vue'
 import GraphFilter from './components/GraphFilter.vue'
@@ -144,6 +215,34 @@ const filters = reactive({
   relationTypes: ['CONTAINS', 'REFERENCES', 'RELATED_TO', 'INSTANCE_OF'],
   maxNodes: 200
 })
+
+// 统计卡片数据
+const statsData = computed(() => [
+  {
+    label: '总节点数',
+    value: stats.totalNodes,
+    icon: ApartmentOutlined,
+    color: '#059669',
+  },
+  {
+    label: '总关系数',
+    value: stats.totalRelationships,
+    icon: BranchesOutlined,
+    color: '#C67B5C',
+  },
+  {
+    label: '文档节点',
+    value: stats.nodesByType.find(n => n.type === 'Document')?.count || 0,
+    icon: FileTextOutlined,
+    color: '#5B9EA6',
+  },
+  {
+    label: '实体节点',
+    value: stats.nodesByType.find(n => n.type === 'Entity')?.count || 0,
+    icon: TagOutlined,
+    color: '#6B7B3C',
+  },
+])
 
 // 节点颜色映射
 const getNodeColor = (node: NodeData): string => {
@@ -493,92 +592,280 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .graph-page {
-  padding: 24px;
-  height: calc(100vh - 100px);
+  height: calc(100vh - 56px - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
+// Stats Grid
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  flex-shrink: 0;
+}
 
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 600;
-    }
+.stat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all var(--duration-normal) var(--ease-nature);
+  animation: slideInUp 0.4s var(--ease-out) both;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+
+.stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.stat-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+// Section Card
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+
+  :deep(.anticon) {
+    color: var(--primary-color);
+  }
+}
+
+// Toolbar Card
+.toolbar-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 12px 20px;
+  flex-shrink: 0;
+}
+
+.toolbar-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 32px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 100%;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+// Content Grid
+.content-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+// Sidebar Card
+.sidebar-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+}
+
+.sidebar-section {
+  margin-bottom: 0;
+}
+
+.stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stats-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  .stats-label {
+    font-size: 13px;
+    color: var(--text-secondary);
   }
 
-  .graph-container {
-    display: flex;
-    gap: 16px;
-    height: calc(100% - 110px);
+  .stats-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+}
 
-    .graph-sidebar {
-      width: 240px;
-      flex-shrink: 0;
+.stats-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-      .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
+.stats-chart-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 
-        .legend-dot {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-        }
-      }
+  .stats-label {
+    width: 60px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
 
-      .stats-item {
-        display: flex;
-        align-items: center;
-        margin-bottom: 8px;
+  .ant-progress {
+    flex: 1;
+  }
 
-        .stats-label {
-          width: 60px;
-          font-size: 12px;
-        }
+  .stats-count {
+    width: 40px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+}
 
-        .stats-count {
-          width: 40px;
-          text-align: right;
-          font-size: 12px;
-        }
-      }
-    }
+// Legend
+.legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-    .graph-main {
-      flex: 1;
-      position: relative;
-      background-color: var(--bg-color);
-      border-radius: var(--border-radius-large);
-      overflow: hidden;
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
 
-      .graph-canvas {
-        width: 100%;
-        height: 100%;
-      }
-    }
+  .legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+}
+
+// Graph Card
+.graph-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  position: relative;
+  min-height: 600px;
+
+  .graph-canvas {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+// Animations
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Responsive
+@media (max-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .graph-page {
-    padding: 16px;
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
 
-    .graph-container {
-      flex-direction: column;
+  .sidebar-card {
+    order: 1;
+  }
 
-      .graph-sidebar {
-        width: 100%;
-      }
+  .graph-card {
+    order: 2;
+    min-height: 400px;
+  }
 
-      .graph-main {
-        height: 400px;
-      }
-    }
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-content {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .toolbar-left {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

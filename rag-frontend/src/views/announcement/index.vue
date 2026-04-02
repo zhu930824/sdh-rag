@@ -1,72 +1,112 @@
 <template>
-  <div class="announcement-page">
-    <div class="page-header">
-      <h2>公告管理</h2>
-      <a-button type="primary" @click="showCreateModal">
-        <template #icon><PlusOutlined /></template>
-        发布公告
-      </a-button>
-    </div>
-
-    <div class="filter-section">
-      <a-form layout="inline">
-        <a-form-item label="类型">
-          <a-select v-model:value="filters.type" placeholder="全部" allow-clear style="width: 120px">
-            <a-select-option value="notice">通知</a-select-option>
-            <a-select-option value="update">更新</a-select-option>
-            <a-select-option value="warning">警告</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="状态">
-          <a-select v-model:value="filters.status" placeholder="全部" allow-clear style="width: 120px">
-            <a-select-option :value="0">草稿</a-select-option>
-            <a-select-option :value="1">已发布</a-select-option>
-            <a-select-option :value="2">已下线</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item>
-          <a-button type="primary" @click="loadData">查询</a-button>
-        </a-form-item>
-      </a-form>
-    </div>
-
-    <a-table
-      :columns="columns"
-      :data-source="tableData"
-      :loading="loading"
-      :pagination="pagination"
-      row-key="id"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'title'">
-          <span>
-            <a-tag v-if="record.isTop" color="red" size="small">置顶</a-tag>
-            {{ record.title }}
-          </span>
-        </template>
-        <template v-else-if="column.dataIndex === 'type'">
-          <a-tag :color="getTypeColor(record.type)">{{ getTypeText(record.type) }}</a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'status'">
-          <a-tag :color="getStatusColor(record.status)">{{ getStatusText(record.status) }}</a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'action'">
-          <a-space>
-            <a-button type="link" size="small" @click="viewDetail(record)">详情</a-button>
-            <a-button v-if="record.status === 0" type="link" size="small" @click="publishAnnouncement(record)">发布</a-button>
-            <a-button type="link" size="small" @click="editAnnouncement(record)">编辑</a-button>
-            <a-popconfirm title="确定删除？" @confirm="deleteAnnouncement(record)">
-              <a-button type="link" size="small" danger>删除</a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
+  <div class="announcement-container">
+    <a-card>
+      <template #title>
+        <div class="card-header">
+          <span class="card-title">公告管理</span>
+          <a-button type="primary" @click="showCreateModal">
+            <template #icon><PlusOutlined /></template>
+            发布公告
+          </a-button>
+        </div>
       </template>
-    </a-table>
+
+      <!-- 搜索栏 -->
+      <div class="search-toolbar">
+        <a-form layout="inline" :model="filters" class="search-form">
+          <a-form-item label="类型">
+            <a-select v-model:value="filters.type" placeholder="全部" allow-clear style="width: 120px">
+              <a-select-option value="notice">通知</a-select-option>
+              <a-select-option value="update">更新</a-select-option>
+              <a-select-option value="warning">警告</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="状态">
+            <a-select v-model:value="filters.status" placeholder="全部" allow-clear style="width: 120px">
+              <a-select-option :value="0">草稿</a-select-option>
+              <a-select-option :value="1">已发布</a-select-option>
+              <a-select-option :value="2">已下线</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item>
+            <a-space>
+              <a-button type="primary" @click="handleSearch">
+                <template #icon><SearchOutlined /></template>
+                搜索
+              </a-button>
+              <a-button @click="handleReset">
+                <template #icon><ReloadOutlined /></template>
+                重置
+              </a-button>
+            </a-space>
+          </a-form-item>
+        </a-form>
+        <div class="toolbar-actions">
+          <a-button @click="loadData">
+            <template #icon><SyncOutlined /></template>
+            刷新
+          </a-button>
+        </div>
+      </div>
+
+      <!-- 表格 -->
+      <a-table
+        class="announcement-table"
+        :columns="columns"
+        :data-source="tableData"
+        :loading="loading"
+        :pagination="false"
+        :scroll="{ x: 900 }"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'title'">
+            <span>
+              <a-tag v-if="record.isTop" color="red" size="small">置顶</a-tag>
+              {{ record.title }}
+            </span>
+          </template>
+          <template v-else-if="column.dataIndex === 'type'">
+            <a-tag :color="getTypeColor(record.type)">{{ getTypeText(record.type) }}</a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'status'">
+            <a-tag :color="getStatusColor(record.status)">{{ getStatusText(record.status) }}</a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="viewDetail(record)">详情</a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="publishAnnouncement(record)">发布</a-button>
+              <a-button type="link" size="small" @click="editAnnouncement(record)">编辑</a-button>
+              <a-popconfirm title="确定删除？" ok-text="确定" cancel-text="取消" @confirm="deleteAnnouncement(record)">
+                <a-button type="link" size="small" danger>删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+
+      <!-- 分页 -->
+      <div class="pagination">
+        <a-pagination
+          v-model:current="pagination.current"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-size-options="['10', '20', '50', '100']"
+          show-size-changer
+          show-quick-jumper
+          :show-total="(total: number) => `共 ${total} 条`"
+          @change="handlePageChange"
+          @show-size-change="handleSizeChange"
+        />
+      </div>
+    </a-card>
 
     <a-modal
       v-model:open="modalVisible"
       :title="isEdit ? '编辑公告' : '发布公告'"
       :width="600"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleSubmit"
     >
       <a-form :model="formData" :label-col="{ span: 4 }" :wrapper-col="{ span: 18 }">
@@ -97,7 +137,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import {
   getAnnouncementList,
   createAnnouncement,
@@ -112,8 +152,8 @@ const tableData = ref<Announcement[]>([])
 const modalVisible = ref(false)
 const isEdit = ref(false)
 
-const pagination = reactive({ current: 1, pageSize: 10, total: 0, showSizeChanger: true })
-const filters = reactive({ type: undefined, status: undefined })
+const pagination = reactive({ current: 1, pageSize: 10, total: 0 })
+const filters = reactive({ type: undefined as string | undefined, status: undefined as number | undefined })
 
 const formData = reactive({
   id: 0,
@@ -172,6 +212,28 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+}
+
+function handleSearch() {
+  pagination.current = 1
+  loadData()
+}
+
+function handleReset() {
+  filters.type = undefined
+  filters.status = undefined
+  handleSearch()
+}
+
+function handlePageChange(page: number) {
+  pagination.current = page
+  loadData()
+}
+
+function handleSizeChange(_current: number, size: number) {
+  pagination.current = 1
+  pagination.pageSize = size
+  loadData()
 }
 
 function showCreateModal() {
@@ -236,22 +298,104 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.announcement-page {
-  padding: 24px;
+.announcement-container {
+  height: calc(100vh - 56px - 32px);
+  overflow: hidden;
 
-  .page-header {
+  :deep(.ant-card) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+
+    .ant-card-head {
+      flex-shrink: 0;
+    }
+
+    .ant-card-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+  }
+
+  :deep(.ant-card-head-title) {
+    width: 100%;
+  }
+
+  .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
-    h2 { margin: 0; font-size: 20px; font-weight: 600; }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 500;
+    }
   }
 
-  .filter-section {
+  .search-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
     margin-bottom: 16px;
-    padding: 16px;
-    background-color: var(--bg-color);
-    border-radius: var(--border-radius-base);
+    flex-shrink: 0;
+  }
+
+  .search-form {
+    flex: 1;
+  }
+
+  .toolbar-actions {
+    flex-shrink: 0;
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .announcement-table {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    :deep(.ant-table-wrapper) {
+      height: 100%;
+    }
+
+    :deep(.ant-spin-nested-loading) {
+      height: 100%;
+    }
+
+    :deep(.ant-spin-container) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table-container) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table-body) {
+      flex: 1;
+      overflow: auto !important;
+    }
+  }
+
+  .pagination {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
   }
 }
 </style>

@@ -107,6 +107,5 @@ const handleDownload = () => {
   padding: 12px 16px;
   background: var(--bg-color);
   border-radius: var(--border-radius-base);
-  margin-bottom: 16px;
 }
 </style>

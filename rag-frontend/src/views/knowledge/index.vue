@@ -275,14 +275,22 @@ function formatDate(dateStr: string): string {
 .knowledge-container {
   display: flex;
   gap: 16px;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 56px - 32px);
 
   .category-panel {
     width: 280px;
     flex-shrink: 0;
+    overflow: hidden;
 
     :deep(.ant-card) {
       height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      .ant-card-body {
+        flex: 1;
+        overflow: auto;
+      }
     }
 
     .panel-header {

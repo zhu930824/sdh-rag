@@ -74,6 +74,8 @@
       v-model:open="editDialogVisible"
       title="编辑个人信息"
       :width="500"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleSaveEdit"
       @cancel="editDialogVisible = false"
     >
@@ -91,6 +93,8 @@
       v-model:open="passwordDialogVisible"
       title="修改密码"
       :width="500"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleSavePassword"
       @cancel="passwordDialogVisible = false"
     >

@@ -53,6 +53,8 @@
     <a-modal
       v-model:open="processModalVisible"
       :title="'创建' + currentTypeName + '任务'"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleCreateTask"
     >
       <a-form :label-col="{ span: 6 }">

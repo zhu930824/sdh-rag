@@ -479,20 +479,19 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .hotwords-container {
+  height: calc(100vh - 56px - 32px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--card-gap);
+  gap: 16px;
 }
 
 // 筛选卡片
 .filter-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: 16px 20px;
+  flex-shrink: 0;
 
   :deep(.ant-card-body) {
-    padding: 0;
+    padding: 16px 24px;
   }
 
   .filter-content {
@@ -519,20 +518,21 @@ onMounted(() => {
 
 // 统计卡片
 .stats-row {
+  flex-shrink: 0;
   margin-bottom: 0;
 }
 
 .stat-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: 20px;
   transition: all var(--duration-normal) var(--ease-nature);
   animation: slideInUp 0.4s var(--ease-out) both;
 
   &:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-card-hover);
+  }
+
+  :deep(.ant-card-body) {
+    padding: 20px;
   }
 
   .stat-content {
@@ -599,51 +599,56 @@ onMounted(() => {
 
 // 图表卡片
 .chart-row {
+  flex: 1;
+  min-height: 0;
   margin-bottom: 0;
 }
 
 .chart-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: 24px;
-  min-height: 400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 
   :deep(.ant-card-head) {
     border-bottom: 1px solid var(--border-color);
-    padding: 0 0 16px;
+    padding: 0 24px;
     min-height: auto;
+    flex-shrink: 0;
 
     .ant-card-head-title {
       font-family: var(--font-serif);
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 600;
       color: var(--text-primary);
-      padding: 0;
+      padding: 16px 0;
     }
 
     .ant-card-extra {
-      padding: 0;
+      padding: 16px 0;
     }
   }
 
   :deep(.ant-card-body) {
-    padding: 16px 0 0;
+    padding: 16px 24px 24px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 }
 
 // 柱状图
 .bar-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
   .bar-item {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 16px;
     animation: slideInUp 0.3s var(--ease-out) both;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
   }
 
   .bar-rank {
@@ -703,13 +708,13 @@ onMounted(() => {
 
 // 词云
 .word-cloud {
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   padding: 20px;
   justify-content: center;
   align-items: center;
-  min-height: 300px;
 
   .word-item {
     display: inline-block;
@@ -825,31 +830,28 @@ onMounted(() => {
 
 // 表格卡片
 .table-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: 24px;
+  flex-shrink: 0;
 
   :deep(.ant-card-head) {
     border-bottom: 1px solid var(--border-color);
-    padding: 0 0 16px;
+    padding: 0 24px;
     min-height: auto;
 
     .ant-card-head-title {
       font-family: var(--font-serif);
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 600;
       color: var(--text-primary);
-      padding: 0;
+      padding: 16px 0;
     }
 
     .ant-card-extra {
-      padding: 0;
+      padding: 16px 0;
     }
   }
 
   :deep(.ant-card-body) {
-    padding: 16px 0 0;
+    padding: 16px 24px 24px;
   }
 }
 
@@ -932,7 +934,7 @@ onMounted(() => {
 @media (max-width: 1200px) {
   .stats-row {
     :deep(.ant-col) {
-      margin-bottom: var(--card-gap);
+      margin-bottom: 16px;
     }
   }
 }

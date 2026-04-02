@@ -1,78 +1,118 @@
 <template>
-  <div class="tag-page">
-    <div class="page-header">
-      <h2>标签管理</h2>
-      <p class="description">管理文档标签，支持手动和自动标注</p>
-    </div>
-
-    <div class="filter-section">
-      <a-form layout="inline">
-        <a-form-item label="关键词">
-          <a-input v-model:value="filters.keyword" placeholder="搜索标签" allow-clear style="width: 200px" />
-        </a-form-item>
-        <a-form-item label="分类">
-          <a-select v-model:value="filters.category" placeholder="全部" allow-clear style="width: 150px">
-            <a-select-option value="文档类型">文档类型</a-select-option>
-            <a-select-option value="业务领域">业务领域</a-select-option>
-            <a-select-option value="技术栈">技术栈</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item>
-          <a-button type="primary" @click="loadTags">查询</a-button>
-        </a-form-item>
-        <a-form-item>
+  <div class="tag-container">
+    <a-card>
+      <template #title>
+        <div class="card-header">
+          <span class="card-title">标签管理</span>
           <a-button type="primary" @click="showCreateModal">
             <template #icon><PlusOutlined /></template>
             新建标签
           </a-button>
-        </a-form-item>
-      </a-form>
-    </div>
-
-    <div class="tag-cloud">
-      <a-card title="标签云" size="small" :bordered="false">
-        <a-tag
-          v-for="tag in tags"
-          :key="tag.id"
-          :color="tag.color || 'blue'"
-          style="margin: 4px; cursor: pointer"
-          @click="handleTagClick(tag)"
-        >
-          {{ tag.name }}
-        </a-tag>
-      </a-card>
-    </div>
-
-    <a-table
-      :columns="columns"
-      :data-source="tableData"
-      :loading="loading"
-      :pagination="pagination"
-      row-key="id"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'color'">
-          <div class="color-preview" :style="{ backgroundColor: record.color }"></div>
-        </template>
-        <template v-else-if="column.dataIndex === 'status'">
-          <a-tag :color="record.status === 1 ? 'green' : 'red'">
-            {{ record.status === 1 ? '启用' : '禁用' }}
-          </a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'action'">
-          <a-space>
-            <a-button type="link" size="small" @click="handleEdit(record)">编辑</a-button>
-            <a-popconfirm title="确定删除该标签？" @confirm="handleDelete(record)">
-              <a-button type="link" size="small" danger>删除</a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
+        </div>
       </template>
-    </a-table>
+
+      <!-- 搜索栏 -->
+      <div class="search-toolbar">
+        <a-form layout="inline" :model="filters" class="search-form">
+          <a-form-item label="关键词">
+            <a-input v-model:value="filters.keyword" placeholder="搜索标签" allow-clear style="width: 200px" @pressEnter="handleSearch" />
+          </a-form-item>
+          <a-form-item label="分类">
+            <a-select v-model:value="filters.category" placeholder="全部" allow-clear style="width: 150px">
+              <a-select-option value="文档类型">文档类型</a-select-option>
+              <a-select-option value="业务领域">业务领域</a-select-option>
+              <a-select-option value="技术栈">技术栈</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item>
+            <a-space>
+              <a-button type="primary" @click="handleSearch">
+                <template #icon><SearchOutlined /></template>
+                搜索
+              </a-button>
+              <a-button @click="handleReset">
+                <template #icon><ReloadOutlined /></template>
+                重置
+              </a-button>
+            </a-space>
+          </a-form-item>
+        </a-form>
+        <div class="toolbar-actions">
+          <a-button @click="loadTags">
+            <template #icon><SyncOutlined /></template>
+            刷新
+          </a-button>
+        </div>
+      </div>
+
+      <!-- 标签云 -->
+      <div class="tag-cloud-section">
+        <div class="section-title">标签云</div>
+        <div class="tag-cloud">
+          <a-tag
+            v-for="tag in tags"
+            :key="tag.id"
+            :color="tag.color || 'blue'"
+            style="margin: 4px; cursor: pointer"
+            @click="handleTagClick(tag)"
+          >
+            {{ tag.name }}
+          </a-tag>
+          <span v-if="tags.length === 0" class="empty-hint">暂无标签</span>
+        </div>
+      </div>
+
+      <!-- 表格 -->
+      <a-table
+        class="tag-table"
+        :columns="columns"
+        :data-source="tableData"
+        :loading="loading"
+        :pagination="false"
+        :scroll="{ x: 800 }"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'color'">
+            <div class="color-preview" :style="{ backgroundColor: record.color }"></div>
+          </template>
+          <template v-else-if="column.dataIndex === 'status'">
+            <a-tag :color="record.status === 1 ? 'green' : 'red'">
+              {{ record.status === 1 ? '启用' : '禁用' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="handleEdit(record)">编辑</a-button>
+              <a-popconfirm title="确定删除该标签？" ok-text="确定" cancel-text="取消" @confirm="handleDelete(record)">
+                <a-button type="link" size="small" danger>删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+
+      <!-- 分页 -->
+      <div class="pagination">
+        <a-pagination
+          v-model:current="pagination.current"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-size-options="['10', '20', '50', '100']"
+          show-size-changer
+          show-quick-jumper
+          :show-total="(total: number) => `共 ${total} 条`"
+          @change="handlePageChange"
+          @show-size-change="handleSizeChange"
+        />
+      </div>
+    </a-card>
 
     <a-modal
       v-model:open="modalVisible"
       :title="isEdit ? '编辑标签' : '新建标签'"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handleSubmit"
     >
       <a-form :model="formData" :label-col="{ span: 4 }" :wrapper-col="{ span: 18 }">
@@ -100,8 +140,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
-import { getTagList, createTag, updateTag, deleteTag, type Tag } from '@/api/tag'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import { getTagList, getAllTags, createTag, updateTag, deleteTag, type Tag } from '@/api/tag'
 
 const loading = ref(false)
 const tableData = ref<Tag[]>([])
@@ -109,7 +149,7 @@ const tags = ref<Tag[]>([])
 const modalVisible = ref(false)
 const isEdit = ref(false)
 
-const pagination = reactive({ current: 1, pageSize: 10, total: 0, showSizeChanger: true })
+const pagination = reactive({ current: 1, pageSize: 10, total: 0 })
 const filters = reactive({ keyword: '', category: '' })
 
 const formData = reactive({
@@ -127,7 +167,7 @@ const columns = [
   { title: '分类', dataIndex: 'category', width: 100 },
   { title: '排序', dataIndex: 'sort', width: 80 },
   { title: '状态', dataIndex: 'status', width: 80 },
-  { title: '操作', dataIndex: 'action', width: 150 },
+  { title: '操作', dataIndex: 'action', width: 150, fixed: 'right' },
 ]
 
 async function loadTags() {
@@ -157,6 +197,28 @@ async function loadAllTags() {
   } catch (error) {
     console.error('加载标签失败')
   }
+}
+
+function handleSearch() {
+  pagination.current = 1
+  loadTags()
+}
+
+function handleReset() {
+  filters.keyword = ''
+  filters.category = ''
+  handleSearch()
+}
+
+function handlePageChange(page: number) {
+  pagination.current = page
+  loadTags()
+}
+
+function handleSizeChange(_current: number, size: number) {
+  pagination.current = 1
+  pagination.pageSize = size
+  loadTags()
 }
 
 function showCreateModal() {
@@ -204,7 +266,7 @@ async function handleDelete(record: Tag) {
 
 function handleTagClick(tag: Tag) {
   filters.keyword = tag.name
-  loadTags()
+  handleSearch()
 }
 
 onMounted(() => {
@@ -214,24 +276,128 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.tag-page {
-  padding: 24px;
+.tag-container {
+  height: calc(100vh - 56px - 32px);
+  overflow: hidden;
 
-  .page-header {
-    margin-bottom: 24px;
-    h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
-    .description { color: var(--text-secondary); font-size: 14px; }
+  :deep(.ant-card) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+
+    .ant-card-head {
+      flex-shrink: 0;
+    }
+
+    .ant-card-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
   }
 
-  .filter-section {
-    margin-bottom: 16px;
-    padding: 16px;
-    background-color: var(--bg-color);
-    border-radius: var(--border-radius-base);
+  :deep(.ant-card-head-title) {
+    width: 100%;
   }
 
-  .tag-cloud {
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 500;
+    }
+  }
+
+  .search-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
     margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
+  .search-form {
+    flex: 1;
+  }
+
+  .toolbar-actions {
+    flex-shrink: 0;
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .tag-cloud-section {
+    margin-bottom: 16px;
+    flex-shrink: 0;
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .tag-cloud {
+      padding: 16px;
+      background: var(--bg-surface-secondary);
+      border-radius: var(--radius-lg);
+      min-height: 50px;
+
+      .empty-hint {
+        color: var(--text-tertiary);
+        font-size: 13px;
+      }
+    }
+  }
+
+  .tag-table {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    :deep(.ant-table-wrapper) {
+      height: 100%;
+    }
+
+    :deep(.ant-spin-nested-loading) {
+      height: 100%;
+    }
+
+    :deep(.ant-spin-container) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table-container) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table-body) {
+      flex: 1;
+      overflow: auto !important;
+    }
+  }
+
+  .pagination {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
   }
 
   .color-preview {

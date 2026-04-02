@@ -3,6 +3,8 @@ package cn.sdh.backend.service;
 import cn.sdh.backend.entity.ModelConfig;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
+import java.util.List;
+
 public interface ModelConfigService {
 
     IPage<ModelConfig> getPage(Integer page, Integer pageSize, String keyword);
@@ -18,4 +20,6 @@ public interface ModelConfigService {
     void setDefault(Long id);
 
     ModelConfig getDefault();
+
+    List<ModelConfig> getActiveList();
 }

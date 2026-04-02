@@ -60,7 +60,7 @@
       </a-row>
     </a-card>
 
-    <a-modal v-model:open="createVisible" title="新建会话" @ok="handleCreate">
+    <a-modal v-model:open="createVisible" title="新建会话" ok-text="确认" cancel-text="取消" @ok="handleCreate">
       <a-form :model="createForm" :labelCol="{ span: 6 }">
         <a-form-item label="会话标题">
           <a-input v-model:value="createForm.title" placeholder="可选，留空自动生成" />
@@ -78,7 +78,7 @@
       </a-form>
     </a-modal>
 
-    <a-modal v-model:open="shareVisible" title="分享会话" @ok="handleShare">
+    <a-modal v-model:open="shareVisible" title="分享会话" ok-text="确认" cancel-text="取消" @ok="handleShare">
       <a-form :model="shareForm" :labelCol="{ span: 6 }">
         <a-form-item label="访问密码">
           <a-input v-model:value="shareForm.password" placeholder="可选，留空则公开访问" />

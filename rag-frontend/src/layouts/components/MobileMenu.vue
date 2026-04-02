@@ -13,9 +13,14 @@
         <span>首页</span>
       </a-menu-item>
 
-      <a-menu-item key="/knowledge">
+      <a-menu-item key="/knowledge-base">
         <template #icon><FolderOutlined /></template>
         <span>知识库</span>
+      </a-menu-item>
+
+      <a-menu-item key="/knowledge">
+        <template #icon><FileTextOutlined /></template>
+        <span>文档管理</span>
       </a-menu-item>
 
       <a-menu-item key="/chat">
@@ -39,11 +44,6 @@
       <a-menu-item key="/model">
         <template #icon><ApiOutlined /></template>
         <span>大模型管理</span>
-      </a-menu-item>
-
-      <a-menu-item key="/embed">
-        <template #icon><CodeOutlined /></template>
-        <span>嵌入配置</span>
       </a-menu-item>
 
       <div class="menu-divider" />
@@ -114,16 +114,6 @@
           <span>系统设置</span>
         </a-menu-item>
       </a-sub-menu>
-
-      <a-menu-item key="/points">
-        <template #icon><GiftOutlined /></template>
-        <span>积分商城</span>
-      </a-menu-item>
-
-      <a-menu-item key="/channel">
-        <template #icon><ApiOutlined /></template>
-        <span>渠道管理</span>
-      </a-menu-item>
     </a-menu>
   </nav>
 </template>
@@ -142,13 +132,11 @@ import {
   LineChartOutlined,
   ApiOutlined,
   ForkOutlined,
-  CodeOutlined,
   ApartmentOutlined,
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
   AuditOutlined,
-  GiftOutlined,
   CloudUploadOutlined,
   TagsOutlined,
   AudioOutlined,

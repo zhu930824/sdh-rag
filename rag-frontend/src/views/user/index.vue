@@ -84,7 +84,7 @@
         :size="tableDensity"
         :row-selection="rowSelection"
         :pagination="false"
-        :scroll="{ x: 1000, y: tableHeight }"
+        :scroll="{ x: 1000 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'role'">
@@ -227,11 +227,6 @@ const tableColumns = ref<ColumnConfig[]>([
 ])
 
 const tableDensity = ref<TableDensity>('default')
-
-const tableHeight = computed(() => {
-  // 计算表格高度：视口高度 - 头部 - 搜索栏 - 分页 - 边距
-  return window.innerHeight - 280
-})
 
 const tableColumnsConfig = computed<TableColumnType[]>(() => {
   const columns: TableColumnType[] = [
@@ -455,19 +450,24 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .user-container {
-  height: 100%;
-  
+  height: calc(100vh - 56px - 32px);
+  overflow: hidden;
+
   :deep(.ant-card) {
     height: 100%;
     display: flex;
     flex-direction: column;
-    
+
+    .ant-card-head {
+      flex-shrink: 0;
+    }
+
     .ant-card-body {
       flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      padding: 16px;
     }
   }
 
@@ -503,7 +503,7 @@ onMounted(() => {
     padding-top: 4px;
     display: flex;
     align-items: center;
-    
+
     :deep(.table-toolbar) {
       display: inline-flex;
       margin-left: 8px;
@@ -512,7 +512,39 @@ onMounted(() => {
 
   .user-table {
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    overflow: hidden;
+
+    :deep(.ant-table-wrapper) {
+      height: 100%;
+    }
+
+    :deep(.ant-spin-nested-loading) {
+      height: 100%;
+    }
+
+    :deep(.ant-spin-container) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table-container) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :deep(.ant-table-body) {
+      flex: 1;
+      overflow: auto !important;
+    }
   }
 
   .pagination {

@@ -8,74 +8,76 @@
       </template>
 
       <!-- 搜索筛选区域 -->
-      <a-form layout="inline" :model="filterForm" class="search-form">
-        <a-form-item label="时间范围">
-          <a-range-picker
-            v-model:value="filterForm.dateRange"
-            :placeholder="['开始时间', '结束时间']"
-            style="width: 280px"
-            allow-clear
+      <div class="search-toolbar">
+        <a-form layout="inline" :model="filterForm" class="search-form">
+          <a-form-item label="时间范围">
+            <a-range-picker
+              v-model:value="filterForm.dateRange"
+              :placeholder="['开始时间', '结束时间']"
+              style="width: 280px"
+              allow-clear
+            />
+          </a-form-item>
+          <a-form-item label="操作类型">
+            <a-select
+              v-model:value="filterForm.type"
+              placeholder="请选择操作类型"
+              allow-clear
+              style="width: 140px"
+            >
+              <a-select-option value="login">登录</a-select-option>
+              <a-select-option value="logout">登出</a-select-option>
+              <a-select-option value="create">新增</a-select-option>
+              <a-select-option value="update">修改</a-select-option>
+              <a-select-option value="delete">删除</a-select-option>
+              <a-select-option value="query">查询</a-select-option>
+              <a-select-option value="export">导出</a-select-option>
+              <a-select-option value="import">导入</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="用户">
+            <a-input
+              v-model:value="filterForm.user"
+              placeholder="请输入用户名"
+              allow-clear
+              style="width: 160px"
+              @press-enter="handleSearch"
+            />
+          </a-form-item>
+          <a-form-item label="状态">
+            <a-select
+              v-model:value="filterForm.status"
+              placeholder="请选择状态"
+              allow-clear
+              style="width: 100px"
+            >
+              <a-select-option :value="1">成功</a-select-option>
+              <a-select-option :value="0">失败</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item>
+            <a-space>
+              <a-button type="primary" @click="handleSearch">
+                <template #icon><SearchOutlined /></template>
+                搜索
+              </a-button>
+              <a-button @click="handleReset">
+                <template #icon><ReloadOutlined /></template>
+                重置
+              </a-button>
+            </a-space>
+          </a-form-item>
+        </a-form>
+        <div class="toolbar-actions">
+          <TableToolbar
+            :columns="tableColumns"
+            :density="tableDensity"
+            @refresh="loadData"
+            @column-change="handleColumnChange"
+            @density-change="handleDensityChange"
           />
-        </a-form-item>
-        <a-form-item label="操作类型">
-          <a-select
-            v-model:value="filterForm.type"
-            placeholder="请选择操作类型"
-            allow-clear
-            style="width: 140px"
-          >
-            <a-select-option value="login">登录</a-select-option>
-            <a-select-option value="logout">登出</a-select-option>
-            <a-select-option value="create">新增</a-select-option>
-            <a-select-option value="update">修改</a-select-option>
-            <a-select-option value="delete">删除</a-select-option>
-            <a-select-option value="query">查询</a-select-option>
-            <a-select-option value="export">导出</a-select-option>
-            <a-select-option value="import">导入</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="用户">
-          <a-input
-            v-model:value="filterForm.user"
-            placeholder="请输入用户名"
-            allow-clear
-            style="width: 160px"
-            @press-enter="handleSearch"
-          />
-        </a-form-item>
-        <a-form-item label="状态">
-          <a-select
-            v-model:value="filterForm.status"
-            placeholder="请选择状态"
-            allow-clear
-            style="width: 100px"
-          >
-            <a-select-option :value="1">成功</a-select-option>
-            <a-select-option :value="0">失败</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item>
-          <a-space>
-            <a-button type="primary" @click="handleSearch">
-              <template #icon><SearchOutlined /></template>
-              搜索
-            </a-button>
-            <a-button @click="handleReset">
-              <template #icon><ReloadOutlined /></template>
-              重置
-            </a-button>
-          </a-space>
-        </a-form-item>
-      </a-form>
-
-      <!-- 表格工具栏 -->
-      <TableToolbar
-        :columns="tableColumns"
-        :density="tableDensity"
-        @refresh="loadData"
-        @column-change="handleColumnChange"
-        @density-change="handleDensityChange"
-      />
+        </div>
+      </div>
 
       <!-- 表格 -->
       <a-table
@@ -367,6 +369,27 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .log-container {
+  height: calc(100vh - 56px - 32px);
+  overflow: hidden;
+
+  :deep(.ant-card) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+
+    .ant-card-head {
+      flex-shrink: 0;
+    }
+
+    .ant-card-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+  }
+
   :deep(.ant-card-head-title) {
     width: 100%;
   }
@@ -382,14 +405,67 @@ onMounted(() => {
     }
   }
 
+  .search-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
   .search-form {
-    margin-bottom: 20px;
+    flex: 1;
+  }
+
+  .toolbar-actions {
+    flex-shrink: 0;
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
+
+    :deep(.table-toolbar) {
+      display: inline-flex;
+    }
+  }
+
+  :deep(.ant-table-wrapper) {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    .ant-spin-nested-loading {
+      height: 100%;
+    }
+
+    .ant-spin-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-table {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-table-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-table-body {
+      flex: 1;
+      overflow: auto !important;
+    }
   }
 
   .pagination {
-    margin-top: 20px;
+    margin-top: 16px;
     display: flex;
     justify-content: flex-end;
+    flex-shrink: 0;
   }
 }
 

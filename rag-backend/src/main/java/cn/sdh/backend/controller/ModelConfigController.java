@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
@@ -118,4 +119,15 @@ public class ModelConfigController {
         modelConfigService.setDefault(id);
         return Result.success();
     }
+
+    @GetMapping("/active")
+    public Result<List<ModelConfigResponse>> getActiveList() {
+        List<ModelConfig> configs = modelConfigService.getActiveList();
+        List<ModelConfigResponse> responses = configs.stream()
+                .map(ModelConfigResponse::fromEntity)
+                .collect(Collectors.toList());
+        return Result.success(responses);
+    }
+
+
 }

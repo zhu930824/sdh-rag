@@ -49,7 +49,7 @@
       </div>
 
       <div class="brand-footer">
-        <span>© 2024 智能知识库. All rights reserved.</span>
+        <span>© 2026 智能知识库. All rights reserved.</span>
       </div>
     </div>
 

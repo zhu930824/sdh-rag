@@ -223,13 +223,14 @@ onUnmounted(() => {
 .chat-page {
   display: flex;
   gap: 16px;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 56px - 32px);
 
   .session-sidebar {
     width: 280px;
     flex-shrink: 0;
     position: relative;
     transition: width var(--transition-duration);
+    overflow: hidden;
 
     .sidebar-card {
       height: 100%;
@@ -237,7 +238,7 @@ onUnmounted(() => {
       :deep(.ant-card-body) {
         height: calc(100% - 57px);
         padding: 0;
-        overflow: hidden;
+        overflow-y: auto;
       }
     }
 

@@ -37,11 +37,18 @@
           <span>首页</span>
         </a-menu-item>
 
-        <a-menu-item key="/knowledge" class="nav-item">
+        <a-menu-item key="/knowledge-base" class="nav-item">
           <template #icon>
             <FolderOutlined class="nav-icon" />
           </template>
           <span>知识库</span>
+        </a-menu-item>
+
+        <a-menu-item key="/knowledge" class="nav-item">
+          <template #icon>
+            <FileTextOutlined class="nav-icon" />
+          </template>
+          <span>文档管理</span>
         </a-menu-item>
 
         <a-menu-item key="/chat" class="nav-item">
@@ -74,13 +81,6 @@
             <ApiOutlined class="nav-icon" />
           </template>
           <span>大模型管理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/embed" class="nav-item">
-          <template #icon>
-            <CodeOutlined class="nav-icon" />
-          </template>
-          <span>嵌入配置</span>
         </a-menu-item>
 
         <!-- Divider -->
@@ -164,20 +164,6 @@
             <span>系统设置</span>
           </a-menu-item>
         </a-sub-menu>
-
-        <a-menu-item key="/points" class="nav-item">
-          <template #icon>
-            <GiftOutlined class="nav-icon" />
-          </template>
-          <span>积分商城</span>
-        </a-menu-item>
-
-        <a-menu-item key="/channel" class="nav-item">
-          <template #icon>
-            <ApiOutlined class="nav-icon" />
-          </template>
-          <span>渠道管理</span>
-        </a-menu-item>
       </a-menu>
     </nav>
 
@@ -208,16 +194,13 @@ import {
   LineChartOutlined,
   ApiOutlined,
   ForkOutlined,
-  CodeOutlined,
   ApartmentOutlined,
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
   AuditOutlined,
-  GiftOutlined,
   CloudUploadOutlined,
   TagsOutlined,
-  AudioOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
