@@ -57,6 +57,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理', icon: 'User', requiresAuth: true } as RouteMeta,
       },
       {
+        path: 'role',
+        name: 'Role',
+        component: () => import('@/views/role/index.vue'),
+        meta: { title: '角色管理', icon: 'UsergroupSwitch', requiresAuth: true } as RouteMeta,
+      },
+      {
         path: 'log',
         name: 'Log',
         component: () => import('@/views/log/index.vue'),
@@ -88,9 +94,21 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'workflow',
-        name: 'Workflow',
-        component: () => import('@/views/workflow/index.vue'),
+        name: 'WorkflowList',
+        component: () => import('@/views/workflow-list/index.vue'),
         meta: { title: '工作流编排', icon: 'ShareAlt', requiresAuth: true } as RouteMeta,
+      },
+      {
+        path: 'workflow/create',
+        name: 'WorkflowCreate',
+        component: () => import('@/views/workflow/index.vue'),
+        meta: { title: '新建工作流', icon: 'ShareAlt', requiresAuth: true, hidden: true } as RouteMeta,
+      },
+      {
+        path: 'workflow/:id',
+        name: 'WorkflowEdit',
+        component: () => import('@/views/workflow/index.vue'),
+        meta: { title: '编辑工作流', icon: 'ShareAlt', requiresAuth: true, hidden: true } as RouteMeta,
       },
       {
         path: 'nlp-query',

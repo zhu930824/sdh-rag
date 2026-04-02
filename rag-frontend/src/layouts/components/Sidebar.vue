@@ -37,20 +37,6 @@
           <span>首页</span>
         </a-menu-item>
 
-        <a-menu-item key="/knowledge-base" class="nav-item">
-          <template #icon>
-            <FolderOutlined class="nav-icon" />
-          </template>
-          <span>知识库</span>
-        </a-menu-item>
-
-        <a-menu-item key="/knowledge" class="nav-item">
-          <template #icon>
-            <FileTextOutlined class="nav-icon" />
-          </template>
-          <span>文档管理</span>
-        </a-menu-item>
-
         <a-menu-item key="/chat" class="nav-item">
           <template #icon>
             <MessageOutlined class="nav-icon" />
@@ -58,12 +44,25 @@
           <span>智能问答</span>
         </a-menu-item>
 
-        <a-menu-item key="/graph" class="nav-item">
+        <!-- 知识管理 -->
+        <a-sub-menu key="knowledge" class="nav-submenu">
           <template #icon>
-            <ApartmentOutlined class="nav-icon" />
+            <FolderOutlined class="nav-icon" />
           </template>
-          <span>知识图谱</span>
-        </a-menu-item>
+          <template #title>知识管理</template>
+          <a-menu-item key="/knowledge-base">
+            <DatabaseOutlined class="nav-icon-sm" />
+            <span>知识库</span>
+          </a-menu-item>
+          <a-menu-item key="/knowledge">
+            <FileTextOutlined class="nav-icon-sm" />
+            <span>文档管理</span>
+          </a-menu-item>
+          <a-menu-item key="/graph">
+            <ApartmentOutlined class="nav-icon-sm" />
+            <span>知识图谱</span>
+          </a-menu-item>
+        </a-sub-menu>
 
         <!-- Divider -->
         <div class="nav-divider" />
@@ -147,6 +146,10 @@
             <UserOutlined class="nav-icon-sm" />
             <span>用户管理</span>
           </a-menu-item>
+          <a-menu-item key="/role">
+            <TeamOutlined class="nav-icon-sm" />
+            <span>角色管理</span>
+          </a-menu-item>
           <a-menu-item key="/log">
             <FileTextOutlined class="nav-icon-sm" />
             <span>日志管理</span>
@@ -201,6 +204,8 @@ import {
   AuditOutlined,
   CloudUploadOutlined,
   TagsOutlined,
+  TeamOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -210,7 +215,8 @@ const appStore = useAppStore()
 const openKeys = ref<string[]>([])
 
 const subMenuMap: Record<string, string[]> = {
-  'system': ['/user', '/log', '/sensitive', '/announcement', '/settings']
+  'knowledge': ['/knowledge-base', '/knowledge', '/graph'],
+  'system': ['/user', '/role', '/log', '/sensitive', '/announcement', '/settings']
 }
 
 function updateOpenKeys(path: string): void {

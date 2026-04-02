@@ -58,7 +58,7 @@
 
         <a-spin :spinning="knowledgeStore.loading">
           <div class="document-list">
-            <a-empty v-if="!knowledgeStore.loading && knowledgeStore.documentList.length === 0" description="暂无文档数据">
+            <a-empty v-if="!knowledgeStore.loading && (!knowledgeStore.documentList || knowledgeStore.documentList.length === 0)" description="暂无文档数据">
               <a-button type="primary" @click="showUploadDialog = true">上传文档</a-button>
             </a-empty>
 

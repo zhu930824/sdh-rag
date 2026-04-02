@@ -1,146 +1,463 @@
 <template>
-  <div class="workflow-container">
-    <a-card>
-      <template #title>
-        <div class="card-header">
-          <span class="card-title">工作流编排</span>
-          <a-button type="primary" @click="handleAdd">
-            <template #icon><PlusOutlined /></template>
-            创建工作流
-          </a-button>
-        </div>
-      </template>
-
-      <a-form layout="inline" class="search-form">
-        <a-form-item label="工作流名称">
-          <a-input v-model:value="searchForm.keyword" placeholder="搜索工作流" allow-clear style="width: 200px" />
-        </a-form-item>
-        <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
-        </a-form-item>
-      </a-form>
-
-      <a-table :columns="columns" :data-source="tableData" :loading="loading" :pagination="false">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'status'">
-            <a-tag :color="record.status === 1 ? 'success' : 'default'">
-              {{ record.status === 1 ? '启用' : '禁用' }}
-            </a-tag>
-          </template>
-          <template v-else-if="column.dataIndex === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record)">编辑</a-button>
-              <a-button type="link" size="small" @click="handleToggle(record)">
-                {{ record.status === 1 ? '禁用' : '启用' }}
-              </a-button>
-              <a-popconfirm title="确定删除？" @confirm="handleDelete(record)">
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </a-space>
-          </template>
-        </template>
-      </a-table>
-
-      <div class="pagination">
-        <a-pagination
-          v-model:current="pagination.page"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          show-size-changer
-          :show-total="(total: number) => `共 ${total} 条`"
-          @change="loadData"
+  <div class="workflow-editor">
+    <!-- 顶部工具栏 -->
+    <div class="editor-toolbar">
+      <div class="toolbar-left">
+        <a-input
+          v-model:value="workflowName"
+          placeholder="工作流名称"
+          style="width: 200px"
+          @blur="handleNameChange"
         />
+        <a-tag v-if="currentWorkflowId" color="blue">ID: {{ currentWorkflowId }}</a-tag>
       </div>
-    </a-card>
+      <div class="toolbar-right">
+        <a-button @click="handleAutoLayout">
+          <template #icon><ApartmentOutlined /></template>
+          自动布局
+        </a-button>
+        <a-button type="primary" :loading="saving" @click="handleSave">
+          <template #icon><SaveOutlined /></template>
+          保存
+        </a-button>
+        <a-button type="primary" :disabled="!currentWorkflowId" :loading="running" @click="handleRun">
+          <template #icon><PlayCircleOutlined /></template>
+          运行
+        </a-button>
+      </div>
+    </div>
 
-    <a-modal v-model:open="dialogVisible" :title="dialogTitle" :width="700" ok-text="确认" cancel-text="取消" @ok="handleSubmit">
-      <a-form :model="formData" :label-col="{ span: 4 }" :wrapper-col="{ span: 18 }">
-        <a-form-item label="工作流名称" required>
-          <a-input v-model:value="formData.name" placeholder="请输入工作流名称" />
-        </a-form-item>
-        <a-form-item label="描述">
-          <a-textarea v-model:value="formData.description" placeholder="请输入描述" :rows="3" />
-        </a-form-item>
-        <a-form-item label="流程配置">
-          <div class="flow-builder-preview">
-            <div class="node-list">
-              <div class="node-item"><DatabaseOutlined /> 输入节点</div>
-              <div class="node-item"><SearchOutlined /> 检索节点</div>
-              <div class="node-item"><RobotOutlined /> LLM节点</div>
-              <div class="node-item"><OutputOutlined /> 输出节点</div>
+    <!-- 主内容区 -->
+    <div class="editor-content">
+      <!-- 左侧节点面板 -->
+      <NodePanel />
+
+      <!-- 中间画布 -->
+      <div
+        class="canvas-wrapper"
+        @dragover.prevent
+        @drop="handleDrop"
+      >
+        <FlowCanvas @node-click="handleNodeClick" @pane-click="handlePaneClick" />
+      </div>
+
+      <!-- 右侧配置面板 -->
+      <ConfigPanel />
+    </div>
+
+    <!-- 运行结果抽屉 -->
+    <a-drawer
+      v-model:open="resultDrawerVisible"
+      title="运行结果"
+      :width="500"
+      placement="right"
+    >
+      <div v-if="executionResult" class="execution-result">
+        <a-alert
+          :type="executionResult.status === 'success' ? 'success' : 'error'"
+          :message="executionResult.status === 'success' ? '执行成功' : '执行失败'"
+          show-icon
+          style="margin-bottom: 16px"
+        />
+
+        <a-timeline>
+          <a-timeline-item
+            v-for="nodeExec in executionResult.nodeExecutions"
+            :key="nodeExec.nodeId"
+            :color="getNodeExecutionColor(nodeExec.status)"
+          >
+            <div class="execution-node">
+              <div class="node-header">
+                <span class="node-name">{{ nodeExec.nodeName }}</span>
+                <a-tag :color="getNodeExecutionColor(nodeExec.status)" size="small">
+                  {{ nodeExec.status }}
+                </a-tag>
+              </div>
+              <div v-if="nodeExec.duration" class="node-duration">
+                耗时: {{ nodeExec.duration }}ms
+              </div>
+              <div v-if="nodeExec.error" class="node-error">
+                <a-alert type="error" :message="nodeExec.error" />
+              </div>
             </div>
-            <a-alert message="拖拽式工作流配置开发中，敬请期待" type="info" show-icon />
-          </div>
-        </a-form-item>
-      </a-form>
-    </a-modal>
+          </a-timeline-item>
+        </a-timeline>
+
+        <a-divider>输出结果</a-divider>
+        <pre class="output-json">{{ JSON.stringify(executionResult.outputs, null, 2) }}</pre>
+      </div>
+    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { PlusOutlined, DatabaseOutlined, SearchOutlined, RobotOutlined, OutputOutlined } from '@ant-design/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { getWorkflowList, createWorkflow, updateWorkflow, deleteWorkflow, toggleWorkflowStatus } from '@/api/workflow'
+import {
+  SaveOutlined,
+  PlayCircleOutlined,
+  ApartmentOutlined,
+} from '@ant-design/icons-vue'
+import type { Node } from '@vue-flow/core'
 
-const loading = ref(false)
-const searchForm = reactive({ keyword: '' })
-const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
-const tableData = ref<any[]>([])
-const dialogVisible = ref(false)
-const dialogTitle = ref('创建工作流')
-const formData = reactive({ name: '', description: '' })
+import { useWorkflowStore, type WorkflowNodeData } from '@/stores/workflow'
+import {
+  getWorkflowDetail,
+  createWorkflow,
+  updateWorkflow,
+  executeWorkflow,
+  type WorkflowExecution,
+} from '@/api/workflow'
 
-const columns = [
-  { title: 'ID', dataIndex: 'id', width: 60 },
-  { title: '名称', dataIndex: 'name', width: 150 },
-  { title: '描述', dataIndex: 'description', width: 200 },
-  { title: '状态', dataIndex: 'status', width: 80 },
-  { title: '创建时间', dataIndex: 'createTime', width: 180 },
-  { title: '操作', dataIndex: 'action', width: 200, fixed: 'right' },
-]
+import NodePanel from './components/NodePanel.vue'
+import FlowCanvas from './components/FlowCanvas.vue'
+import ConfigPanel from './components/ConfigPanel.vue'
 
-async function loadData() {
-  loading.value = true
+const route = useRoute()
+const router = useRouter()
+const workflowStore = useWorkflowStore()
+
+// 状态
+const saving = ref(false)
+const running = ref(false)
+const resultDrawerVisible = ref(false)
+const executionResult = ref<WorkflowExecution | null>(null)
+
+// 计算属性
+const workflowName = computed({
+  get: () => workflowStore.workflowName,
+  set: (val) => workflowStore.setWorkflowName(val),
+})
+
+const currentWorkflowId = computed(() => workflowStore.currentWorkflowId)
+
+// 加载工作流
+async function loadWorkflow(id: number) {
   try {
-    const { data } = await getWorkflowList({ page: pagination.page, pageSize: pagination.pageSize, keyword: searchForm.keyword || undefined })
-    tableData.value = data.data.records || []
-    pagination.total = data.data.total
-  } catch { tableData.value = [] }
-  loading.value = false
+    const res = await getWorkflowDetail(id)
+    if (res.data) {
+      workflowStore.loadWorkflowData({
+        id: res.data.id,
+        name: res.data.name,
+        flowData: res.data.flowData,
+      })
+    }
+  } catch (error) {
+    message.error('加载工作流失败')
+    console.error(error)
+  }
 }
 
-function handleSearch() { pagination.page = 1; loadData() }
-function handleReset() { searchForm.keyword = ''; handleSearch() }
-function handleAdd() { dialogTitle.value = '创建工作流'; dialogVisible.value = true }
-function handleEdit(record: any) { dialogTitle.value = '编辑工作流'; Object.assign(formData, record); dialogVisible.value = true }
+// 处理拖放
+function handleDrop(event: DragEvent) {
+  const data = event.dataTransfer?.getData('application/vueflow')
+  if (!data) return
 
-async function handleSubmit() {
   try {
-    await createWorkflow(formData)
-    message.success('创建成功')
-    dialogVisible.value = false
-    loadData()
-  } catch { message.error('创建失败') }
+    const nodeDef = JSON.parse(data)
+
+    // 获取画布偏移量
+    const canvasWrapper = event.target as HTMLElement
+    const rect = canvasWrapper.getBoundingClientRect()
+    const x = event.clientX - rect.left - 90
+    const y = event.clientY - rect.top - 30
+
+    // 创建新节点
+    const newNode: Node<WorkflowNodeData> = {
+      id: `${nodeDef.type}-${Date.now()}`,
+      type: nodeDef.type,
+      position: { x: Math.max(0, x), y: Math.max(0, y) },
+      data: {
+        label: nodeDef.name,
+        type: nodeDef.type,
+        ...getDefaultConfig(nodeDef.type),
+      },
+    }
+
+    workflowStore.addNode(newNode)
+    workflowStore.setSelectedNode(newNode)
+  } catch (error) {
+    console.error('解析拖放数据失败:', error)
+  }
 }
 
-async function handleDelete(record: any) {
-  try { await deleteWorkflow(record.id); message.success('删除成功'); loadData() } catch { message.error('删除失败') }
+// 获取默认配置
+function getDefaultConfig(type: string): Partial<WorkflowNodeData> {
+  const defaults: Record<string, Partial<WorkflowNodeData>> = {
+    input: { variables: [{ name: 'query', type: 'string', defaultValue: '' }] },
+    output: { outputParams: [], responseContent: '' },
+    llm: { model: 'qwen-max', temperature: 0.7, maxTokens: 2000, inputParams: [], prompt: '' },
+    retrieval: { topK: 5, scoreThreshold: 0.7 },
+    condition: { conditions: [{ expression: 'true', label: '默认' }] },
+    http: { method: 'GET', url: '', headers: '{}', body: '' },
+    code: { language: 'javascript', code: '' },
+  }
+  return defaults[type] || {}
 }
 
-async function handleToggle(record: any) {
-  try { await toggleWorkflowStatus(record.id); message.success('操作成功'); loadData() } catch { message.error('操作失败') }
+// 处理节点点击
+function handleNodeClick(node: Node) {
+  workflowStore.setSelectedNode(node)
 }
 
-onMounted(() => { loadData() })
+// 处理画布点击
+function handlePaneClick() {
+  workflowStore.setSelectedNode(null)
+}
+
+// 处理名称变化
+function handleNameChange() {
+  workflowStore.setWorkflowName(workflowName.value)
+}
+
+// 自动布局
+function handleAutoLayout() {
+  const nodeWidth = 200
+  const nodeHeight = 100
+  const gapX = 100
+  const gapY = 150
+  const startX = 50
+  const startY = 50
+
+  // 按拓扑顺序排列
+  const nodes = [...workflowStore.nodes]
+  const edges = workflowStore.edges
+
+  // 计算每个节点的层级
+  const levels: Map<string, number> = new Map()
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]))
+
+  // 找到输入节点作为起始
+  const startNodes = nodes.filter((n) => n.type === 'input')
+  startNodes.forEach((n) => levels.set(n.id, 0))
+
+  // BFS 计算层级
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const edge of edges) {
+      const sourceLevel = levels.get(edge.source)
+      if (sourceLevel !== undefined) {
+        const targetLevel = levels.get(edge.target)
+        if (targetLevel === undefined || targetLevel < sourceLevel + 1) {
+          levels.set(edge.target, sourceLevel + 1)
+          changed = true
+        }
+      }
+    }
+  }
+
+  // 分配未连接的节点
+  let maxLevel = Math.max(...levels.values(), 0)
+  for (const node of nodes) {
+    if (!levels.has(node.id)) {
+      levels.set(node.id, ++maxLevel)
+    }
+  }
+
+  // 按层级分组
+  const levelGroups: Map<number, Node[]> = new Map()
+  for (const node of nodes) {
+    const level = levels.get(node.id) || 0
+    if (!levelGroups.has(level)) {
+      levelGroups.set(level, [])
+    }
+    levelGroups.get(level)!.push(node)
+  }
+
+  // 应用布局
+  levelGroups.forEach((group, level) => {
+    group.forEach((node, index) => {
+      workflowStore.updateNodePosition(node.id, {
+        x: startX + level * (nodeWidth + gapX),
+        y: startY + index * (nodeHeight + gapY),
+      })
+    })
+  })
+
+  message.success('布局完成')
+}
+
+// 保存工作流
+async function handleSave() {
+  if (workflowStore.nodes.length === 0) {
+    message.warning('工作流为空，无法保存')
+    return
+  }
+
+  saving.value = true
+  try {
+    const flowData = JSON.stringify({
+      nodes: workflowStore.serializeNodes(),
+      edges: workflowStore.serializeEdges(),
+    })
+
+    if (currentWorkflowId.value) {
+      await updateWorkflow(currentWorkflowId.value, {
+        name: workflowName.value,
+        description: '',
+        icon: 'workflow',
+        color: '#1890ff',
+        definition: { nodes: [], edges: [] },
+      })
+      // 更新 flowData
+      await updateWorkflow(currentWorkflowId.value, {
+        name: workflowName.value,
+        description: '',
+        icon: 'workflow',
+        color: '#1890ff',
+        definition: JSON.parse(flowData),
+      })
+      message.success('保存成功')
+    } else {
+      const res = await createWorkflow({
+        name: workflowName.value,
+        description: '',
+        icon: 'workflow',
+        color: '#1890ff',
+        definition: JSON.parse(flowData),
+      })
+      if (res.data?.id) {
+        workflowStore.setCurrentWorkflowId(res.data.id)
+        router.replace(`/workflow/${res.data.id}`)
+        message.success('创建成功')
+      }
+    }
+  } catch (error) {
+    message.error('保存失败')
+    console.error(error)
+  } finally {
+    saving.value = false
+  }
+}
+
+// 运行工作流
+async function handleRun() {
+  if (!currentWorkflowId.value) {
+    message.warning('请先保存工作流')
+    return
+  }
+
+  running.value = true
+  resultDrawerVisible.value = true
+  executionResult.value = null
+
+  try {
+    const res = await executeWorkflow(currentWorkflowId.value, {})
+    executionResult.value = res.data
+  } catch (error) {
+    message.error('执行失败')
+    console.error(error)
+  } finally {
+    running.value = false
+  }
+}
+
+// 获取节点执行颜色
+function getNodeExecutionColor(status: string): string {
+  const colors: Record<string, string> = {
+    pending: 'gray',
+    running: 'blue',
+    success: 'green',
+    failed: 'red',
+    skipped: 'default',
+  }
+  return colors[status] || 'default'
+}
+
+// 初始化
+onMounted(() => {
+  const id = route.params.id as string
+  if (id && id !== 'create') {
+    loadWorkflow(Number(id))
+  } else {
+    workflowStore.resetToNew()
+  }
+})
+
+// 监听路由变化
+watch(
+  () => route.params.id,
+  (newId) => {
+    if (newId && newId !== 'create') {
+      loadWorkflow(Number(newId))
+    } else {
+      workflowStore.resetToNew()
+    }
+  }
+)
 </script>
 
 <style scoped lang="scss">
-.workflow-container {
-  .card-header { display: flex; justify-content: space-between; align-items: center; .card-title { font-size: 16px; font-weight: 500; } }
-  .search-form { margin-bottom: 20px; }
-  .pagination { margin-top: 20px; display: flex; justify-content: flex-end; }
-  .flow-builder-preview { border: 1px dashed #d9d9d9; border-radius: 8px; padding: 16px; .node-list { display: flex; gap: 12px; margin-bottom: 16px; .node-item { padding: 8px 16px; background: #f5f5f5; border-radius: 4px; cursor: move; } } }
+.workflow-editor {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 32px);
+  background: #f5f5f5;
+}
+
+.editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.canvas-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.execution-result {
+  .execution-node {
+    .node-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+
+      .node-name {
+        font-weight: 500;
+      }
+    }
+
+    .node-duration {
+      font-size: 12px;
+      color: #8c8c8c;
+      margin-bottom: 4px;
+    }
+  }
+
+  .output-json {
+    background: #f5f5f5;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    overflow-x: auto;
+    max-height: 300px;
+  }
 }
 </style>

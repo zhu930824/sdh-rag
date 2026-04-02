@@ -8,7 +8,10 @@
       "Bash(where java:*)",
       "Bash(dir \"D:\\\\develop\" \")",
       "Bash(findstr -i jdk)",
-      "Bash(npx vue-tsc:*)"
+      "Bash(npx vue-tsc:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(npm install:*)"
     ]
   }
 }
