@@ -11,7 +11,8 @@
       "Bash(npx vue-tsc:*)",
       "WebFetch(domain:github.com)",
       "WebSearch",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

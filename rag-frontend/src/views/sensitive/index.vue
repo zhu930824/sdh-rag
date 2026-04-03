@@ -287,8 +287,8 @@ async function loadData() {
         keyword: searchForm.keyword || undefined,
         category: searchForm.category,
       })
-      tableData.value = data.data.records || data.data.list || []
-      pagination.total = data.data.total
+      tableData.value = data.records || data.list || []
+      pagination.total = data.total
     } catch (error) {
       tableData.value = []
       pagination.total = 0

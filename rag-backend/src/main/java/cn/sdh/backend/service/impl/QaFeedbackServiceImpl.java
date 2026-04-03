@@ -43,6 +43,25 @@ public class QaFeedbackServiceImpl extends ServiceImpl<QaFeedbackMapper, QaFeedb
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QaFeedback createFeedback(QaFeedback feedback) {
+        // 查找用户是否已经对该聊天记录评价过
+        LambdaQueryWrapper<QaFeedback> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(QaFeedback::getChatHistoryId, feedback.getChatHistoryId())
+                .eq(QaFeedback::getUserId, feedback.getUserId());
+        QaFeedback existingFeedback = getOne(wrapper);
+
+        if (existingFeedback != null) {
+            // 已存在评价，更新评价状态
+            existingFeedback.setRating(feedback.getRating());
+            existingFeedback.setFeedbackType(feedback.getFeedbackType());
+            existingFeedback.setComment(feedback.getComment());
+            existingFeedback.setCorrectAnswer(feedback.getCorrectAnswer());
+            existingFeedback.setStatus(0); // 重置状态为未处理
+            existingFeedback.setCreateTime(LocalDateTime.now()); // 更新时间
+            updateById(existingFeedback);
+            return existingFeedback;
+        }
+
+        // 不存在评价，创建新记录
         feedback.setStatus(0);
         feedback.setCreateTime(LocalDateTime.now());
         save(feedback);
@@ -77,5 +96,14 @@ public class QaFeedbackServiceImpl extends ServiceImpl<QaFeedbackMapper, QaFeedb
     public Long getUserIdByChatHistoryId(Long chatHistoryId) {
         ChatHistory chatHistory = chatHistoryMapper.selectById(chatHistoryId);
         return chatHistory != null ? chatHistory.getUserId() : null;
+    }
+
+    @Override
+    public Integer getUserRating(Long chatHistoryId, Long userId) {
+        LambdaQueryWrapper<QaFeedback> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(QaFeedback::getChatHistoryId, chatHistoryId)
+                .eq(QaFeedback::getUserId, userId);
+        QaFeedback feedback = getOne(wrapper);
+        return feedback != null ? feedback.getRating() : null;
     }
 }

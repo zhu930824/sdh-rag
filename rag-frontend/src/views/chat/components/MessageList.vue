@@ -72,6 +72,32 @@
               </template>
             </a-button>
           </a-tooltip>
+          <a-tooltip v-if="message.historyId" :title="message.userRating === 1 ? '已点赞' : '点赞'">
+            <a-button
+              type="text"
+              size="small"
+              :class="{ 'action-active': message.userRating === 1 }"
+              @click="handleLike(message)"
+            >
+              <template #icon>
+                <LikeFilled v-if="message.userRating === 1" />
+                <LikeOutlined v-else />
+              </template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip v-if="message.historyId" :title="message.userRating === 0 ? '已点踩' : '点踩'">
+            <a-button
+              type="text"
+              size="small"
+              :class="{ 'action-active': message.userRating === 0 }"
+              @click="handleDislike(message)"
+            >
+              <template #icon>
+                <DislikeFilled v-if="message.userRating === 0" />
+                <DislikeOutlined v-else />
+              </template>
+            </a-button>
+          </a-tooltip>
         </div>
       </div>
     </div>
@@ -93,12 +119,16 @@ import {
   UserOutlined,
   RobotOutlined,
   LinkOutlined,
-  LoadingOutlined,
   QuestionCircleOutlined,
   CopyOutlined,
+  LikeOutlined,
+  DislikeOutlined,
+  LikeFilled,
+  DislikeFilled,
 } from '@ant-design/icons-vue'
 import type { ChatMessage, Source } from '@/api/chat'
 import SourceCard from './SourceCard.vue'
+import { createFeedback } from '@/api/feedback'
 
 const renderer = new marked.Renderer()
 
@@ -129,6 +159,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'sourceClick', source: Source): void
   (e: 'quickQuestion', question: string): void
+  (e: 'feedback', message: ChatMessage, rating: number): void
 }>()
 
 const containerRef = ref<HTMLElement>()
@@ -182,6 +213,46 @@ function formatTime(time: string): string {
 
 function handleSourceClick(source: Source): void {
   emit('sourceClick', source)
+}
+
+async function handleLike(msg: ChatMessage): Promise<void> {
+  if (!msg.historyId) return
+
+  // 如果已经点赞，则取消
+  const newRating = msg.userRating === 1 ? undefined : 1
+
+  try {
+    if (newRating !== undefined) {
+      await createFeedback({
+        chatHistoryId: msg.historyId,
+        rating: newRating,
+      })
+    }
+    msg.userRating = newRating
+    emit('feedback', msg, newRating ?? 1)
+  } catch (error) {
+    message.error('评价失败')
+  }
+}
+
+async function handleDislike(msg: ChatMessage): Promise<void> {
+  if (!msg.historyId) return
+
+  // 如果已经点踩，则取消
+  const newRating = msg.userRating === 0 ? undefined : 0
+
+  try {
+    if (newRating !== undefined) {
+      await createFeedback({
+        chatHistoryId: msg.historyId,
+        rating: newRating,
+      })
+    }
+    msg.userRating = newRating
+    emit('feedback', msg, newRating ?? 0)
+  } catch (error) {
+    message.error('评价失败')
+  }
 }
 
 function scrollToBottom(smooth = true): void {
@@ -542,6 +613,10 @@ defineExpose({
         margin-top: 8px;
         opacity: 0;
         transition: opacity var(--transition-duration);
+
+        .action-active {
+          color: var(--primary-color);
+        }
       }
     }
   }

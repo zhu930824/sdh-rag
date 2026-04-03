@@ -199,6 +199,9 @@ export const useChatStore = defineStore('chat', () => {
               }
               break
             case 'done':
+              if (event.historyId) {
+                targetMessage.historyId = event.historyId
+              }
               isGenerating.value = false
               break
             case 'error':

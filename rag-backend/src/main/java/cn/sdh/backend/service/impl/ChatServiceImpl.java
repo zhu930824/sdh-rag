@@ -6,6 +6,7 @@ import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.service.AiChatService;
 import cn.sdh.backend.service.ChatService;
 import cn.sdh.backend.service.ModelConfigService;
+import cn.sdh.backend.service.SensitiveWordService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,9 +36,19 @@ public class ChatServiceImpl implements ChatService {
     @Autowired
     private ModelConfigService modelConfigService;
 
+    @Autowired
+    private SensitiveWordService sensitiveWordService;
+
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
         log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}", userId, knowledgeId, modelId, sessionId);
+
+        // 检测敏感词
+        List<String> sensitiveWords = sensitiveWordService.findSensitiveWords(question);
+        if (!sensitiveWords.isEmpty()) {
+            log.warn("用户 {} 的问题包含敏感词: {}", userId, sensitiveWords);
+            return Flux.just("{\"type\":\"error\",\"message\":\"您的问题包含敏感词，请修改后重试\"}");
+        }
 
         // 生成或使用现有的会话ID
         String currentSessionId = (sessionId != null && !sessionId.isEmpty())
@@ -63,6 +75,7 @@ public class ChatServiceImpl implements ChatService {
 
         // 调用AI服务
         return aiChatService.streamChat(systemPrompt, question, useModelId)
+                .filter(data -> !data.contains("\"type\":\"done\"")) // 过滤掉原有的done事件
                 .doOnNext(data -> {
                     // 提取内容并收集
                     if (data.contains("\"type\":\"content\"")) {
@@ -81,6 +94,10 @@ public class ChatServiceImpl implements ChatService {
                             log.debug("解析内容失败: {}", e.getMessage());
                         }
                     }
+                })
+                // 在流结束后追加带 historyId 的 done 事件
+                .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
+                .doOnNext(data -> {
                     // 流式响应完成，保存AI回复
                     if (data.contains("\"type\":\"done\"")) {
                         String answer = answerBuilder.get().toString();
@@ -176,6 +193,13 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public String chat(Long userId, String question, String sessionId) {
+        // 检测敏感词
+        List<String> sensitiveWords = sensitiveWordService.findSensitiveWords(question);
+        if (!sensitiveWords.isEmpty()) {
+            log.warn("用户 {} 的问题包含敏感词: {}", userId, sensitiveWords);
+            return "您的问题包含敏感词，请修改后重试";
+        }
+
         // 同步版本的聊天接口
         ModelConfig defaultModel = modelConfigService.getDefault();
         String modelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;

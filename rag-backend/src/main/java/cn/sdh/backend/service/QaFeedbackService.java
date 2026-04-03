@@ -17,4 +17,12 @@ public interface QaFeedbackService extends IService<QaFeedback> {
     Map<String, Object> getFeedbackStats(Long chatHistoryId);
 
     Long getUserIdByChatHistoryId(Long chatHistoryId);
+
+    /**
+     * 获取用户对某条聊天记录的评价
+     * @param chatHistoryId 聊天记录ID
+     * @param userId 用户ID
+     * @return 评价（1-点赞，0-点踩），如果没有评价返回null
+     */
+    Integer getUserRating(Long chatHistoryId, Long userId);
 }

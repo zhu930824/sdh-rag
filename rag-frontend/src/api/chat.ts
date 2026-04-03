@@ -9,6 +9,8 @@ export interface ChatMessage {
   content: string
   sources?: Source[]
   createTime: string
+  historyId?: number // 聊天历史ID，用于评价
+  userRating?: number // 用户评价：1-点赞，0-点踩，undefined-未评价
 }
 
 // 引用来源类型
@@ -34,6 +36,7 @@ export interface StreamEvent {
   content?: string
   sources?: Source[]
   message?: string
+  historyId?: number // 聊天历史ID，用于评价
 }
 
 // 问答请求参数

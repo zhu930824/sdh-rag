@@ -5,6 +5,7 @@ import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.AskRequest;
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.service.ChatService;
+import cn.sdh.backend.service.QaFeedbackService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,9 @@ public class ChatController {
 
     @Autowired
     private ChatService chatService;
+
+    @Autowired
+    private QaFeedbackService qaFeedbackService;
 
     /**
      * 发起问答（流式响应）
@@ -166,6 +170,10 @@ public class ChatController {
                         aiMsg.put("role", "assistant");
                         aiMsg.put("content", h.getAnswer());
                         aiMsg.put("createTime", h.getCreateTime());
+                        aiMsg.put("historyId", h.getId());
+                        // 获取用户对该条消息的评价
+                        Integer userRating = qaFeedbackService.getUserRating(h.getId(), userId);
+                        aiMsg.put("userRating", userRating);
                         msgs.add(aiMsg);
                     }
 
