@@ -1,10 +1,10 @@
-import request, { axiosInstance } from '@/utils/request'
+import request from '@/utils/request'
 import type { ApiResponse, PageResult } from '@/types'
 import { useUserStore } from '@/stores/user'
 
 // 聊天消息类型
 export interface ChatMessage {
-  id: number
+  id: number | string
   role: 'user' | 'assistant'
   content: string
   sources?: Source[]
@@ -25,6 +25,7 @@ export interface ChatSession {
   title: string
   createTime: string
   updateTime: string
+  messageCount?: number
 }
 
 // 流式响应事件类型
@@ -35,9 +36,17 @@ export interface StreamEvent {
   message?: string
 }
 
+// 问答请求参数
+export interface AskRequest {
+  question: string
+  sessionId?: string
+  knowledgeId?: number | null
+  modelId?: number | null
+}
+
 // 发起问答（流式响应）
 export async function askQuestion(
-  data: { question: string; sessionId?: string; knowledgeId?: number | null },
+  data: AskRequest,
   onMessage: (event: StreamEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
@@ -48,7 +57,7 @@ export async function askQuestion(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${userStore.token}`,
+      token: userStore.token,
     },
     body: JSON.stringify(data),
     signal,
@@ -71,26 +80,50 @@ export async function askQuestion(
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
+
+    // 按行处理
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
 
     for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const jsonStr = line.slice(6).trim()
+      const trimmed = line.trim()
+      if (!trimmed) continue
+
+      if (trimmed.startsWith('data:')) {
+        const jsonStr = trimmed.slice(5).trim()
         if (!jsonStr || jsonStr === '[DONE]') continue
 
         try {
-          const event = JSON.parse(jsonStr) as StreamEvent
-          onMessage(event)
+          const streamEvent = JSON.parse(jsonStr) as StreamEvent
+          onMessage(streamEvent)
         } catch (e) {
-          console.error('Failed to parse SSE event:', e)
+          console.error('Failed to parse SSE event:', e, jsonStr)
         }
+      }
+    }
+  }
+
+  // 处理剩余的 buffer
+  const remaining = buffer.trim()
+  if (remaining && remaining.startsWith('data:')) {
+    const jsonStr = remaining.slice(5).trim()
+    if (jsonStr && jsonStr !== '[DONE]') {
+      try {
+        const streamEvent = JSON.parse(jsonStr) as StreamEvent
+        onMessage(streamEvent)
+      } catch (e) {
+        console.error('Failed to parse SSE event:', e, jsonStr)
       }
     }
   }
 }
 
-// 获取历史对话列表
+// 获取会话列表（按session分组）
+export function getChatSessions(params: { page: number; size: number }): Promise<ApiResponse<PageResult<ChatSession>>> {
+  return request.get('/api/chat/sessions', { params })
+}
+
+// 获取历史对话列表（兼容旧接口）
 export function getChatHistory(params: { page: number; size: number }): Promise<ApiResponse<PageResult<ChatSession>>> {
   return request.get('/api/chat/history', { params })
 }

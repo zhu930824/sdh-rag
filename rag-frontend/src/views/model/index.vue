@@ -190,10 +190,10 @@
           <a-input-number v-model:value="formData.maxTokens" :min="100" :max="4000" :step="100" style="width: 100%" />
         </a-form-item>
         <a-form-item label="是否本地">
-          <a-switch v-model:checked="formData.isLocal" />
+          <a-switch :checked="formData.isLocal === 1" @change="(checked: boolean) => formData.isLocal = checked ? 1 : 0" />
         </a-form-item>
         <a-form-item label="是否内置">
-          <a-switch v-model:checked="formData.isBuiltIn" />
+          <a-switch :checked="formData.isBuiltIn === 1" @change="(checked: boolean) => formData.isBuiltIn = checked ? 1 : 0" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -243,8 +243,8 @@ const formData = reactive<Partial<ExtendedModelConfig>>({
   temperature: 0.7,
   maxTokens: 2000,
   status: 1,
-  isLocal: false,
-  isBuiltIn: false,
+  isLocal: 0,
+  isBuiltIn: 0,
 })
 
 const providers = [
@@ -358,8 +358,8 @@ function handleAdd() {
     temperature: 0.7,
     maxTokens: 2000,
     status: 1,
-    isLocal: false,
-    isBuiltIn: false,
+    isLocal: 0,
+    isBuiltIn: 0,
   })
   dialogVisible.value = true
 }
@@ -373,11 +373,18 @@ function handleEdit(record: ExtendedModelConfig) {
 
 async function handleSubmit() {
   try {
+    // 确保 isLocal 和 isBuiltIn 是数字类型
+    const submitData = {
+      ...formData,
+      isLocal: formData.isLocal ? 1 : 0,
+      isBuiltIn: formData.isBuiltIn ? 1 : 0,
+    }
+
     if (isEdit.value && formData.id) {
-      await updateModel(formData.id, formData)
+      await updateModel(formData.id, submitData)
       message.success('更新成功')
     } else {
-      await createModel(formData)
+      await createModel(submitData)
       message.success('添加成功')
     }
     dialogVisible.value = false

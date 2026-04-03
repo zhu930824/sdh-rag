@@ -94,16 +94,3 @@ export const documentApi = {
     return request.delete(`/api/document/${id}`)
   },
 }
-
-// 问答相关接口
-export const chatApi = {
-  // 发送问题
-  ask(data: { question: string; knowledgeId: number }): Promise<any> {
-    return request.post('/api/chat/ask', data)
-  },
-
-  // 获取历史记录
-  getHistory(params: { page: number; pageSize: number }): Promise<any> {
-    return request.get('/api/chat/history', { params })
-  },
-}

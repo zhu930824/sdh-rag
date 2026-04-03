@@ -20,4 +20,11 @@ public class AskRequest {
      * 如果不指定，则从所有知识库查询
      */
     private Long knowledgeId;
+
+    /**
+     * 指定的模型ID（可选）
+     * 如果指定，则使用该模型
+     * 如果不指定，则使用默认模型
+     */
+    private Long modelId;
 }

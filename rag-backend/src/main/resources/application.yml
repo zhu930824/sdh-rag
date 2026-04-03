@@ -21,6 +21,8 @@ spring:
 #        url: "http://127.0.0.1:8080/search"
 #        nums: 10
 #        engines: "duckduckgo,google,bing,brave,mojeek,presearch,qwant,startpage,yahoo,arxiv,crossref,google_scholar,internetarchivescholar,semantic_scholar"
+    openai:
+      api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
     dashscope:
       api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
     vectorstore:

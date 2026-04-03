@@ -1,8 +1,11 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.ChatHistory;
+import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
+import cn.sdh.backend.service.AiChatService;
 import cn.sdh.backend.service.ChatService;
+import cn.sdh.backend.service.ModelConfigService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +16,7 @@ import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 聊天服务实现
@@ -24,27 +28,115 @@ public class ChatServiceImpl implements ChatService {
     @Autowired
     private ChatHistoryMapper chatHistoryMapper;
 
+    @Autowired
+    private AiChatService aiChatService;
+
+    @Autowired
+    private ModelConfigService modelConfigService;
+
     @Override
-    public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId) {
-        // TODO: 实现RAG检索和AI调用
-        // 1. 如果 knowledgeId 不为空，则只从该知识库检索
-        // 2. 如果 knowledgeId 为空，则从所有知识库检索
-        // 3. 从向量数据库检索相关文档
-        // 4. 构建提示词
-        // 5. 调用AI模型（流式响应）
-        // 6. 保存聊天记录
+    public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
+        log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}", userId, knowledgeId, modelId, sessionId);
 
-        log.info("用户 {} 发起问答，知识库ID: {}", userId, knowledgeId);
+        // 生成或使用现有的会话ID
+        String currentSessionId = (sessionId != null && !sessionId.isEmpty())
+                ? sessionId
+                : UUID.randomUUID().toString();
 
-        // 临时实现：返回模拟响应
-        String knowledgeInfo = knowledgeId != null
-            ? "（从知识库 " + knowledgeId + " 中检索）"
-            : "（从所有知识库中检索）";
+        // 获取模型配置：优先使用用户指定的模型，否则使用默认模型
+        String useModelId;
+        if (modelId != null) {
+            useModelId = String.valueOf(modelId);
+        } else {
+            ModelConfig defaultModel = modelConfigService.getDefault();
+            useModelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;
+        }
 
-        return Flux.just(
-            "data: {\"type\":\"content\",\"content\":\"这是一个模拟的AI回答。" + knowledgeInfo + " 实际实现需要集成Spring AI和向量检索。\"}\n\n",
-            "data: {\"type\":\"done\"}\n\n"
-        );
+        // 构建系统提示词
+        String systemPrompt = buildSystemPrompt(knowledgeId);
+
+        // 保存用户问题
+        Long historyId = saveUserQuestion(question, currentSessionId, userId, knowledgeId);
+
+        // 用于收集AI回复
+        AtomicReference<StringBuilder> answerBuilder = new AtomicReference<>(new StringBuilder());
+
+        // 调用AI服务
+        return aiChatService.streamChat(systemPrompt, question, useModelId)
+                .doOnNext(data -> {
+                    // 提取内容并收集
+                    if (data.contains("\"type\":\"content\"")) {
+                        try {
+                            int start = data.indexOf("\"content\":\"") + 11;
+                            int end = data.indexOf("\"", start);
+                            if (start > 10 && end > start) {
+                                String content = data.substring(start, end);
+                                // 反转义
+                                content = content.replace("\\n", "\n")
+                                        .replace("\\\"", "\"")
+                                        .replace("\\\\", "\\");
+                                answerBuilder.get().append(content);
+                            }
+                        } catch (Exception e) {
+                            log.debug("解析内容失败: {}", e.getMessage());
+                        }
+                    }
+                    // 流式响应完成，保存AI回复
+                    if (data.contains("\"type\":\"done\"")) {
+                        String answer = answerBuilder.get().toString();
+                        saveAiAnswer(historyId, answer);
+                        log.debug("会话 {} AI响应完成", currentSessionId);
+                    }
+                });
+    }
+
+    /**
+     * 构建系统提示词
+     */
+    private String buildSystemPrompt(Long knowledgeId) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是一个智能助手，请根据用户的问题给出准确、有帮助的回答。");
+
+        if (knowledgeId != null) {
+            prompt.append(" 当前对话关联知识库ID: ").append(knowledgeId).append("。");
+        }
+
+        prompt.append("\n请用中文回答，保持回答简洁明了。");
+
+        return prompt.toString();
+    }
+
+    /**
+     * 保存用户问题
+     */
+    private Long saveUserQuestion(String question, String sessionId, Long userId, Long knowledgeId) {
+        try {
+            ChatHistory history = new ChatHistory();
+            history.setSessionId(sessionId);
+            history.setUserId(userId);
+            history.setQuestion(question);
+            history.setCreateTime(LocalDateTime.now());
+            chatHistoryMapper.insert(history);
+            return history.getId();
+        } catch (Exception e) {
+            log.error("保存用户问题失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 保存AI回答
+     */
+    private void saveAiAnswer(Long historyId, String answer) {
+        if (historyId == null) return;
+        try {
+            ChatHistory history = new ChatHistory();
+            history.setId(historyId);
+            history.setAnswer(answer);
+            chatHistoryMapper.updateById(history);
+        } catch (Exception e) {
+            log.error("保存AI回答失败", e);
+        }
     }
 
     @Override
@@ -85,8 +177,8 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public String chat(Long userId, String question, String sessionId) {
         // 同步版本的聊天接口
-        StringBuilder response = new StringBuilder();
-        ask(question, sessionId, userId, null).blockLast();
-        return response.toString();
+        ModelConfig defaultModel = modelConfigService.getDefault();
+        String modelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;
+        return aiChatService.chat(question, modelId);
     }
 }

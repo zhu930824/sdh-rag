@@ -48,7 +48,7 @@ public class ModelConfigController {
         return Result.success(ModelConfigResponse.fromEntity(config));
     }
 
-    @PostMapping
+    @PostMapping("/add")
     public Result<Void> save(@Valid @RequestBody ModelConfigRequest request) {
         ModelConfig config = new ModelConfig();
         config.setName(request.getName());

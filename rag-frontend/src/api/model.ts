@@ -34,7 +34,7 @@ export interface ModelConfigRequest {
 }
 
 export function createModel(data: ModelConfigRequest): Promise<ApiResponse<null>> {
-  return request.post('/api/model', data)
+  return request.post('/api/model/add', data)
 }
 
 export function updateModel(id: number, data: ModelConfigRequest): Promise<ApiResponse<null>> {

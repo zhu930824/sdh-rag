@@ -306,11 +306,13 @@ defineExpose({
       flex-shrink: 0;
 
       .user-avatar {
-        background-color: var(--primary-color);
+        background: linear-gradient(135deg, var(--primary-color) 0%, #5a9cf8 100%);
+        border-radius: 50%;
       }
 
       .assistant-avatar {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
       }
     }
 
@@ -343,19 +345,23 @@ defineExpose({
         gap: 4px;
 
         .message-text {
-          padding: 12px 16px;
-          border-radius: var(--border-radius-base);
+          padding: 14px 18px;
+          border-radius: 18px;
           line-height: 1.7;
           word-break: break-word;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
           &.user-text {
-            background-color: var(--primary-color);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-color-hover, #5a9cf8) 100%);
             color: #fff;
+            border-bottom-right-radius: 6px;
           }
 
           &.assistant-text {
-            background-color: var(--bg-page);
+            background-color: #f7f8fa;
             color: var(--text-primary);
+            border-bottom-left-radius: 6px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
 
             :deep(p) {
               margin: 0 0 12px;
@@ -379,7 +385,7 @@ defineExpose({
 
             :deep(.code-block) {
               margin: 12px 0;
-              border-radius: var(--border-radius-base);
+              border-radius: 12px;
               overflow: hidden;
               background-color: #1e1e1e;
 

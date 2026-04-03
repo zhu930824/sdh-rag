@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ChatSession, Source } from '@/api/chat'
-import { askQuestion, getChatHistory, getSessionMessages, deleteSession, createSession } from '@/api/chat'
+import { askQuestion, getChatSessions, getSessionMessages, deleteSession, createSession } from '@/api/chat'
 
 export const useChatStore = defineStore('chat', () => {
   // 当前会话ID
@@ -52,7 +52,7 @@ export const useChatStore = defineStore('chat', () => {
         sessionPage.value = 1
       }
 
-      const res = await getChatHistory({
+      const res = await getChatSessions({
         page: sessionPage.value,
         size: sessionPageSize.value,
       })
@@ -174,7 +174,12 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       await askQuestion(
-        { question: question.trim(), sessionId, knowledgeId: selectedKnowledgeId.value },
+        {
+          question: question.trim(),
+          sessionId,
+          knowledgeId: selectedKnowledgeId.value,
+          modelId: selectedModelId.value,
+        },
         (event) => {
           // 处理流式事件
           const targetMessage = messages.value.find((m) => m.id === aiMessageId)

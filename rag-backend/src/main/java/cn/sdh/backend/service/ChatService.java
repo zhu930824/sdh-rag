@@ -15,9 +15,10 @@ public interface ChatService {
      * @param sessionId 会话ID
      * @param userId 用户ID
      * @param knowledgeId 知识库ID（可选）
+     * @param modelId 模型ID（可选）
      * @return 流式响应
      */
-    Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId);
+    Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId);
 
     /**
      * 获取历史对话
