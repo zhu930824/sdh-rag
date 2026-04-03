@@ -1,200 +1,263 @@
 <template>
   <div class="dashboard">
-    <!-- Welcome Banner - Nature Style -->
-    <div class="welcome-banner">
-      <div class="banner-bg">
-        <div class="leaf leaf-1"></div>
-        <div class="leaf leaf-2"></div>
-        <div class="leaf leaf-3"></div>
+    <!-- Hero Section -->
+    <div class="hero-section">
+      <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+        <div class="hero-grid"></div>
       </div>
-      <div class="banner-content">
-        <div class="welcome-text">
-          <h1 class="welcome-title">
-            {{ getGreeting() }}，<span class="username">{{ nickname || '用户' }}</span>
+      <div class="hero-content">
+        <div class="hero-text">
+          <div class="hero-badge">
+            <StarOutlined />
+            <span>AI 驱动的智能平台</span>
+          </div>
+          <h1 class="hero-title">
+            {{ getGreeting() }}，<span class="gradient-text">{{ nickname || '用户' }}</span>
           </h1>
-          <p class="welcome-subtitle">欢迎使用智能知识库，开启您的高效工作之旅</p>
-          <div class="welcome-tags">
-            <span class="tag" v-for="(badge, index) in welcomeBadges" :key="index">
-              <FileTextOutlined v-if="badge.icon === FileTextOutlined" />
-              <CommentOutlined v-else-if="badge.icon === CommentOutlined" />
-              <UserOutlined v-else-if="badge.icon === UserOutlined" />
-              {{ badge.text }}
-            </span>
+          <p class="hero-subtitle">探索知识图谱，开启智能问答新体验</p>
+          <div class="hero-actions">
+            <a-button type="primary" size="large" class="hero-btn" @click="router.push('/chat')">
+              <MessageOutlined />
+              开始对话
+            </a-button>
+            <a-button size="large" class="hero-btn-secondary" @click="router.push('/knowledge')">
+              <FolderOutlined />
+              知识库
+            </a-button>
           </div>
         </div>
-        <div class="welcome-illustration">
-          <div class="illustration-circle">
-            <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="60" cy="60" r="50" fill="rgba(255,255,255,0.1)"/>
-              <path d="M35 60L50 75L85 42" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+        <div class="hero-visual">
+          <div class="visual-card visual-card-main">
+            <div class="visual-header">
+              <div class="visual-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span class="visual-title">实时数据</span>
+            </div>
+            <div class="visual-content">
+              <div class="visual-stat">
+                <span class="visual-stat-value">{{ animatedStats.chatCount }}</span>
+                <span class="visual-stat-label">今日问答</span>
+              </div>
+              <div class="visual-chart">
+                <div class="chart-bar" v-for="(h, i) in chartData" :key="i" :style="{ height: h + '%' }"></div>
+              </div>
+            </div>
+          </div>
+          <div class="visual-card visual-card-float">
+            <ThunderboltOutlined />
+            <span>响应时间 <strong>0.3s</strong></span>
+          </div>
+          <div class="visual-card visual-card-float-2">
+            <SafetyCertificateOutlined />
+            <span>准确率 <strong>98.5%</strong></span>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Stats Cards -->
-    <div class="stats-grid">
+    <div class="stats-section">
       <div
         v-for="(stat, index) in statsData"
         :key="stat.label"
-        class="stat-card"
+        class="stat-card animate-slide-up"
         :style="{ animationDelay: `${index * 0.1}s` }"
       >
-        <div class="stat-icon" :style="{ backgroundColor: stat.color }">
-          <FolderOutlined v-if="stat.icon === FolderOutlined" />
-          <FileTextOutlined v-else-if="stat.icon === FileTextOutlined" />
-          <CommentOutlined v-else-if="stat.icon === CommentOutlined" />
-          <UserOutlined v-else-if="stat.icon === UserOutlined" />
+        <div class="stat-header">
+          <div class="stat-icon" :style="{ background: stat.gradient }">
+            <component :is="stat.icon" />
+          </div>
+          <div class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
+            <ArrowUpOutlined v-if="stat.trend > 0" />
+            <ArrowDownOutlined v-else />
+            <span>{{ Math.abs(stat.trend) }}%</span>
+          </div>
         </div>
-        <div class="stat-info">
+        <div class="stat-body">
           <div class="stat-value">
             <CountUp :end-val="stat.value" :duration="2" />
           </div>
           <div class="stat-label">{{ stat.label }}</div>
         </div>
-        <div class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
-          <ArrowUpOutlined v-if="stat.trend > 0" />
-          <ArrowDownOutlined v-else />
-          <span>{{ Math.abs(stat.trend) }}%</span>
+        <div class="stat-sparkline">
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+            <path :d="stat.sparkline" fill="none" :stroke="stat.color" stroke-width="2" />
+          </svg>
         </div>
       </div>
     </div>
 
-    <!-- Quick Actions -->
+    <!-- Feature Highlights -->
     <div class="section-card">
       <div class="section-header">
         <h2 class="section-title">
-          <AppstoreOutlined />
-          快捷操作
+          <CompassOutlined />
+          核心功能
         </h2>
-        <span class="section-badge">常用</span>
+        <span class="section-badge">FEATURES</span>
       </div>
-      <div class="actions-grid">
+      <div class="features-grid">
         <div
-          v-for="action in quickActions"
-          :key="action.label"
-          class="action-card"
-          @click="handleAction(action)"
+          v-for="(feature, index) in features"
+          :key="feature.title"
+          class="feature-card"
+          :style="{ animationDelay: `${index * 0.1}s` }"
+          @click="router.push(feature.route)"
         >
-          <div class="action-icon" :style="{ backgroundColor: action.color }">
-            <FolderAddOutlined v-if="action.icon === FolderAddOutlined" />
-            <UploadOutlined v-else-if="action.icon === UploadOutlined" />
-            <MessageOutlined v-else-if="action.icon === MessageOutlined" />
-            <TeamOutlined v-else-if="action.icon === TeamOutlined" />
+          <div class="feature-icon" :style="{ background: feature.gradient }">
+            <component :is="feature.icon" />
           </div>
-          <div class="action-text">
-            <span class="action-label">{{ action.label }}</span>
-            <span class="action-desc">{{ action.desc }}</span>
+          <div class="feature-content">
+            <h3 class="feature-title">{{ feature.title }}</h3>
+            <p class="feature-desc">{{ feature.desc }}</p>
+          </div>
+          <div class="feature-arrow">
+            <RightOutlined />
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Content Grid - Equal Height -->
+    <!-- Content Grid -->
     <div class="content-grid">
-      <!-- Recent Documents -->
+      <!-- Recent Activity -->
       <div class="section-card content-card">
         <div class="section-header">
           <h2 class="section-title">
-            <FileTextOutlined />
-            最近文档
-          </h2>
-          <a class="section-link" @click="router.push('/knowledge')">
-            查看全部 <RightOutlined />
-          </a>
-        </div>
-        <div class="document-list">
-          <div
-            v-for="(doc, index) in recentDocuments"
-            :key="doc.id"
-            class="document-item"
-            :style="{ animationDelay: `${index * 0.05}s` }"
-          >
-            <div class="doc-icon" :style="{ color: getDocColor(doc.type) }">
-              <FilePdfOutlined v-if="doc.type === 'pdf'" />
-              <FileWordOutlined v-else-if="doc.type === 'doc'" />
-              <FileMarkdownOutlined v-else-if="doc.type === 'md'" />
-              <FileExcelOutlined v-else-if="doc.type === 'excel'" />
-              <FileOutlined v-else />
-            </div>
-            <div class="doc-info">
-              <div class="doc-name">{{ doc.name }}</div>
-              <div class="doc-meta">
-                <span>{{ doc.size }}</span>
-                <span>{{ doc.time }}</span>
-              </div>
-            </div>
-            <span class="doc-status" :class="doc.status">
-              {{ doc.status === 'success' ? '已完成' : '处理中' }}
-            </span>
-          </div>
-          <div v-if="recentDocuments.length === 0" class="empty-state">
-            <InboxOutlined />
-            <span>暂无文档</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recent Chats -->
-      <div class="section-card content-card">
-        <div class="section-header">
-          <h2 class="section-title">
-            <CommentOutlined />
-            最近问答
+            <ClockCircleOutlined />
+            最近活动
           </h2>
           <a class="section-link" @click="router.push('/chat')">
             查看全部 <RightOutlined />
           </a>
         </div>
-        <div class="chat-list">
+        <div class="activity-list">
           <div
-            v-for="(chat, index) in recentChats"
-            :key="chat.id"
-            class="chat-item"
+            v-for="(activity, index) in recentActivities"
+            :key="activity.id"
+            class="activity-item"
             :style="{ animationDelay: `${index * 0.05}s` }"
           >
-            <div class="chat-avatar">
-              <UserOutlined />
+            <div class="activity-icon" :style="{ background: activity.color }">
+              <component :is="activity.icon" />
             </div>
-            <div class="chat-content">
-              <div class="chat-question">{{ chat.question }}</div>
-              <div class="chat-answer">{{ chat.answer }}</div>
+            <div class="activity-content">
+              <div class="activity-title">{{ activity.title }}</div>
+              <div class="activity-meta">
+                <span>{{ activity.time }}</span>
+                <span class="activity-dot"></span>
+                <span>{{ activity.type }}</span>
+              </div>
             </div>
-            <span class="chat-time">{{ chat.time }}</span>
+            <div class="activity-status" :class="activity.status">
+              {{ activity.statusText }}
+            </div>
           </div>
-          <div v-if="recentChats.length === 0" class="empty-state">
-            <MessageOutlined />
-            <span>暂无问答记录</span>
+          <div v-if="recentActivities.length === 0" class="empty-state">
+            <InboxOutlined />
+            <span>暂无活动记录</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="section-card content-card">
+        <div class="section-header">
+          <h2 class="section-title">
+            <ThunderboltOutlined />
+            快捷操作
+          </h2>
+        </div>
+        <div class="quick-actions">
+          <div
+            v-for="(action, index) in quickActions"
+            :key="action.label"
+            class="quick-action-card"
+            :style="{ animationDelay: `${index * 0.1}s` }"
+            @click="router.push(action.route)"
+          >
+            <div class="quick-action-icon" :style="{ background: action.gradient }">
+              <component :is="action.icon" />
+            </div>
+            <div class="quick-action-text">
+              <span class="quick-action-label">{{ action.label }}</span>
+              <span class="quick-action-desc">{{ action.desc }}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- System Info -->
-    <div class="section-card">
+    <!-- Trust Badges -->
+    <div class="trust-section">
+      <div class="trust-badges">
+        <div class="trust-badge">
+          <SecurityScanOutlined />
+          <span>数据安全加密</span>
+        </div>
+        <div class="trust-badge">
+          <CloudServerOutlined />
+          <span>云端高可用</span>
+        </div>
+        <div class="trust-badge">
+          <RocketOutlined />
+          <span>毫秒级响应</span>
+        </div>
+        <div class="trust-badge">
+          <TeamOutlined />
+          <span>企业级支持</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="section-card system-card">
       <div class="section-header">
         <h2 class="section-title">
-          <InfoCircleOutlined />
-          系统信息
+          <DashboardOutlined />
+          系统状态
         </h2>
       </div>
-      <div class="info-grid">
-        <div class="info-item">
-          <span class="info-label">系统版本</span>
-          <span class="info-value">v1.0.0</span>
+      <div class="system-grid">
+        <div class="system-item">
+          <div class="system-icon online">
+            <CheckCircleOutlined />
+          </div>
+          <div class="system-info">
+            <span class="system-label">API 服务</span>
+            <span class="system-value status-online">运行正常</span>
+          </div>
         </div>
-        <div class="info-item">
-          <span class="info-label">技术栈</span>
-          <span class="info-value">Vue3 + TypeScript</span>
+        <div class="system-item">
+          <div class="system-icon online">
+            <CheckCircleOutlined />
+          </div>
+          <div class="system-info">
+            <span class="system-label">向量数据库</span>
+            <span class="system-value status-online">已连接</span>
+          </div>
         </div>
-        <div class="info-item">
-          <span class="info-label">AI模型</span>
-          <span class="info-value">GPT-4 / Claude</span>
+        <div class="system-item">
+          <div class="system-icon online">
+            <CheckCircleOutlined />
+          </div>
+          <div class="system-info">
+            <span class="system-label">AI 模型</span>
+            <span class="system-value status-online">就绪</span>
+          </div>
         </div>
-        <div class="info-item">
-          <span class="info-label">向量数据库</span>
-          <span class="info-value">Milvus</span>
+        <div class="system-item">
+          <div class="system-icon">
+            <ClockCircleOutlined />
+          </div>
+          <div class="system-info">
+            <span class="system-label">系统版本</span>
+            <span class="system-value">v1.0.0</span>
+          </div>
         </div>
       </div>
     </div>
@@ -206,25 +269,30 @@ import { computed, defineComponent, h, ref, watch, onMounted, reactive } from 'v
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
+  MessageOutlined,
   FolderOutlined,
   FileTextOutlined,
-  CommentOutlined,
   UserOutlined,
-  FolderAddOutlined,
-  UploadOutlined,
-  MessageOutlined,
-  TeamOutlined,
+  ApartmentOutlined,
+  ClockCircleOutlined,
   RightOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
-  FilePdfOutlined,
-  FileWordOutlined,
-  FileMarkdownOutlined,
-  FileExcelOutlined,
-  FileOutlined,
-  AppstoreOutlined,
-  InfoCircleOutlined,
   InboxOutlined,
+  StarOutlined,
+  CompassOutlined,
+  ThunderboltOutlined,
+  SecurityScanOutlined,
+  CloudServerOutlined,
+  RocketOutlined,
+  TeamOutlined,
+  DashboardOutlined,
+  CheckCircleOutlined,
+  SafetyCertificateOutlined,
+  DatabaseOutlined,
+  SettingOutlined,
+  PlusOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue'
 import { getDashboardStats } from '@/api/dashboard'
 
@@ -284,100 +352,120 @@ const dashboardStats = reactive({
   userCount: 0,
 })
 
-const welcomeBadges = computed(() => [
-  { icon: FileTextOutlined, text: `${dashboardStats.documentCount} 文档` },
-  { icon: CommentOutlined, text: `${dashboardStats.chatCount} 问答` },
-  { icon: UserOutlined, text: `${dashboardStats.userCount} 用户` },
-])
+const animatedStats = reactive({
+  chatCount: 0,
+})
+
+const chartData = ref([40, 65, 45, 80, 55, 70, 60, 85, 50, 75, 65, 90])
 
 const statsData = computed(() => [
   {
-    label: '知识库数量',
+    label: '知识库',
     value: dashboardStats.knowledgeCount,
     icon: FolderOutlined,
-    color: '#059669',
+    color: '#6366F1',
+    gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
     trend: 12,
+    sparkline: 'M0,25 L10,20 L20,22 L30,15 L40,18 L50,10 L60,12 L70,8 L80,5 L90,7 L100,3',
   },
   {
     label: '文档数量',
     value: dashboardStats.documentCount,
     icon: FileTextOutlined,
-    color: '#C67B5C',
+    color: '#10B981',
+    gradient: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
     trend: 8,
+    sparkline: 'M0,20 L10,18 L20,22 L30,15 L40,17 L50,12 L60,14 L70,10 L80,8 L90,12 L100,5',
   },
   {
     label: '问答次数',
     value: dashboardStats.chatCount,
-    icon: CommentOutlined,
-    color: '#5B9EA6',
+    icon: MessageOutlined,
+    color: '#F59E0B',
+    gradient: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
     trend: -5,
+    sparkline: 'M0,15 L10,18 L20,12 L30,20 L40,15 L50,18 L60,12 L70,15 L80,10 L90,14 L100,8',
   },
   {
     label: '用户数量',
     value: dashboardStats.userCount,
     icon: UserOutlined,
-    color: '#6B7B3C',
+    color: '#EC4899',
+    gradient: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
     trend: 15,
+    sparkline: 'M0,22 L10,20 L20,18 L30,15 L40,17 L50,12 L60,10 L70,8 L80,6 L90,8 L100,4',
   },
 ])
 
-const quickActions = [
+const features = [
   {
-    label: '创建知识库',
-    desc: '新建知识库',
-    icon: FolderAddOutlined,
-    color: '#059669',
+    title: '智能问答',
+    desc: '基于 RAG 的精准问答系统',
+    icon: MessageOutlined,
+    gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+    route: '/chat',
+  },
+  {
+    title: '知识图谱',
+    desc: '可视化展示知识关联关系',
+    icon: ApartmentOutlined,
+    gradient: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
+    route: '/graph',
+  },
+  {
+    title: '文档管理',
+    desc: '智能解析与向量存储',
+    icon: FileTextOutlined,
+    gradient: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
     route: '/knowledge',
   },
   {
+    title: '工作流编排',
+    desc: '可视化流程设计',
+    icon: CompassOutlined,
+    gradient: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
+    route: '/workflow',
+  },
+]
+
+const quickActions = [
+  {
+    label: '新建知识库',
+    desc: '创建新的知识库',
+    icon: PlusOutlined,
+    gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+    route: '/knowledge-base',
+  },
+  {
     label: '上传文档',
-    desc: '添加新文档',
-    icon: UploadOutlined,
-    color: '#C67B5C',
+    desc: '添加文档到知识库',
+    icon: FileTextOutlined,
+    gradient: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
     route: '/knowledge',
   },
   {
     label: '开始问答',
-    desc: '智能对话',
+    desc: '与 AI 进行对话',
     icon: MessageOutlined,
-    color: '#5B9EA6',
+    gradient: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
     route: '/chat',
   },
   {
-    label: '用户管理',
-    desc: '管理用户',
-    icon: TeamOutlined,
-    color: '#6B7B3C',
-    route: '/user',
+    label: '系统设置',
+    desc: '配置系统参数',
+    icon: SettingOutlined,
+    gradient: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
+    route: '/settings',
   },
 ]
 
-const recentDocuments = ref([
-  { id: 1, name: '产品需求文档.pdf', type: 'pdf', size: '2.5 MB', time: '10分钟前', status: 'success' },
-  { id: 2, name: '技术架构设计.docx', type: 'doc', size: '1.8 MB', time: '1小时前', status: 'success' },
-  { id: 3, name: '用户手册.md', type: 'md', size: '856 KB', time: '2小时前', status: 'processing' },
-  { id: 4, name: 'API接口文档.pdf', type: 'pdf', size: '3.2 MB', time: '昨天', status: 'success' },
+const recentActivities = ref([
+  { id: 1, title: '上传了文档《产品需求规格说明书.pdf》', time: '5分钟前', type: '文档', icon: FileTextOutlined, color: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', status: 'success', statusText: '完成' },
+  { id: 2, title: '创建知识库「技术文档」', time: '30分钟前', type: '知识库', icon: FolderOutlined, color: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', status: 'success', statusText: '完成' },
+  { id: 3, title: 'AI问答：如何优化向量检索性能？', time: '1小时前', type: '问答', icon: MessageOutlined, color: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', status: 'success', statusText: '完成' },
+  { id: 4, title: '更新知识图谱节点关系', time: '2小时前', type: '图谱', icon: ApartmentOutlined, color: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', status: 'processing', statusText: '处理中' },
+  { id: 5, title: '批量导入文档 15 个', time: '昨天', type: '文档', icon: FileTextOutlined, color: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', status: 'success', statusText: '完成' },
 ])
-
-const recentChats = ref([
-  { id: 1, question: '如何使用RAG技术优化问答系统？', answer: 'RAG技术通过检索增强生成，可以显著提升问答系统的准确性...', time: '5分钟前' },
-  { id: 2, question: '向量数据库的选择建议？', answer: '推荐使用Milvus或Pinecone，它们在性能和易用性方面表现优秀...', time: '30分钟前' },
-  { id: 3, question: '如何提高文档检索的准确率？', answer: '可以通过优化embedding模型、调整chunk大小等方式提升...', time: '1小时前' },
-])
-
-function getDocColor(type: string) {
-  const colorMap: Record<string, string> = {
-    pdf: '#C67B5C',
-    doc: '#5B9EA6',
-    md: '#059669',
-    excel: '#D97706',
-  }
-  return colorMap[type] || '#78746C'
-}
-
-function handleAction(action: typeof quickActions[0]) {
-  router.push(action.route)
-}
 
 async function loadStats() {
   statsLoading.value = true
@@ -388,6 +476,9 @@ async function loadStats() {
       dashboardStats.documentCount = data.data.documentCount || 0
       dashboardStats.chatCount = data.data.chatCount || 0
       dashboardStats.userCount = data.data.userCount || 0
+
+      // Animate chat count
+      animatedStats.chatCount = data.data.chatCount || 0
     }
   } catch (error) {
     console.error('加载统计数据失败:', error)
@@ -403,128 +494,300 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .dashboard {
-  height: calc(100vh - 56px - 32px);
+  height: calc(100vh - 64px - 48px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--card-gap);
 }
 
-// Welcome Banner - Nature Style
-.welcome-banner {
-  background: linear-gradient(135deg, #059669 0%, #228B22 50%, #6B8E4E 100%);
-  border-radius: var(--radius-xl);
-  padding: 24px 32px;
+// ============================================
+// Hero Section
+// ============================================
+.hero-section {
   position: relative;
+  background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 50%, #14B8A6 100%);
+  border-radius: var(--radius-2xl);
+  padding: 40px 48px;
   overflow: hidden;
-  flex-shrink: 0;
+  min-height: 280px;
 
   html.dark & {
-    background: linear-gradient(135deg, #065F46 0%, #064E3B 50%, #022C22 100%);
+    background: linear-gradient(135deg, #0C4A6E 0%, #0E7490 50%, #115E59 100%);
   }
 }
 
-.banner-bg {
+.hero-bg {
   position: absolute;
   inset: 0;
   overflow: hidden;
 
-  .leaf {
+  .hero-orb {
     position: absolute;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
+    filter: blur(60px);
+    opacity: 0.35;
 
-    &.leaf-1 {
+    &.hero-orb-1 {
+      width: 300px;
+      height: 300px;
+      background: #22D3EE;
+      top: -100px;
+      right: 10%;
+      animation: float 8s ease-in-out infinite;
+    }
+
+    &.hero-orb-2 {
       width: 200px;
       height: 200px;
-      top: -50px;
-      right: 10%;
+      background: #2DD4BF;
+      bottom: -50px;
+      left: 20%;
+      animation: float 6s ease-in-out infinite reverse;
     }
 
-    &.leaf-2 {
+    &.hero-orb-3 {
       width: 150px;
       height: 150px;
-      bottom: -30px;
-      left: 20%;
-    }
-
-    &.leaf-3 {
-      width: 100px;
-      height: 100px;
-      top: 50%;
+      background: #5EEAD4;
+      top: 30%;
       right: 30%;
+      animation: float 10s ease-in-out infinite;
     }
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
   }
 }
 
-.banner-content {
+.hero-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: relative;
-  z-index: 1;
+  gap: 40px;
 }
 
-.welcome-text {
-  color: #fff;
+.hero-text {
+  flex: 1;
 }
 
-.welcome-title {
-  font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 600;
-  margin-bottom: 8px;
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: 20px;
+  backdrop-filter: blur(8px);
 
-  .username {
-    color: #FBBF24;
+  .anticon {
+    color: #FEF08A;
   }
 }
 
-.welcome-subtitle {
-  font-size: 15px;
-  opacity: 0.9;
-  margin-bottom: 20px;
+.hero-title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+  margin-bottom: 12px;
+  line-height: 1.2;
 }
 
-.welcome-tags {
+.gradient-text {
+  background: linear-gradient(135deg, #FEF08A 0%, #FDE047 50%, #FBBF24 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-subtitle {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 28px;
+}
+
+.hero-actions {
   display: flex;
   gap: 12px;
-  flex-wrap: wrap;
+}
 
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: var(--radius-full);
-    font-size: 13px;
-    font-weight: 500;
-    backdrop-filter: blur(8px);
-    transition: all var(--duration-fast) var(--ease-nature);
+.hero-btn {
+  height: 44px;
+  padding: 0 24px;
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &.ant-btn-primary {
+    background: #fff;
+    border: none;
+    color: #0EA5E9;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.25);
+      background: #F0FDFA;
       transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
     }
   }
 }
 
-.welcome-illustration {
-  .illustration-circle {
-    width: 100px;
-    height: 100px;
+.hero-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
 
-    svg {
-      width: 100%;
-      height: 100%;
-      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-    }
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #fff;
   }
 }
 
-// Stats Grid
-.stats-grid {
+// Hero Visual
+.hero-visual {
+  position: relative;
+  width: 320px;
+  height: 220px;
+}
+
+.visual-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-xl);
+
+  &.visual-card-main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 40px;
+    padding: 16px;
+  }
+
+  &.visual-card-float,
+  &.visual-card-float-2 {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    font-size: var(--font-size-sm);
+    color: rgba(255, 255, 255, 0.9);
+    animation: float 4s ease-in-out infinite;
+
+    .anticon {
+      font-size: 18px;
+      color: #10B981;
+    }
+
+    strong {
+      color: #fff;
+      font-weight: var(--font-weight-semibold);
+    }
+  }
+
+  &.visual-card-float {
+    bottom: 0;
+    left: 0;
+    animation-delay: 0s;
+  }
+
+  &.visual-card-float-2 {
+    bottom: 10px;
+    right: 0;
+    animation-delay: 1s;
+  }
+}
+
+.visual-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.visual-dots {
+  display: flex;
+  gap: 6px;
+
+  span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+
+    &:nth-child(1) { background: #EF4444; }
+    &:nth-child(2) { background: #FBBF24; }
+    &:nth-child(3) { background: #10B981; }
+  }
+}
+
+.visual-title {
+  font-size: var(--font-size-sm);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.visual-content {
+  display: flex;
+  gap: 20px;
+}
+
+.visual-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.visual-stat-value {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+  line-height: 1;
+}
+
+.visual-stat-label {
+  font-size: var(--font-size-sm);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.visual-chart {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.chart-bar {
+  flex: 1;
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.8) 0%, rgba(20, 184, 166, 0.3) 100%);
+  border-radius: 2px 2px 0 0;
+  min-height: 4px;
+  transition: height 0.5s ease;
+}
+
+// ============================================
+// Stats Section
+// ============================================
+.stats-section {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--card-gap);
@@ -534,57 +797,42 @@ onMounted(() => {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: all var(--duration-normal) var(--ease-nature);
-  animation: slideInUp 0.4s var(--ease-out) both;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: all var(--duration-normal) var(--ease-default);
 
   &:hover {
-    transform: translateY(-2px);
+    transform: translateY(-4px);
     box-shadow: var(--shadow-card-hover);
   }
 }
 
+.stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
 .stat-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-lg);
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-lg);
   color: #fff;
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-value {
-  font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 2px;
+  font-size: 22px;
 }
 
 .stat-trend {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 8px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  padding: 4px 10px;
   border-radius: var(--radius-full);
 
   &.up {
@@ -598,28 +846,60 @@ onMounted(() => {
   }
 }
 
+.stat-body {
+  position: relative;
+  z-index: 1;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.stat-sparkline {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  opacity: 0.3;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+// ============================================
 // Section Card
+// ============================================
 .section-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  padding: 24px;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .section-title {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -631,21 +911,23 @@ onMounted(() => {
 }
 
 .section-badge {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
   color: var(--primary-color);
   background: var(--primary-lighter);
   padding: 4px 12px;
   border-radius: var(--radius-full);
+  letter-spacing: 0.05em;
 }
 
 .section-link {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--primary-color);
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-weight: var(--font-weight-medium);
   transition: opacity var(--duration-fast);
 
   &:hover {
@@ -653,64 +935,78 @@ onMounted(() => {
   }
 }
 
-// Actions Grid
-.actions-grid {
+// ============================================
+// Features Grid
+// ============================================
+.features-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--card-gap);
 }
 
-.action-card {
+.feature-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 16px;
-  border-radius: var(--radius-lg);
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: all var(--duration-normal) var(--ease-nature);
-  text-align: center;
+  transition: all var(--duration-normal) var(--ease-default);
+  border: 1px solid transparent;
 
   &:hover {
     background: var(--bg-surface-secondary);
-    transform: translateY(-2px);
+    border-color: var(--border-color);
 
-    .action-icon {
-      transform: scale(1.05);
+    .feature-arrow {
+      opacity: 1;
+      transform: translateX(0);
     }
   }
 }
 
-.action-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg);
+.feature-icon {
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-lg);
   color: #fff;
   font-size: 24px;
-  transition: transform var(--duration-normal) var(--ease-nature);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
 }
 
-.action-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.feature-content {
+  flex: 1;
 }
 
-.action-label {
-  font-size: 15px;
-  font-weight: 500;
+.feature-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
+  margin-bottom: 4px;
 }
 
-.action-desc {
-  font-size: 12px;
+.feature-desc {
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  line-height: var(--line-height-relaxed);
 }
 
-// Content Grid - Equal Height
+.feature-arrow {
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: all var(--duration-normal) var(--ease-default);
+  color: var(--primary-color);
+  font-size: 16px;
+}
+
+// ============================================
+// Content Grid
+// ============================================
 .content-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -720,32 +1016,24 @@ onMounted(() => {
 .content-card {
   display: flex;
   flex-direction: column;
-
-  .section-header {
-    flex-shrink: 0;
-  }
-
-  .document-list,
-  .chat-list {
-    flex: 1;
-    min-height: 200px;
-  }
+  min-height: 320px;
 }
 
-// Document List
-.document-list {
+// ============================================
+// Activity List
+// ============================================
+.activity-list {
   flex: 1;
   display: flex;
   flex-direction: column;
 }
 
-.document-item {
+.activity-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 0;
+  gap: 16px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--border-light);
-  animation: slideInUp 0.3s var(--ease-out) both;
   transition: background var(--duration-fast);
 
   &:last-child {
@@ -753,49 +1041,59 @@ onMounted(() => {
   }
 
   &:hover {
-    .doc-name {
+    .activity-title {
       color: var(--primary-color);
     }
   }
 }
 
-.doc-icon {
+.activity-icon {
   width: 40px;
   height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
-.doc-info {
+.activity-content {
   flex: 1;
   min-width: 0;
 }
 
-.doc-name {
-  font-size: 14px;
-  font-weight: 500;
+.activity-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   transition: color var(--duration-fast);
+  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.doc-meta {
+.activity-meta {
   display: flex;
-  gap: 12px;
-  font-size: 12px;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
   color: var(--text-tertiary);
-  margin-top: 4px;
 }
 
-.doc-status {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
+.activity-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-quaternary);
+}
+
+.activity-status {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 4px 12px;
   border-radius: var(--radius-full);
 
   &.success {
@@ -809,69 +1107,69 @@ onMounted(() => {
   }
 }
 
-// Chat List
-.chat-list {
+// ============================================
+// Quick Actions
+// ============================================
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
   flex: 1;
-  display: flex;
-  flex-direction: column;
 }
 
-.chat-item {
+.quick-action-card {
   display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-light);
-  animation: slideInUp 0.3s var(--ease-out) both;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-surface-secondary);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-default);
 
-  &:last-child {
-    border-bottom: none;
+  &:hover {
+    background: var(--bg-surface-tertiary);
+    transform: translateY(-2px);
+
+    .quick-action-icon {
+      transform: scale(1.05);
+    }
   }
 }
 
-.chat-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--primary-lighter);
+.quick-action-icon {
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary-color);
-  font-size: 16px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  font-size: 22px;
   flex-shrink: 0;
+  transition: transform var(--duration-normal) var(--ease-spring);
 }
 
-.chat-content {
-  flex: 1;
-  min-width: 0;
+.quick-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.chat-question {
-  font-size: 14px;
-  font-weight: 500;
+.quick-action-label {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.chat-answer {
-  font-size: 13px;
+.quick-action-desc {
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin-top: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.chat-time {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
+// ============================================
 // Empty State
+// ============================================
 .empty-state {
   flex: 1;
   display: flex;
@@ -888,93 +1186,194 @@ onMounted(() => {
   }
 
   span {
-    font-size: 14px;
+    font-size: var(--font-size-base);
   }
 }
 
-// Info Grid
-.info-grid {
+// ============================================
+// Trust Section
+// ============================================
+.trust-section {
+  padding: 8px 0;
+}
+
+.trust-badges {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  transition: all var(--duration-normal) var(--ease-default);
+
+  &:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+
+    .anticon {
+      color: var(--primary-color);
+    }
+  }
+
+  .anticon {
+    font-size: 16px;
+    color: var(--text-tertiary);
+  }
+}
+
+// ============================================
+// System Card
+// ============================================
+.system-card {
+  background: var(--bg-surface);
+}
+
+.system-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 20px;
 }
 
-.info-item {
+.system-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-surface-secondary);
+  border-radius: var(--radius-xl);
+  transition: all var(--duration-normal) var(--ease-default);
+
+  &:hover {
+    background: var(--bg-surface-tertiary);
+  }
+}
+
+.system-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  font-size: 18px;
+
+  &.online {
+    background: var(--success-light);
+    color: var(--success-color);
+  }
+}
+
+.system-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
-.info-label {
-  font-size: 12px;
+.system-label {
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
-.info-value {
-  font-size: 14px;
-  font-weight: 500;
+.system-value {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
+
+  &.status-online {
+    color: var(--success-color);
+  }
 }
 
+// ============================================
 // Animations
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
+// ============================================
+@keyframes float {
+  0%, 100% {
     transform: translateY(0);
   }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
+.animate-slide-up {
+  animation: slideInUp 0.4s var(--ease-out) both;
+}
+
+// ============================================
 // Responsive
+// ============================================
+@media (max-width: 1400px) {
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 1200px) {
-  .stats-grid {
+  .stats-section {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .actions-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .info-grid {
+  .system-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .dashboard {
-    padding: 16px;
-    gap: 16px;
+  .hero-section {
+    padding: 32px 24px;
+    min-height: auto;
   }
 
-  .welcome-banner {
-    padding: 24px;
+  .hero-content {
+    flex-direction: column;
+    text-align: center;
   }
 
-  .welcome-title {
-    font-size: 22px;
+  .hero-title {
+    font-size: 28px;
   }
 
-  .welcome-illustration {
+  .hero-actions {
+    justify-content: center;
+  }
+
+  .hero-visual {
     display: none;
   }
 
-  .stats-grid {
+  .stats-section {
     grid-template-columns: 1fr;
   }
 
-  .actions-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .features-grid {
+    grid-template-columns: 1fr;
   }
 
   .content-grid {
     grid-template-columns: 1fr;
   }
 
-  .info-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .system-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trust-badges {
+    flex-direction: column;
+    align-items: center;
   }
 }
 </style>

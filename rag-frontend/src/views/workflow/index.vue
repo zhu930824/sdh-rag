@@ -393,7 +393,8 @@ watch(
 .workflow-editor {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px - 32px);
+  height: calc(100vh - 64px - 48px);
+  overflow-y: auto;
   background: #f5f5f5;
 }
 

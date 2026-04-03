@@ -10,8 +10,14 @@
     <div class="sidebar-header" @click="navigateToDashboard">
       <div class="logo-mark">
         <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="32" height="32" rx="10" fill="#059669"/>
+          <rect width="32" height="32" rx="10" fill="url(#sidebar-logo-gradient)"/>
           <path d="M10 16L14 20L22 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="sidebar-logo-gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#0EA5E9"/>
+              <stop offset="1" stop-color="#14B8A6"/>
+            </linearGradient>
+          </defs>
         </svg>
       </div>
       <transition name="logo-text">
@@ -296,7 +302,7 @@ watch(
   gap: 12px;
   padding: 20px 16px;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-nature);
+  transition: background var(--duration-fast) var(--ease-default);
 
   &:hover {
     background: var(--bg-surface-secondary);
@@ -315,9 +321,9 @@ watch(
 }
 
 .logo-text {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -325,7 +331,7 @@ watch(
 
 .logo-text-enter-active,
 .logo-text-leave-active {
-  transition: opacity var(--duration-normal) var(--ease-nature);
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .logo-text-enter-from,
@@ -352,9 +358,9 @@ watch(
     margin: 2px 0;
     padding: 0 14px !important;
     border-radius: var(--radius-lg);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--text-secondary);
-    transition: all var(--duration-fast) var(--ease-nature);
+    transition: all var(--duration-fast) var(--ease-default);
 
     &:hover {
       background: var(--bg-surface-secondary);
@@ -438,7 +444,7 @@ watch(
   color: var(--text-secondary);
   font-size: 16px;
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-nature);
+  transition: all var(--duration-fast) var(--ease-default);
 
   &:hover {
     background: var(--bg-surface-secondary);

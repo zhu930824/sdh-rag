@@ -456,25 +456,11 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .log-container {
-  height: calc(100vh - 56px - 32px);
-  overflow: hidden;
+  height: calc(100vh - 64px - 48px);
+  overflow-y: auto;
 
   :deep(.ant-card) {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-
-    .ant-card-head {
-      flex-shrink: 0;
-    }
-
-    .ant-card-body {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
+    margin-bottom: 20px;
   }
 
   :deep(.ant-card-head-title) {
@@ -487,8 +473,9 @@ onMounted(() => {
     align-items: center;
 
     .card-title {
-      font-size: 16px;
-      font-weight: 500;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: var(--font-weight-semibold);
     }
   }
 

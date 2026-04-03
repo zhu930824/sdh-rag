@@ -60,3 +60,7 @@ export function deleteAnnouncement(id: number): Promise<ApiResponse<null>> {
 export function markAnnouncementRead(id: number): Promise<ApiResponse<null>> {
   return request.post(`/api/announcement/${id}/read`)
 }
+
+export function offlineAnnouncement(id: number): Promise<ApiResponse<null>> {
+  return request.put(`/api/announcement/${id}/offline`)
+}

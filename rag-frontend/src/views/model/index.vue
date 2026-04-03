@@ -429,21 +429,29 @@ onMounted(() => {
 .model-container {
   display: flex;
   gap: 16px;
-  height: calc(100vh - 56px - 32px);
+  height: calc(100vh - 64px - 48px);
+  overflow: hidden;
 
   .provider-panel {
     width: 260px;
     flex-shrink: 0;
-    overflow: hidden;
+    height: 100%;
 
     :deep(.ant-card) {
       height: 100%;
       display: flex;
       flex-direction: column;
 
+      .ant-card-head {
+        flex-shrink: 0;
+      }
+
       .ant-card-body {
         flex: 1;
-        overflow: auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
     }
 
@@ -453,13 +461,15 @@ onMounted(() => {
       align-items: center;
 
       .panel-title {
-        font-size: 16px;
-        font-weight: 500;
+        font-family: var(--font-display);
+        font-size: 18px;
+        font-weight: var(--font-weight-semibold);
       }
     }
 
     .filter-tabs {
       margin-bottom: 16px;
+      flex-shrink: 0;
 
       :deep(.ant-radio-group) {
         width: 100%;
@@ -473,6 +483,10 @@ onMounted(() => {
     }
 
     .provider-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+
       .provider-item {
         display: flex;
         align-items: center;
@@ -512,18 +526,24 @@ onMounted(() => {
 
   .content-panel {
     flex: 1;
-    overflow: hidden;
+    min-width: 0;
+    height: 100%;
 
     :deep(.ant-card) {
       height: 100%;
       display: flex;
       flex-direction: column;
 
+      .ant-card-head {
+        flex-shrink: 0;
+      }
+
       .ant-card-body {
         flex: 1;
-        overflow: auto;
+        min-height: 0;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
       }
     }
 
@@ -533,8 +553,9 @@ onMounted(() => {
       align-items: center;
 
       .card-title {
-        font-size: 16px;
-        font-weight: 500;
+        font-family: var(--font-display);
+        font-size: 18px;
+        font-weight: var(--font-weight-semibold);
       }
     }
 
@@ -542,11 +563,13 @@ onMounted(() => {
       margin-bottom: 16px;
       display: flex;
       align-items: center;
+      flex-shrink: 0;
     }
 
     .model-list {
       flex: 1;
       min-height: 0;
+      overflow-y: auto;
     }
 
     .model-grid {
@@ -708,15 +731,22 @@ onMounted(() => {
 @media (max-width: 1200px) {
   .model-container {
     flex-direction: column;
-    height: auto;
+    height: calc(100vh - 64px - 48px);
+    overflow-y: auto;
 
     .provider-panel {
       width: 100%;
+      height: auto;
+
+      :deep(.ant-card) {
+        height: auto;
+      }
 
       .provider-list {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+        overflow: visible;
 
         .provider-item {
           padding: 8px 12px;
@@ -729,6 +759,16 @@ onMounted(() => {
     }
 
     .content-panel {
+      height: auto;
+
+      :deep(.ant-card) {
+        height: auto;
+      }
+
+      .model-list {
+        overflow: visible;
+      }
+
       .model-grid {
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       }

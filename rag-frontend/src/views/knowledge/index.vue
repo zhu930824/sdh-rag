@@ -274,22 +274,30 @@ function formatDate(dateStr: string): string {
 <style scoped lang="scss">
 .knowledge-container {
   display: flex;
-  gap: 16px;
-  height: calc(100vh - 56px - 32px);
+  gap: 20px;
+  height: calc(100vh - 64px - 48px);
+  overflow: hidden;
 
   .category-panel {
     width: 280px;
     flex-shrink: 0;
-    overflow: hidden;
+    height: 100%;
 
     :deep(.ant-card) {
       height: 100%;
       display: flex;
       flex-direction: column;
 
+      .ant-card-head {
+        flex-shrink: 0;
+      }
+
       .ant-card-body {
         flex: 1;
-        overflow: auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
     }
 
@@ -299,9 +307,16 @@ function formatDate(dateStr: string): string {
       align-items: center;
 
       .panel-title {
+        font-family: var(--font-display);
         font-size: 16px;
-        font-weight: 500;
+        font-weight: var(--font-weight-semibold);
       }
+    }
+
+    :deep(.ant-tree) {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     .tree-node {
@@ -313,25 +328,31 @@ function formatDate(dateStr: string): string {
       .count {
         margin-left: auto;
         font-size: 12px;
-        color: #909399;
+        color: var(--text-tertiary);
       }
     }
   }
 
   .content-panel {
     flex: 1;
-    overflow: hidden;
+    min-width: 0;
+    height: 100%;
 
     :deep(.ant-card) {
       height: 100%;
       display: flex;
       flex-direction: column;
 
+      .ant-card-head {
+        flex-shrink: 0;
+      }
+
       .ant-card-body {
         flex: 1;
-        overflow: auto;
+        min-height: 0;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
       }
     }
 
@@ -341,8 +362,9 @@ function formatDate(dateStr: string): string {
       align-items: center;
 
       .card-title {
-        font-size: 16px;
-        font-weight: 500;
+        font-family: var(--font-display);
+        font-size: 18px;
+        font-weight: var(--font-weight-semibold);
       }
     }
 
@@ -350,11 +372,13 @@ function formatDate(dateStr: string): string {
       margin-bottom: 16px;
       display: flex;
       align-items: center;
+      flex-shrink: 0;
     }
 
     .document-list {
       flex: 1;
       min-height: 0;
+      overflow-y: auto;
     }
 
     .document-grid {
@@ -364,16 +388,17 @@ function formatDate(dateStr: string): string {
     }
 
     .document-card {
-      background: #fff;
-      border: 1px solid #e4e7ed;
-      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-xl);
       padding: 16px;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: all var(--duration-normal) var(--ease-default);
 
       &:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        border-color: #409eff;
+        box-shadow: var(--shadow-card-hover);
+        border-color: var(--primary-color);
+        transform: translateY(-2px);
       }
 
       .card-icon {
@@ -384,11 +409,12 @@ function formatDate(dateStr: string): string {
       .card-content {
         .card-title {
           font-size: 14px;
-          font-weight: 500;
+          font-weight: var(--font-weight-medium);
           margin-bottom: 8px;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          color: var(--text-primary);
         }
 
         .card-meta {
@@ -396,12 +422,12 @@ function formatDate(dateStr: string): string {
           gap: 12px;
           margin-bottom: 8px;
           font-size: 12px;
-          color: #909399;
+          color: var(--text-tertiary);
 
           .file-type {
             padding: 2px 6px;
-            background: #f4f4f5;
-            border-radius: 4px;
+            background: var(--bg-surface-secondary);
+            border-radius: var(--radius-sm);
           }
         }
 
@@ -414,11 +440,11 @@ function formatDate(dateStr: string): string {
           justify-content: space-between;
           align-items: center;
           padding-top: 8px;
-          border-top: 1px solid #f0f0f0;
+          border-top: 1px solid var(--border-light);
 
           .time {
             font-size: 12px;
-            color: #909399;
+            color: var(--text-tertiary);
           }
 
           .actions {
@@ -433,6 +459,7 @@ function formatDate(dateStr: string): string {
       margin-top: 16px;
       display: flex;
       justify-content: flex-end;
+      flex-shrink: 0;
     }
   }
 }
@@ -440,13 +467,33 @@ function formatDate(dateStr: string): string {
 @media (max-width: 1200px) {
   .knowledge-container {
     flex-direction: column;
-    height: auto;
+    height: calc(100vh - 64px - 48px);
+    overflow-y: auto;
 
     .category-panel {
       width: 100%;
+      height: auto;
+
+      :deep(.ant-card) {
+        height: auto;
+      }
+
+      :deep(.ant-tree) {
+        overflow: visible;
+      }
     }
 
     .content-panel {
+      height: auto;
+
+      :deep(.ant-card) {
+        height: auto;
+      }
+
+      .document-list {
+        overflow: visible;
+      }
+
       .document-grid {
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       }

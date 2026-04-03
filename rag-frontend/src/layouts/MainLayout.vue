@@ -3,6 +3,8 @@
     <Sidebar />
     <a-layout class="app-main">
       <Header />
+      <!-- 公告跑马灯 -->
+      <AnnouncementMarquee />
       <a-layout-content class="app-content">
         <router-view />
       </a-layout-content>
@@ -26,8 +28,8 @@
               <path d="M10 16L14 20L22 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
               <defs>
                 <linearGradient id="mobile-logo-gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#2563EB"/>
-                  <stop offset="1" stop-color="#7C3AED"/>
+                  <stop stop-color="#0EA5E9"/>
+                  <stop offset="1" stop-color="#14B8A6"/>
                 </linearGradient>
               </defs>
             </svg>
@@ -44,13 +46,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { CloseOutlined } from '@ant-design/icons-vue'
 import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
 import MobileMenu from './components/MobileMenu.vue'
+import AnnouncementMarquee from '@/components/AnnouncementMarquee.vue'
 
 const route = useRoute()
 const appStore = useAppStore()
@@ -98,7 +101,7 @@ onUnmounted(() => {
 
 .app-content {
   flex: 1;
-  padding: 16px;
+  padding: var(--page-padding);
   overflow: hidden;
   background: var(--bg-body);
 }
@@ -137,6 +140,7 @@ onUnmounted(() => {
 
 .logo-text {
   flex: 1;
+  font-family: var(--font-display);
   font-size: 17px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -164,13 +168,13 @@ onUnmounted(() => {
 // Responsive
 @media (max-width: 768px) {
   .app-content {
-    padding: 12px;
+    padding: 16px;
   }
 }
 
 @media (max-width: 480px) {
   .app-content {
-    padding: 8px;
+    padding: 12px;
   }
 }
 

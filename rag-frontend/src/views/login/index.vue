@@ -3,19 +3,26 @@
     <!-- Left Panel - Brand -->
     <div class="brand-panel">
       <div class="brand-bg">
-        <div class="leaf-shape leaf-1"></div>
-        <div class="leaf-shape leaf-2"></div>
-        <div class="leaf-shape leaf-3"></div>
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+        <div class="brand-grid"></div>
       </div>
       <div class="brand-content">
         <div class="logo">
           <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="48" height="48" rx="14" fill="#059669"/>
+            <rect width="48" height="48" rx="14" fill="url(#logo-gradient)"/>
             <path d="M15 24L20 29L33 17" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="logo-gradient" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6366F1"/>
+                <stop offset="1" stop-color="#8B5CF6"/>
+              </linearGradient>
+            </defs>
           </svg>
         </div>
         <h1 class="brand-title">智能知识库</h1>
-        <p class="brand-subtitle">基于 RAG 技术的智能问答平台</p>
+        <p class="brand-subtitle">基于 RAG 技术的企业级智能问答平台</p>
 
         <div class="features">
           <div class="feature">
@@ -24,7 +31,7 @@
             </div>
             <div class="feature-info">
               <h3>智能文档管理</h3>
-              <p>支持多种格式，自动解析</p>
+              <p>多格式支持，自动解析与向量化</p>
             </div>
           </div>
           <div class="feature">
@@ -33,7 +40,7 @@
             </div>
             <div class="feature-info">
               <h3>精准问答检索</h3>
-              <p>AI 驱动，秒级响应</p>
+              <p>AI 驱动，毫秒级响应</p>
             </div>
           </div>
           <div class="feature">
@@ -42,8 +49,24 @@
             </div>
             <div class="feature-info">
               <h3>知识图谱分析</h3>
-              <p>可视化展示知识关联</p>
+              <p>可视化展示知识关联关系</p>
             </div>
+          </div>
+        </div>
+
+        <!-- Trust Badges -->
+        <div class="trust-section">
+          <div class="trust-badge">
+            <SecurityScanOutlined />
+            <span>数据安全</span>
+          </div>
+          <div class="trust-badge">
+            <CloudServerOutlined />
+            <span>高可用</span>
+          </div>
+          <div class="trust-badge">
+            <RocketOutlined />
+            <span>快速响应</span>
           </div>
         </div>
       </div>
@@ -67,7 +90,7 @@
         <!-- Form Header -->
         <div class="form-header">
           <h2 class="form-title">欢迎回来</h2>
-          <p class="form-subtitle">请登录您的账号继续使用</p>
+          <p class="form-subtitle">登录您的账号继续使用</p>
         </div>
 
         <!-- Login Form -->
@@ -164,6 +187,9 @@ import {
   MailOutlined,
   BulbOutlined,
   BulbFilled,
+  SecurityScanOutlined,
+  CloudServerOutlined,
+  RocketOutlined,
 } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
@@ -238,20 +264,20 @@ function goToRegister(): void {
   background: var(--bg-body);
 }
 
-// Brand Panel (Left) - Nature Style
+// Brand Panel (Left)
 .brand-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
   padding: 60px;
-  background: linear-gradient(135deg, #059669 0%, #228B22 50%, #6B8E4E 100%);
+  background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 50%, #14B8A6 100%);
   color: white;
   position: relative;
   overflow: hidden;
 
   html.dark & {
-    background: linear-gradient(135deg, #065F46 0%, #064E3B 50%, #022C22 100%);
+    background: linear-gradient(135deg, #0C4A6E 0%, #0E7490 50%, #115E59 100%);
   }
 }
 
@@ -260,31 +286,56 @@ function goToRegister(): void {
   inset: 0;
   overflow: hidden;
 
-  .leaf-shape {
+  .orb {
     position: absolute;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
+    filter: blur(60px);
+    opacity: 0.35;
 
-    &.leaf-1 {
+    &.orb-1 {
       width: 300px;
       height: 300px;
+      background: #22D3EE;
       top: -100px;
       right: -50px;
+      animation: float 8s ease-in-out infinite;
     }
 
-    &.leaf-2 {
+    &.orb-2 {
       width: 200px;
       height: 200px;
+      background: #2DD4BF;
       bottom: -50px;
       left: -50px;
+      animation: float 6s ease-in-out infinite reverse;
     }
 
-    &.leaf-3 {
+    &.orb-3 {
       width: 150px;
       height: 150px;
+      background: #5EEAD4;
       top: 40%;
       right: 20%;
+      animation: float 10s ease-in-out infinite;
     }
+  }
+
+  .brand-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
   }
 }
 
@@ -307,24 +358,24 @@ function goToRegister(): void {
 }
 
 .brand-title {
-  font-family: var(--font-serif);
-  font-size: 36px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: var(--font-weight-bold);
   margin-bottom: 12px;
   letter-spacing: -0.02em;
 }
 
 .brand-subtitle {
   font-size: 18px;
-  opacity: 0.9;
+  opacity: 0.8;
   margin-bottom: 48px;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
 }
 
 .features {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .feature {
@@ -334,30 +385,54 @@ function goToRegister(): void {
 }
 
 .feature-icon {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 22px;
   flex-shrink: 0;
-  backdrop-filter: blur(8px);
 }
 
 .feature-info {
   h3 {
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-size: 16px;
-    font-weight: 500;
+    font-weight: var(--font-weight-semibold);
     margin-bottom: 4px;
   }
 
   p {
     font-size: 14px;
-    opacity: 0.8;
+    opacity: 0.7;
     margin: 0;
+  }
+}
+
+.trust-section {
+  display: flex;
+  gap: 12px;
+  margin-top: 40px;
+  flex-wrap: wrap;
+}
+
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  opacity: 0.95;
+
+  .anticon {
+    font-size: 14px;
   }
 }
 
@@ -366,7 +441,7 @@ function goToRegister(): void {
   bottom: 24px;
   left: 60px;
   font-size: 13px;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 // Form Panel (Right)
@@ -403,7 +478,7 @@ function goToRegister(): void {
   color: var(--text-secondary);
   font-size: 18px;
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-nature);
+  transition: all var(--duration-fast) var(--ease-default);
 
   &:hover {
     background: var(--bg-surface-tertiary);
@@ -411,11 +486,8 @@ function goToRegister(): void {
   }
 }
 
-// Use BulbOutlined for light mode, BulbFilled for dark mode indicator
-.theme-toggle {
-  :deep(.bulb-icon) {
-    font-size: 18px;
-  }
+.bulb-icon {
+  font-size: 18px;
 }
 
 .form-header {
@@ -423,9 +495,9 @@ function goToRegister(): void {
 }
 
 .form-title {
-  font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: var(--font-weight-bold);
   color: var(--text-primary);
   margin-bottom: 8px;
   letter-spacing: -0.02em;
@@ -438,7 +510,7 @@ function goToRegister(): void {
 
 .login-form {
   :deep(.ant-form-item-label > label) {
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--text-primary);
   }
 
@@ -456,7 +528,7 @@ function goToRegister(): void {
     &.ant-input-affix-wrapper-focused {
       background: var(--bg-surface);
       border-color: var(--primary-color);
-      box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
     }
   }
 
@@ -489,16 +561,15 @@ function goToRegister(): void {
 .submit-btn {
   height: 48px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   border-radius: var(--radius-lg);
-  background: var(--primary-color);
+  background: var(--primary-gradient);
   border: none;
-  transition: all var(--duration-fast) var(--ease-nature);
+  transition: all var(--duration-normal) var(--ease-default);
 
   &:hover {
-    background: var(--primary-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
   }
 
   &:active {
@@ -514,7 +585,7 @@ function goToRegister(): void {
 
   a {
     color: var(--primary-color);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     margin-left: 4px;
 
@@ -553,7 +624,7 @@ function goToRegister(): void {
   color: var(--text-secondary);
   font-size: 20px;
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-nature);
+  transition: all var(--duration-normal) var(--ease-default);
 
   &:hover {
     background: var(--bg-surface-tertiary);
@@ -587,7 +658,7 @@ html.dark {
   }
 
   .form-title {
-    font-size: 24px;
+    font-size: 28px;
   }
 }
 </style>

@@ -277,8 +277,8 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .tag-container {
-  height: calc(100vh - 56px - 32px);
-  overflow: hidden;
+  height: calc(100vh - 64px - 48px);
+  overflow-y: auto;
 
   :deep(.ant-card) {
     height: 100%;
@@ -308,8 +308,9 @@ onMounted(() => {
     align-items: center;
 
     .card-title {
-      font-size: 16px;
-      font-weight: 500;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: var(--font-weight-semibold);
     }
   }
 
@@ -319,6 +320,8 @@ onMounted(() => {
     align-items: flex-start;
     margin-bottom: 16px;
     flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 12px;
   }
 
   .search-form {
@@ -338,7 +341,7 @@ onMounted(() => {
 
     .section-title {
       font-size: 14px;
-      font-weight: 500;
+      font-weight: var(--font-weight-medium);
       color: var(--text-primary);
       margin-bottom: 12px;
     }
@@ -403,8 +406,8 @@ onMounted(() => {
   .color-preview {
     width: 24px;
     height: 24px;
-    border-radius: 4px;
-    border: 1px solid #d9d9d9;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
   }
 }
 </style>

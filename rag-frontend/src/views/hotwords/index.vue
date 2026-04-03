@@ -479,11 +479,12 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .hotwords-container {
-  height: calc(100vh - 56px - 32px);
+  height: calc(100vh - 64px - 48px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  padding-bottom: 20px;
 }
 
 // 筛选卡片
@@ -599,13 +600,13 @@ onMounted(() => {
 
 // 图表卡片
 .chart-row {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
   margin-bottom: 0;
 }
 
 .chart-card {
   height: 100%;
+  min-height: 400px;
   display: flex;
   flex-direction: column;
 

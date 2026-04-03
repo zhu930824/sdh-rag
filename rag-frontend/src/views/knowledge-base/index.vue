@@ -488,7 +488,7 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .knowledge-base-page {
-  height: calc(100vh - 56px - 32px);
+  height: calc(100vh - 64px - 48px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -572,8 +572,9 @@ onMounted(() => {
   align-items: center;
 
   .card-title {
-    font-size: 16px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: var(--font-weight-semibold);
   }
 }
 

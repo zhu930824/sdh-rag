@@ -56,14 +56,14 @@
         :data-source="tableData"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 900 }"
+        :scroll="{ x: 1000 }"
         row-key="id"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'title'">
-            <span>
+            <span class="title-cell">
               <a-tag v-if="record.isTop" color="red" size="small">置顶</a-tag>
-              {{ record.title }}
+              <span class="title-text" @click="viewDetail(record)">{{ record.title }}</span>
             </span>
           </template>
           <template v-else-if="column.dataIndex === 'type'">
@@ -75,7 +75,8 @@
           <template v-else-if="column.dataIndex === 'action'">
             <a-space>
               <a-button type="link" size="small" @click="viewDetail(record)">详情</a-button>
-              <a-button v-if="record.status === 0" type="link" size="small" @click="publishAnnouncement(record)">发布</a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="handlePublish(record)">发布</a-button>
+              <a-button v-if="record.status === 1" type="link" size="small" @click="handleOffline(record)">下线</a-button>
               <a-button type="link" size="small" @click="editAnnouncement(record)">编辑</a-button>
               <a-popconfirm title="确定删除？" ok-text="确定" cancel-text="取消" @confirm="deleteAnnouncement(record)">
                 <a-button type="link" size="small" danger>删除</a-button>
@@ -101,10 +102,11 @@
       </div>
     </a-card>
 
+    <!-- 创建/编辑弹窗 -->
     <a-modal
       v-model:open="modalVisible"
       :title="isEdit ? '编辑公告' : '发布公告'"
-      :width="600"
+      :width="640"
       ok-text="确认"
       cancel-text="取消"
       @ok="handleSubmit"
@@ -114,7 +116,7 @@
           <a-input v-model:value="formData.title" placeholder="请输入公告标题" />
         </a-form-item>
         <a-form-item label="内容" required>
-          <a-textarea v-model:value="formData.content" :rows="4" placeholder="请输入公告内容" />
+          <a-textarea v-model:value="formData.content" :rows="5" placeholder="请输入公告内容" />
         </a-form-item>
         <a-form-item label="类型">
           <a-select v-model:value="formData.type">
@@ -124,32 +126,96 @@
           </a-select>
         </a-form-item>
         <a-form-item label="优先级">
-          <a-input-number v-model:value="formData.priority" :min="0" :max="100" />
+          <a-input-number v-model:value="formData.priority" :min="0" :max="100" style="width: 120px" />
+          <span class="form-hint">数值越大优先级越高</span>
+        </a-form-item>
+        <a-form-item label="过期时间">
+          <a-date-picker
+            v-model:value="formData.expireTimeValue"
+            show-time
+            format="YYYY-MM-DD HH:mm:ss"
+            placeholder="选择过期时间（可选）"
+            style="width: 100%"
+          />
         </a-form-item>
         <a-form-item label="是否置顶">
           <a-switch v-model:checked="formData.isTop" />
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 详情抽屉 -->
+    <a-drawer
+      v-model:open="detailVisible"
+      title="公告详情"
+      :width="560"
+      class="detail-drawer"
+    >
+      <template v-if="currentDetail">
+        <div class="detail-header">
+          <div class="detail-tags">
+            <a-tag :color="getTypeColor(currentDetail.type)">{{ getTypeText(currentDetail.type) }}</a-tag>
+            <a-tag :color="getStatusColor(currentDetail.status)">{{ getStatusText(currentDetail.status) }}</a-tag>
+            <a-tag v-if="currentDetail.isTop" color="red">置顶</a-tag>
+          </div>
+          <h2 class="detail-title">{{ currentDetail.title }}</h2>
+          <div class="detail-meta">
+            <span><ClockCircleOutlined /> 发布时间：{{ currentDetail.publishTime || '未发布' }}</span>
+            <span><EyeOutlined /> 阅读数：{{ detailReadCount }}</span>
+          </div>
+        </div>
+        <a-divider />
+        <div class="detail-content">
+          <div class="content-text">{{ currentDetail.content }}</div>
+        </div>
+        <a-divider />
+        <div class="detail-footer">
+          <div class="detail-info">
+            <p><strong>优先级：</strong>{{ currentDetail.priority }}</p>
+            <p><strong>创建时间：</strong>{{ currentDetail.createTime }}</p>
+            <p v-if="currentDetail.expireTime"><strong>过期时间：</strong>{{ currentDetail.expireTime }}</p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <a-space>
+          <a-button v-if="currentDetail?.status === 0" type="primary" @click="handlePublish(currentDetail)">发布</a-button>
+          <a-button v-if="currentDetail?.status === 1" @click="handleOffline(currentDetail)">下线</a-button>
+          <a-button @click="editAnnouncement(currentDetail)">编辑</a-button>
+          <a-button @click="detailVisible = false">关闭</a-button>
+        </a-space>
+      </template>
+    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import {
+  PlusOutlined,
+  SearchOutlined,
+  ReloadOutlined,
+  SyncOutlined,
+  ClockCircleOutlined,
+  EyeOutlined,
+} from '@ant-design/icons-vue'
+import dayjs, { type Dayjs } from 'dayjs'
 import {
   getAnnouncementList,
+  getAnnouncementDetail,
   createAnnouncement,
   updateAnnouncement,
   publishAnnouncement as publishApi,
   deleteAnnouncement as deleteApi,
+  offlineAnnouncement,
   type Announcement,
 } from '@/api/announcement'
 
 const loading = ref(false)
 const tableData = ref<Announcement[]>([])
 const modalVisible = ref(false)
+const detailVisible = ref(false)
 const isEdit = ref(false)
 
 const pagination = reactive({ current: 1, pageSize: 10, total: 0 })
@@ -162,16 +228,20 @@ const formData = reactive({
   type: 'notice',
   priority: 0,
   isTop: false,
+  expireTimeValue: null as Dayjs | null,
 })
 
+const currentDetail = ref<Announcement | null>(null)
+const detailReadCount = ref(0)
+
 const columns = [
-  { title: 'ID', dataIndex: 'id', width: 80 },
-  { title: '标题', dataIndex: 'title', ellipsis: true },
+  { title: 'ID', dataIndex: 'id', width: 70 },
+  { title: '标题', dataIndex: 'title', ellipsis: true, minWidth: 200 },
   { title: '类型', dataIndex: 'type', width: 80 },
   { title: '状态', dataIndex: 'status', width: 80 },
   { title: '优先级', dataIndex: 'priority', width: 80 },
   { title: '发布时间', dataIndex: 'publishTime', width: 160 },
-  { title: '操作', dataIndex: 'action', width: 200, fixed: 'right' },
+  { title: '操作', dataIndex: 'action', width: 220, fixed: 'right' },
 ]
 
 function getTypeColor(type: string): string {
@@ -238,17 +308,40 @@ function handleSizeChange(_current: number, size: number) {
 
 function showCreateModal() {
   isEdit.value = false
-  Object.assign(formData, { id: 0, title: '', content: '', type: 'notice', priority: 0, isTop: false })
+  Object.assign(formData, {
+    id: 0,
+    title: '',
+    content: '',
+    type: 'notice',
+    priority: 0,
+    isTop: false,
+    expireTimeValue: null,
+  })
   modalVisible.value = true
 }
 
-function viewDetail(record: Announcement) {
-  // TODO: 显示详情
+async function viewDetail(record: Announcement) {
+  try {
+    const res = await getAnnouncementDetail(record.id)
+    if (res.code === 200 && res.data) {
+      currentDetail.value = res.data.announcement
+      detailReadCount.value = res.data.readCount || 0
+      detailVisible.value = true
+    }
+  } catch (error) {
+    message.error('获取详情失败')
+  }
 }
 
-function editAnnouncement(record: Announcement) {
+function editAnnouncement(record: Announcement | null) {
+  if (!record) return
+  detailVisible.value = false
   isEdit.value = true
-  Object.assign(formData, { ...record, isTop: !!record.isTop })
+  Object.assign(formData, {
+    ...record,
+    isTop: !!record.isTop,
+    expireTimeValue: record.expireTime ? dayjs(record.expireTime) : null,
+  })
   modalVisible.value = true
 }
 
@@ -258,7 +351,14 @@ async function handleSubmit() {
     return
   }
   try {
-    const data = { ...formData, isTop: formData.isTop ? 1 : 0 }
+    const data: Partial<Announcement> = {
+      title: formData.title,
+      content: formData.content,
+      type: formData.type,
+      priority: formData.priority,
+      isTop: formData.isTop ? 1 : 0,
+      expireTime: formData.expireTimeValue ? formData.expireTimeValue.format('YYYY-MM-DD HH:mm:ss') : undefined,
+    }
     if (isEdit.value) {
       await updateAnnouncement(formData.id, data)
     } else {
@@ -272,14 +372,44 @@ async function handleSubmit() {
   }
 }
 
-async function publishAnnouncement(record: Announcement) {
-  try {
-    await publishApi(record.id)
-    message.success('发布成功')
-    loadData()
-  } catch (error) {
-    message.error('发布失败')
-  }
+async function handlePublish(record: Announcement | null) {
+  if (!record) return
+  Modal.confirm({
+    title: '确认发布',
+    content: `确定要发布公告「${record.title}」吗？发布后将在系统顶部显示。`,
+    okText: '发布',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await publishApi(record.id)
+        message.success('发布成功')
+        detailVisible.value = false
+        loadData()
+      } catch (error) {
+        message.error('发布失败')
+      }
+    },
+  })
+}
+
+async function handleOffline(record: Announcement | null) {
+  if (!record) return
+  Modal.confirm({
+    title: '确认下线',
+    content: `确定要下线公告「${record.title}」吗？`,
+    okText: '下线',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await offlineAnnouncement(record.id)
+        message.success('已下线')
+        detailVisible.value = false
+        loadData()
+      } catch (error) {
+        message.error('下线失败')
+      }
+    },
+  })
 }
 
 async function deleteAnnouncement(record: Announcement) {
@@ -299,8 +429,8 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .announcement-container {
-  height: calc(100vh - 56px - 32px);
-  overflow: hidden;
+  height: calc(100vh - 64px - 48px);
+  overflow-y: auto;
 
   :deep(.ant-card) {
     height: 100%;
@@ -330,8 +460,9 @@ onMounted(() => {
     align-items: center;
 
     .card-title {
-      font-size: 16px;
-      font-weight: 500;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: var(--font-weight-semibold);
     }
   }
 
@@ -391,11 +522,96 @@ onMounted(() => {
     }
   }
 
+  .title-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .title-text {
+      cursor: pointer;
+      transition: color var(--duration-fast);
+
+      &:hover {
+        color: var(--primary-color);
+      }
+    }
+  }
+
   .pagination {
     margin-top: 16px;
     display: flex;
     justify-content: flex-end;
     flex-shrink: 0;
+  }
+}
+
+.form-hint {
+  margin-left: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+// 详情抽屉
+.detail-drawer {
+  .detail-header {
+    margin-bottom: 16px;
+  }
+
+  .detail-tags {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .detail-title {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    line-height: 1.3;
+  }
+
+  .detail-meta {
+    display: flex;
+    gap: 24px;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+
+    span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  }
+
+  .detail-content {
+    padding: 16px 0;
+  }
+
+  .content-text {
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+  }
+
+  .detail-footer {
+    .detail-info {
+      p {
+        margin-bottom: 8px;
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+
+        strong {
+          color: var(--text-primary);
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+    }
   }
 }
 </style>

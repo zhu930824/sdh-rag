@@ -219,8 +219,8 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .feedback-container {
-  height: calc(100vh - 56px - 32px);
-  overflow: hidden;
+  height: calc(100vh - 64px - 48px);
+  overflow-y: auto;
 
   :deep(.ant-card) {
     height: 100%;
@@ -250,8 +250,9 @@ onMounted(() => {
     align-items: center;
 
     .card-title {
-      font-size: 16px;
-      font-weight: 500;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: var(--font-weight-semibold);
     }
   }
 
@@ -261,6 +262,8 @@ onMounted(() => {
     align-items: flex-start;
     margin-bottom: 16px;
     flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 12px;
   }
 
   .search-form {

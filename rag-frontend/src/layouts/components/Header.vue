@@ -221,7 +221,7 @@ onUnmounted(() => {
   color: var(--text-secondary);
   font-size: 18px;
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-nature);
+  transition: all var(--duration-fast) var(--ease-default);
 
   &:hover {
     background: var(--bg-surface-secondary);
@@ -235,7 +235,7 @@ onUnmounted(() => {
 
 // Search
 .search-wrapper {
-  width: 240px;
+  width: 260px;
 }
 
 .search-input {
@@ -261,7 +261,7 @@ onUnmounted(() => {
 
   &:focus-within {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
   .search-icon {
@@ -285,7 +285,7 @@ onUnmounted(() => {
   padding: 4px 8px 4px 4px;
   border-radius: var(--radius-full);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-nature);
+  transition: background var(--duration-fast) var(--ease-default);
 
   &:hover {
     background: var(--bg-surface-secondary);
@@ -293,12 +293,12 @@ onUnmounted(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #059669 0%, #228B22 100%);
+  background: var(--primary-gradient);
 }
 
 .user-name {
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   max-width: 100px;
   overflow: hidden;
@@ -309,7 +309,7 @@ onUnmounted(() => {
 .user-arrow {
   font-size: 10px;
   color: var(--text-tertiary);
-  transition: transform var(--duration-fast) var(--ease-nature);
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .user-menu:hover .user-arrow {
