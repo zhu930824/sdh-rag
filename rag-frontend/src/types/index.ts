@@ -24,6 +24,7 @@ export interface RouteMeta {
   icon?: string
   hidden?: boolean
   requiresAuth?: boolean
+  permission?: string
   roles?: string[]
   breadcrumb?: boolean
   affix?: boolean
@@ -38,7 +39,9 @@ export interface UserInfo {
   nickname: string
   email?: string
   avatar?: string
+  role?: string
   roles: string[]
+  permissions?: string[]
   createTime: string
 }
 

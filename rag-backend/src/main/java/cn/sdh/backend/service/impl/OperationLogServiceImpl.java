@@ -57,4 +57,14 @@ public class OperationLogServiceImpl extends ServiceImpl<OperationLogMapper, Ope
     public void asyncSaveLog(OperationLog log) {
         new Thread(() -> save(log)).start();
     }
+
+    @Override
+    public boolean removeById(Long id) {
+        return super.removeById(id);
+    }
+
+    @Override
+    public void clearAll() {
+        baseMapper.delete(new LambdaQueryWrapper<>());
+    }
 }

@@ -4,6 +4,19 @@
       <template #title>
         <div class="card-header">
           <span class="card-title">日志管理</span>
+          <a-space>
+            <a-popconfirm
+              title="确定要清空所有日志吗？此操作不可恢复！"
+              ok-text="确定"
+              cancel-text="取消"
+              @confirm="handleClearLogs"
+            >
+              <a-button danger>
+                <template #icon><DeleteOutlined /></template>
+                清空日志
+              </a-button>
+            </a-popconfirm>
+          </a-space>
         </div>
       </template>
 
@@ -69,13 +82,19 @@
           </a-form-item>
         </a-form>
         <div class="toolbar-actions">
-          <TableToolbar
-            :columns="tableColumns"
-            :density="tableDensity"
-            @refresh="loadData"
-            @column-change="handleColumnChange"
-            @density-change="handleDensityChange"
-          />
+          <a-space>
+            <a-button v-if="selectedRowKeys.length > 0" danger @click="handleBatchDelete">
+              <template #icon><DeleteOutlined /></template>
+              批量删除 ({{ selectedRowKeys.length }})
+            </a-button>
+            <TableToolbar
+              :columns="tableColumns"
+              :density="tableDensity"
+              @refresh="loadData"
+              @column-change="handleColumnChange"
+              @density-change="handleDensityChange"
+            />
+          </a-space>
         </div>
       </div>
 
@@ -86,8 +105,9 @@
         :columns="tableColumnsConfig"
         :size="tableDensity"
         :pagination="false"
-        :scroll="{ x: 1200 }"
+        :scroll="{ x: 1300 }"
         :row-key="(record: LogItem) => record.id"
+        :row-selection="rowSelection"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'type'">
@@ -100,10 +120,23 @@
               {{ record.status === 1 ? '成功' : '失败' }}
             </a-tag>
           </template>
+          <template v-else-if="column.dataIndex === 'duration'">
+            <span>{{ record.duration }}ms</span>
+          </template>
           <template v-else-if="column.dataIndex === 'action'">
-            <a-button type="link" size="small" @click="handleViewDetail(record)">
-              查看详情
-            </a-button>
+            <a-space>
+              <a-button type="link" size="small" @click="handleViewDetail(record)">
+                详情
+              </a-button>
+              <a-popconfirm
+                title="确定要删除此日志吗？"
+                ok-text="确定"
+                cancel-text="取消"
+                @confirm="handleDelete(record)"
+              >
+                <a-button type="link" size="small" danger>删除</a-button>
+              </a-popconfirm>
+            </a-space>
           </template>
         </template>
       </a-table>
@@ -150,6 +183,12 @@
           <a-descriptions-item label="操作内容">
             {{ currentLog.content }}
           </a-descriptions-item>
+          <a-descriptions-item label="请求地址">
+            {{ currentLog.requestUrl }}
+          </a-descriptions-item>
+          <a-descriptions-item label="请求方式">
+            {{ currentLog.requestMethod }}
+          </a-descriptions-item>
           <a-descriptions-item label="IP地址">
             {{ currentLog.ip }}
           </a-descriptions-item>
@@ -157,6 +196,9 @@
             <a-tag :color="currentLog.status === 1 ? 'success' : 'error'">
               {{ currentLog.status === 1 ? '成功' : '失败' }}
             </a-tag>
+          </a-descriptions-item>
+          <a-descriptions-item label="耗时">
+            {{ currentLog.duration }}ms
           </a-descriptions-item>
           <a-descriptions-item v-if="currentLog.browser" label="浏览器">
             {{ currentLog.browser }}
@@ -194,13 +236,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
-import type { TableColumnType } from 'ant-design-vue'
+import { SearchOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import type { TableColumnType, TableProps } from 'ant-design-vue'
 import type { Dayjs } from 'dayjs'
 import TableToolbar from '@/components/TableToolbar.vue'
 import { useLoading } from '@/composables'
 import type { ColumnConfig, TableDensity } from '@/components/TableToolbar.vue'
-import { getLogList } from '@/api/log'
+import { getLogList, deleteLog, batchDeleteLogs, clearLogs } from '@/api/log'
 import type { OperationLog } from '@/api/log'
 
 interface LogItem extends OperationLog {
@@ -223,6 +266,7 @@ const pagination = reactive({
 })
 
 const tableData = ref<LogItem[]>([])
+const selectedRowKeys = ref<number[]>([])
 
 const tableColumns = ref<ColumnConfig[]>([
   { prop: 'id', label: 'ID', visible: true },
@@ -232,6 +276,7 @@ const tableColumns = ref<ColumnConfig[]>([
   { prop: 'content', label: '操作内容', visible: true },
   { prop: 'ip', label: 'IP地址', visible: true },
   { prop: 'status', label: '状态', visible: true },
+  { prop: 'duration', label: '耗时', visible: false },
 ])
 
 const tableDensity = ref<TableDensity>('default')
@@ -242,10 +287,11 @@ const tableColumnsConfig = computed<TableColumnType[]>(() => {
     { title: '操作时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
     { title: '操作用户', dataIndex: 'username', key: 'username', width: 120 },
     { title: '操作类型', dataIndex: 'type', key: 'type', width: 100 },
-    { title: '操作内容', dataIndex: 'content', key: 'content', width: 300, ellipsis: true },
+    { title: '操作内容', dataIndex: 'content', key: 'content', width: 280, ellipsis: true },
     { title: 'IP地址', dataIndex: 'ip', key: 'ip', width: 140 },
     { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
-    { title: '操作', dataIndex: 'action', key: 'action', width: 100, fixed: 'right' },
+    { title: '耗时', dataIndex: 'duration', key: 'duration', width: 80 },
+    { title: '操作', dataIndex: 'action', key: 'action', width: 120, fixed: 'right' },
   ]
   return columns.filter(col => {
     const prop = col.dataIndex as string
@@ -253,6 +299,13 @@ const tableColumnsConfig = computed<TableColumnType[]>(() => {
     return config ? config.visible !== false : true
   })
 })
+
+const rowSelection: TableProps['rowSelection'] = computed(() => ({
+  selectedRowKeys: selectedRowKeys.value,
+  onChange: (keys: number[]) => {
+    selectedRowKeys.value = keys
+  },
+}))
 
 const detailVisible = ref(false)
 const currentLog = ref<LogItem | null>(null)
@@ -267,15 +320,15 @@ async function loadData() {
         username: filterForm.user || undefined,
         status: filterForm.status,
       }
-      
+
       if (filterForm.dateRange && filterForm.dateRange.length === 2) {
         params.startTime = filterForm.dateRange[0].format('YYYY-MM-DD HH:mm:ss')
         params.endTime = filterForm.dateRange[1].format('YYYY-MM-DD HH:mm:ss')
       }
-      
+
       const { data } = await getLogList(params as any)
-      tableData.value = data.data.records || data.data.list || []
-      pagination.total = data.data.total
+      tableData.value = data.records || data.list || []
+      pagination.total = data.total
     } catch (error) {
       tableData.value = []
       pagination.total = 0
@@ -321,6 +374,40 @@ function handleDensityChange(density: TableDensity) {
 function handleViewDetail(record: LogItem) {
   currentLog.value = record
   detailVisible.value = true
+}
+
+async function handleDelete(record: LogItem) {
+  try {
+    await deleteLog(record.id)
+    message.success('删除成功')
+    loadData()
+  } catch (error) {
+    message.error('删除失败')
+  }
+}
+
+async function handleBatchDelete() {
+  try {
+    const res = await batchDeleteLogs(selectedRowKeys.value)
+    message.success(`成功删除 ${res.data.success} 条日志`)
+    if (res.data.fail > 0) {
+      message.warning(`${res.data.fail} 条日志删除失败`)
+    }
+    selectedRowKeys.value = []
+    loadData()
+  } catch (error) {
+    message.error('批量删除失败')
+  }
+}
+
+async function handleClearLogs() {
+  try {
+    await clearLogs()
+    message.success('清空日志成功')
+    loadData()
+  } catch (error) {
+    message.error('清空日志失败')
+  }
 }
 
 function getTypeColor(type: string): string {

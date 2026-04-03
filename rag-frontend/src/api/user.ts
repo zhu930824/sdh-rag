@@ -19,6 +19,10 @@ export interface UserInfo {
   username: string
   nickname: string
   avatar: string
+  role?: string
+  permissions?: string[]
+  status: number
+  createTime: string
 }
 
 // 通用响应结构

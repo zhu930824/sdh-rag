@@ -19,6 +19,8 @@ export const useUserStore = defineStore('user', () => {
   const username = computed(() => userInfo.value?.username || '')
   const nickname = computed(() => userInfo.value?.nickname || '')
   const avatar = computed(() => userInfo.value?.avatar || '')
+  const permissions = computed(() => userInfo.value?.permissions || [])
+  const role = computed(() => userInfo.value?.role || '')
 
   // 保存Token到本地存储
   function saveToken(newToken: string, remember: boolean = false): void {
@@ -99,6 +101,9 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       const result = await getUserInfo()
+      console.log('getUserInfo result:', result)
+      console.log('getUserInfo data:', result.data)
+      console.log('getUserInfo permissions:', result.data?.permissions)
       if (result.code === 200 || result.code === 0) {
         userInfo.value = result.data
         return result.data
@@ -133,6 +138,8 @@ export const useUserStore = defineStore('user', () => {
     username,
     nickname,
     avatar,
+    permissions,
+    role,
     // 方法
     login: loginAction,
     register: registerAction,

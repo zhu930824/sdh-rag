@@ -37,3 +37,15 @@ export function getLogList(params: LogQuery): Promise<ApiResponse<PageResult<Ope
 export function getLogDetail(id: number): Promise<ApiResponse<OperationLog>> {
   return request.get(`/api/log/${id}`)
 }
+
+export function deleteLog(id: number): Promise<ApiResponse<null>> {
+  return request.delete(`/api/log/${id}`)
+}
+
+export function batchDeleteLogs(ids: number[]): Promise<ApiResponse<{ success: number; fail: number }>> {
+  return request.post('/api/log/batch-delete', { ids })
+}
+
+export function clearLogs(): Promise<ApiResponse<null>> {
+  return request.delete('/api/log/clear')
+}

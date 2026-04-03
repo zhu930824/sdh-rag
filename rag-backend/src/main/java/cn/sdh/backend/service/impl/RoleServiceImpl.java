@@ -79,67 +79,46 @@ public class RoleServiceImpl implements RoleService {
         return roleMapper.insert(role) > 0;
     }
 
-    @Override
-    public boolean updateRole(Long id, RoleRequest request) {
-        Role role = roleMapper.selectById(id);
-        if (role == null) {
-            throw new RuntimeException("角色不存在");
-        }
+        @Override
+        public boolean updateRole (Long id, RoleRequest request){
+            Role role = roleMapper.selectById(id);
+            if (role == null) {
+                throw new RuntimeException("角色不存在");
+            }
 
-        // 检查编码是否被其他角色使用
-        LambdaQueryWrapper<Role> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Role::getCode, request.getCode());
-        wrapper.ne(Role::getId, id);
-        if (roleMapper.selectCount(wrapper) > 0) {
-            throw new RuntimeException("角色编码已被其他角色使用");
-        }
+            // 检查编码是否被其他角色使用
+            LambdaQueryWrapper<Role> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(Role::getCode, request.getCode());
+            wrapper.ne(Role::getId, id);
+            if (roleMapper.selectCount(wrapper) > 0) {
+                throw new RuntimeException("角色编码已被其他角色使用");
+            }
 
-        role.setName(request.getName());
-        role.setCode(request.getCode());
-        role.setDescription(request.getDescription());
-        role.setPermissions(request.getPermissions() != null ? String.join(",", request.getPermissions()) : "");
-        role.setStatus(request.getStatus());
-        return roleMapper.updateById(role) > 0;
-    }
+            role.setName(request.getName());
+            role.setCode(request.getCode());
+            role.setDescription(request.getDescription());
+            role.setPermissions(request.getPermissions() != null ? String.join(",", request.getPermissions()) : "");
+            role.setStatus(request.getStatus());
+            return roleMapper.updateById(role) > 0;
+        }
 
     @Override
     public boolean deleteRole(Long id) {
-        // 检查是否有用户使用该角色
-        Role role = roleMapper.selectById(id);
-        if (role == null) {
-            throw new RuntimeException("角色不存在");
-        }
-
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getRole, role.getCode());
-        long count = userMapper.selectCount(wrapper);
-        if (count > 0) {
-            throw new RuntimeException("该角色已被 " + count + " 个用户使用，无法删除");
-        }
-
-        return roleMapper.deleteById(id) > 0;
+        return false;
     }
 
     @Override
     public boolean batchDeleteRoles(Long[] ids) {
-        for (Long id : ids) {
-            try {
-                deleteRole(id);
-            } catch (RuntimeException e) {
-                // 跳过无法删除的角色
-            }
-        }
-        return true;
+        return false;
     }
 
     @Override
     public boolean toggleStatus(Long id) {
-        Role role = roleMapper.selectById(id);
-        if (role == null) {
-            throw new RuntimeException("角色不存在");
-        }
-
-        role.setStatus(role.getStatus() == 1 ? 0 : 1);
-        return roleMapper.updateById(role) > 0;
+        return false;
     }
 }
+
+
+
+
+

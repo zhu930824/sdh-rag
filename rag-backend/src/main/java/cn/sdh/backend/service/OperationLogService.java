@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 
 public interface OperationLogService {
 
-    IPage<OperationLog> getPage(Integer page, Integer pageSize, String type, String username, 
+    IPage<OperationLog> getPage(Integer page, Integer pageSize, String type, String username,
                                  Integer status, String startTime, String endTime);
 
     OperationLog getById(Long id);
@@ -13,4 +13,8 @@ public interface OperationLogService {
     boolean save(OperationLog log);
 
     void asyncSaveLog(OperationLog log);
+
+    boolean removeById(Long id);
+
+    void clearAll();
 }

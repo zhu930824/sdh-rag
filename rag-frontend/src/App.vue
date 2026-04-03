@@ -1,14 +1,20 @@
 <template>
-  <router-view v-slot="{ Component, route }">
-    <transition name="fade" mode="out-in">
-      <component :is="Component" :key="route.path" />
-    </transition>
-  </router-view>
+  <a-config-provider :locale="zhCN">
+    <router-view v-slot="{ Component, route }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" :key="route.path" />
+      </transition>
+    </router-view>
+  </a-config-provider>
 </template>
 
 <script setup lang="ts">
-// 根组件 - 使用路由视图渲染页面
-// 登录页等特殊页面在路由配置中单独处理，不使用 MainLayout
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
+
+// 设置 dayjs 为中文
+dayjs.locale('zh-cn')
 </script>
 
 <style>

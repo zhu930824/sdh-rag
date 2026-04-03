@@ -233,11 +233,18 @@ const menuTreeData = ref<TreeProps['treeData']>([
     children: [],
   },
   {
+    label: '大模型管理',
+    value: '/model',
+    children: [],
+  },
+  {
     label: '数据分析',
     value: 'analysis-group',
     children: [
       { label: '数据统计', value: '/stats' },
       { label: '热点词分析', value: '/hotwords' },
+      { label: '问答评价', value: '/feedback' },
+      { label: '审核中心', value: '/approval' },
     ],
   },
   {
@@ -246,7 +253,6 @@ const menuTreeData = ref<TreeProps['treeData']>([
     children: [
       { label: '文档预处理', value: '/process-task' },
       { label: '标签管理', value: '/tag' },
-      { label: 'Prompt模板', value: '/prompt' },
     ],
   },
   {
@@ -259,17 +265,6 @@ const menuTreeData = ref<TreeProps['treeData']>([
       { label: '敏感词管理', value: '/sensitive' },
       { label: '公告管理', value: '/announcement' },
       { label: '系统设置', value: '/settings' },
-    ],
-  },
-  {
-    label: '其他功能',
-    value: 'other-group',
-    children: [
-      { label: '大模型管理', value: '/model' },
-      { label: '会话管理', value: '/session' },
-      { label: '定时任务', value: '/scheduled-task' },
-      { label: 'Webhook管理', value: '/webhook' },
-      { label: '审核中心', value: '/approval' },
     ],
   },
 ])

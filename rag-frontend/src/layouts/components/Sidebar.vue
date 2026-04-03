@@ -29,144 +29,30 @@
         class="nav-menu"
         @click="handleMenuClick"
       >
-        <!-- Core -->
-        <a-menu-item key="/dashboard" class="nav-item">
-          <template #icon>
-            <HomeOutlined class="nav-icon" />
-          </template>
-          <span>首页</span>
-        </a-menu-item>
+        <template v-for="item in filteredMenu" :key="item.key">
+          <!-- 子菜单 -->
+          <a-sub-menu v-if="item.children && item.children.length > 0" :key="item.key" class="nav-submenu">
+            <template #icon>
+              <component :is="item.icon" class="nav-icon" />
+            </template>
+            <template #title>{{ item.label }}</template>
+            <a-menu-item v-for="child in item.children" :key="child.key">
+              <component :is="child.icon" class="nav-icon-sm" />
+              <span>{{ child.label }}</span>
+            </a-menu-item>
+          </a-sub-menu>
 
-        <a-menu-item key="/chat" class="nav-item">
-          <template #icon>
-            <MessageOutlined class="nav-icon" />
-          </template>
-          <span>智能问答</span>
-        </a-menu-item>
-
-        <!-- 知识管理 -->
-        <a-sub-menu key="knowledge" class="nav-submenu">
-          <template #icon>
-            <FolderOutlined class="nav-icon" />
-          </template>
-          <template #title>知识管理</template>
-          <a-menu-item key="/knowledge-base">
-            <DatabaseOutlined class="nav-icon-sm" />
-            <span>知识库</span>
+          <!-- 普通菜单项 -->
+          <a-menu-item v-else :key="item.key" class="nav-item">
+            <template #icon>
+              <component :is="item.icon" class="nav-icon" />
+            </template>
+            <span>{{ item.label }}</span>
           </a-menu-item>
-          <a-menu-item key="/knowledge">
-            <FileTextOutlined class="nav-icon-sm" />
-            <span>文档管理</span>
-          </a-menu-item>
-          <a-menu-item key="/graph">
-            <ApartmentOutlined class="nav-icon-sm" />
-            <span>知识图谱</span>
-          </a-menu-item>
-        </a-sub-menu>
 
-        <!-- Divider -->
-        <div class="nav-divider" />
-
-        <!-- Tools -->
-        <a-menu-item key="/workflow" class="nav-item">
-          <template #icon>
-            <ForkOutlined class="nav-icon" />
-          </template>
-          <span>工作流编排</span>
-        </a-menu-item>
-
-        <a-menu-item key="/model" class="nav-item">
-          <template #icon>
-            <ApiOutlined class="nav-icon" />
-          </template>
-          <span>大模型管理</span>
-        </a-menu-item>
-
-        <!-- Divider -->
-        <div class="nav-divider" />
-
-        <!-- Analysis -->
-        <a-menu-item key="/stats" class="nav-item">
-          <template #icon>
-            <BarChartOutlined class="nav-icon" />
-          </template>
-          <span>数据统计</span>
-        </a-menu-item>
-
-        <a-menu-item key="/hotwords" class="nav-item">
-          <template #icon>
-            <LineChartOutlined class="nav-icon" />
-          </template>
-          <span>热点词分析</span>
-        </a-menu-item>
-
-        <a-menu-item key="/feedback" class="nav-item">
-          <template #icon>
-            <LikeOutlined class="nav-icon" />
-          </template>
-          <span>问答评价</span>
-        </a-menu-item>
-
-        <a-menu-item key="/approval" class="nav-item">
-          <template #icon>
-            <AuditOutlined class="nav-icon" />
-          </template>
-          <span>审核中心</span>
-        </a-menu-item>
-
-        <!-- Divider -->
-        <div class="nav-divider" />
-
-        <!-- More -->
-        <a-menu-item key="/process-task" class="nav-item">
-          <template #icon>
-            <CloudUploadOutlined class="nav-icon" />
-          </template>
-          <span>文档预处理</span>
-        </a-menu-item>
-
-        <a-menu-item key="/tag" class="nav-item">
-          <template #icon>
-            <TagsOutlined class="nav-icon" />
-          </template>
-          <span>标签管理</span>
-        </a-menu-item>
-
-
-        <!-- Divider -->
-        <div class="nav-divider" />
-
-        <!-- System -->
-        <a-sub-menu key="system" class="nav-submenu">
-          <template #icon>
-            <SettingOutlined class="nav-icon" />
-          </template>
-          <template #title>系统管理</template>
-          <a-menu-item key="/user">
-            <UserOutlined class="nav-icon-sm" />
-            <span>用户管理</span>
-          </a-menu-item>
-          <a-menu-item key="/role">
-            <TeamOutlined class="nav-icon-sm" />
-            <span>角色管理</span>
-          </a-menu-item>
-          <a-menu-item key="/log">
-            <FileTextOutlined class="nav-icon-sm" />
-            <span>日志管理</span>
-          </a-menu-item>
-          <a-menu-item key="/sensitive">
-            <WarningOutlined class="nav-icon-sm" />
-            <span>敏感词管理</span>
-          </a-menu-item>
-          <a-menu-item key="/announcement">
-            <NotificationOutlined class="nav-icon-sm" />
-            <span>公告管理</span>
-          </a-menu-item>
-          <a-menu-item key="/settings">
-            <SettingOutlined class="nav-icon-sm" />
-            <span>系统设置</span>
-          </a-menu-item>
-        </a-sub-menu>
+          <!-- 分隔线（在特定菜单后） -->
+          <div v-if="['/chat', 'knowledge', '/model', '/approval', '/tag'].includes(item.key)" class="nav-divider" />
+        </template>
       </a-menu>
     </nav>
 
@@ -184,6 +70,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
+import { useUserStore } from '@/stores/user'
 import {
   HomeOutlined,
   FolderOutlined,
@@ -208,11 +95,139 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons-vue'
 
+interface MenuItem {
+  key: string
+  label: string
+  icon?: any
+  permission?: string
+  children?: MenuItem[]
+}
+
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const userStore = useUserStore()
 
 const openKeys = ref<string[]>([])
+
+// 菜单配置
+const menuConfig: MenuItem[] = [
+  {
+    key: '/dashboard',
+    label: '首页',
+    icon: HomeOutlined,
+    permission: '/dashboard',
+  },
+  {
+    key: '/chat',
+    label: '智能问答',
+    icon: MessageOutlined,
+    permission: '/chat',
+  },
+  {
+    key: 'knowledge',
+    label: '知识管理',
+    icon: FolderOutlined,
+    children: [
+      { key: '/knowledge-base', label: '知识库', icon: DatabaseOutlined, permission: '/knowledge-base' },
+      { key: '/knowledge', label: '文档管理', icon: FileTextOutlined, permission: '/knowledge' },
+      { key: '/graph', label: '知识图谱', icon: ApartmentOutlined, permission: '/graph' },
+    ],
+  },
+  {
+    key: '/workflow',
+    label: '工作流编排',
+    icon: ForkOutlined,
+    permission: '/workflow',
+  },
+  {
+    key: '/model',
+    label: '大模型管理',
+    icon: ApiOutlined,
+    permission: '/model',
+  },
+  {
+    key: '/stats',
+    label: '数据统计',
+    icon: BarChartOutlined,
+    permission: '/stats',
+  },
+  {
+    key: '/hotwords',
+    label: '热点词分析',
+    icon: LineChartOutlined,
+    permission: '/hotwords',
+  },
+  {
+    key: '/feedback',
+    label: '问答评价',
+    icon: LikeOutlined,
+    permission: '/feedback',
+  },
+  {
+    key: '/approval',
+    label: '审核中心',
+    icon: AuditOutlined,
+    permission: '/approval',
+  },
+  {
+    key: '/process-task',
+    label: '文档预处理',
+    icon: CloudUploadOutlined,
+    permission: '/process-task',
+  },
+  {
+    key: '/tag',
+    label: '标签管理',
+    icon: TagsOutlined,
+    permission: '/tag',
+  },
+  {
+    key: 'system',
+    label: '系统管理',
+    icon: SettingOutlined,
+    children: [
+      { key: '/user', label: '用户管理', icon: UserOutlined, permission: '/user' },
+      { key: '/role', label: '角色管理', icon: TeamOutlined, permission: '/role' },
+      { key: '/log', label: '日志管理', icon: FileTextOutlined, permission: '/log' },
+      { key: '/sensitive', label: '敏感词管理', icon: WarningOutlined, permission: '/sensitive' },
+      { key: '/announcement', label: '公告管理', icon: NotificationOutlined, permission: '/announcement' },
+      { key: '/settings', label: '系统设置', icon: SettingOutlined, permission: '/settings' },
+    ],
+  },
+]
+
+// 检查权限
+function hasPermission(permission?: string): boolean {
+  if (!permission) return true
+  const userPermissions = userStore.permissions
+  console.log('Checking permission:', permission, 'userPermissions:', userPermissions)
+  if (!userPermissions || userPermissions.length === 0) return false
+  return userPermissions.includes(permission)
+}
+
+// 过滤菜单
+function filterMenu(items: MenuItem[]): MenuItem[] {
+  return items
+    .filter(item => {
+      if (item.children) {
+        return item.children.some(child => hasPermission(child.permission))
+      }
+      return hasPermission(item.permission)
+    })
+    .map(item => {
+      if (item.children) {
+        return {
+          ...item,
+          children: item.children.filter(child => hasPermission(child.permission)),
+        }
+      }
+      return item
+    })
+}
+
+// 过滤后的菜单
+const filteredMenu = computed(() => filterMenu(menuConfig))
 
 const subMenuMap: Record<string, string[]> = {
   'knowledge': ['/knowledge-base', '/knowledge', '/graph'],

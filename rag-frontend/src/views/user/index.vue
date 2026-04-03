@@ -40,8 +40,9 @@
               allow-clear
               style="width: 120px"
             >
-              <a-select-option value="管理员">管理员</a-select-option>
-              <a-select-option value="普通用户">普通用户</a-select-option>
+              <a-select-option v-for="role in roleList" :key="role.code" :value="role.code">
+                {{ role.name }}
+              </a-select-option>
             </a-select>
           </a-form-item>
           <a-form-item>
@@ -88,7 +89,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'role'">
-            <a-tag :color="record.role === '管理员' ? 'red' : 'blue'">{{ record.role }}</a-tag>
+            <a-tag :color="record.role === 'admin' ? 'red' : 'blue'">{{ getRoleName(record.role) }}</a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'status'">
             <a-switch
@@ -161,8 +162,9 @@
         </a-form-item>
         <a-form-item label="角色" name="role">
           <a-select v-model:value="formData.role" placeholder="请选择角色">
-            <a-select-option value="管理员">管理员</a-select-option>
-            <a-select-option value="普通用户">普通用户</a-select-option>
+            <a-select-option v-for="role in roleList" :key="role.code" :value="role.code">
+              {{ role.name }}
+            </a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="状态" name="status">
@@ -191,13 +193,39 @@ import { showDeleteConfirm, showBatchDeleteConfirm, showResetPasswordConfirm } f
 import { useLoading } from '@/composables'
 import type { UserItem, UserQueryParams, UserFormData } from '@/api/userManage'
 import { getUserList, createUser, updateUser, deleteUser, batchDeleteUsers, resetUserPassword, toggleUserStatus } from '@/api/userManage'
+import { getAllRoles } from '@/api/roleManage'
 import type { ColumnConfig, TableDensity } from '@/components/TableToolbar.vue'
+
+interface RoleItem {
+  id: number
+  name: string
+  code: string
+}
 
 interface UserTableRow extends UserItem {
   statusLoading?: boolean
 }
 
 const { loading, withLoading } = useLoading()
+
+// 角色列表
+const roleList = ref<RoleItem[]>([])
+
+// 获取角色列表
+async function loadRoleList() {
+  try {
+    const res = await getAllRoles()
+    roleList.value = res.data || []
+  } catch (error) {
+    console.error('获取角色列表失败:', error)
+  }
+}
+
+// 根据角色code获取角色名称
+function getRoleName(roleCode: string): string {
+  const role = roleList.value.find(r => r.code === roleCode)
+  return role?.name || roleCode
+}
 
 const searchForm = reactive<UserQueryParams>({
   page: 1,
@@ -263,7 +291,7 @@ const formData = reactive<UserFormData>({
   username: '',
   nickname: '',
   email: '',
-  role: '普通用户',
+  role: '',
   status: 1,
   password: '',
 })
@@ -437,13 +465,14 @@ function handleDialogClosed() {
     username: '',
     nickname: '',
     email: '',
-    role: '普通用户',
+    role: '',
     status: 1,
     password: '',
   })
 }
 
 onMounted(() => {
+  loadRoleList()
   loadData()
 })
 </script>
