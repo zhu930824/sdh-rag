@@ -6,18 +6,17 @@ import cn.sdh.backend.dto.CategoryRequest;
 import cn.sdh.backend.entity.DocumentCategory;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.service.KnowledgeService;
+import cn.sdh.backend.service.MinioService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 知识库控制器
@@ -25,23 +24,21 @@ import java.util.UUID;
 @Slf4j
 @RestController
 @RequestMapping("/api/knowledge")
+@RequiredArgsConstructor
 public class KnowledgeController {
 
-    @Autowired
-    private KnowledgeService knowledgeService;
-
-    @Value("${upload.path:upload}")
-    private String uploadPath;
+    private final KnowledgeService knowledgeService;
+    private final MinioService minioService;
 
     /**
      * 上传文档
      */
     @PostMapping("/upload")
-    public Result<Void> uploadDocument(
+    public Result<KnowledgeDocument> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "categoryId", required = false) Long categoryId,
-            @RequestParam(value = "title", required = false) String title) throws IOException {
-        
+            @RequestParam(value = "title", required = false) String title) {
+
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -57,23 +54,44 @@ public class KnowledgeController {
         String fileType = getFileExtension(originalFilename);
         long fileSize = file.getSize();
 
-        // 保存文件
-        String filePath = saveFile(file);
+        // 上传到 MinIO
+        String directory = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+        String filePath = minioService.uploadFile(file, directory);
 
         // 创建文档记录
         KnowledgeDocument document = new KnowledgeDocument();
-        document.setTitle(title != null ? title : originalFilename);
+        document.setTitle(title != null && !title.isEmpty() ? title : originalFilename);
         document.setFileType(fileType);
         document.setFilePath(filePath);
         document.setFileSize(fileSize);
         document.setCategoryId(categoryId);
         document.setUserId(userId);
+        document.setStatus(0); // 处理中
         document.setCreateTime(LocalDateTime.now());
         document.setUpdateTime(LocalDateTime.now());
 
         knowledgeService.uploadDocument(document);
 
-        return Result.success("上传成功", null);
+        return Result.success("上传成功", document);
+    }
+
+    /**
+     * 获取文档预览URL
+     */
+    @GetMapping("/document/{id}/preview")
+    public Result<String> getDocumentPreviewUrl(@PathVariable Long id) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        KnowledgeDocument document = knowledgeService.getDocumentById(id);
+        if (document == null) {
+            return Result.notFound("文档不存在");
+        }
+
+        String previewUrl = minioService.getPreviewUrl(document.getFilePath());
+        return Result.success(previewUrl);
     }
 
     /**
@@ -84,7 +102,7 @@ public class KnowledgeController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) Long categoryId) {
-        
+
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -102,7 +120,7 @@ public class KnowledgeController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        
+
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -120,6 +138,16 @@ public class KnowledgeController {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
+        }
+
+        // 获取文档信息以删除 MinIO 中的文件
+        KnowledgeDocument document = knowledgeService.getDocumentById(id);
+        if (document != null && document.getFilePath() != null) {
+            try {
+                minioService.deleteFile(document.getFilePath());
+            } catch (Exception e) {
+                log.warn("删除MinIO文件失败: {}", document.getFilePath(), e);
+            }
         }
 
         knowledgeService.deleteDocument(id, userId);
@@ -151,6 +179,37 @@ public class KnowledgeController {
     }
 
     /**
+     * 更新分类
+     */
+    @PutMapping("/category/{id}")
+    public Result<Void> updateCategory(@PathVariable Long id, @RequestBody CategoryRequest request) {
+        DocumentCategory category = new DocumentCategory();
+        category.setId(id);
+        category.setName(request.getName());
+        category.setDescription(request.getDescription());
+        category.setParentId(request.getParentId());
+        category.setSort(request.getSort());
+
+        boolean success = knowledgeService.updateCategory(category);
+        if (!success) {
+            return Result.error("更新分类失败");
+        }
+        return Result.success("更新成功", null);
+    }
+
+    /**
+     * 删除分类
+     */
+    @DeleteMapping("/category/{id}")
+    public Result<Void> deleteCategory(@PathVariable Long id) {
+        boolean success = knowledgeService.deleteCategory(id);
+        if (!success) {
+            return Result.error("删除分类失败，请检查是否存在子分类或关联文档");
+        }
+        return Result.success("删除成功", null);
+    }
+
+    /**
      * 获取文件扩展名
      */
     private String getFileExtension(String filename) {
@@ -158,27 +217,5 @@ public class KnowledgeController {
             return "";
         }
         return filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
-    }
-
-    /**
-     * 保存文件到本地
-     */
-    private String saveFile(MultipartFile file) throws IOException {
-        // 创建上传目录
-        File uploadDir = new File(uploadPath);
-        if (!uploadDir.exists()) {
-            uploadDir.mkdirs();
-        }
-
-        // 生成唯一文件名
-        String originalFilename = file.getOriginalFilename();
-        String extension = getFileExtension(originalFilename);
-        String newFilename = UUID.randomUUID().toString() + "." + extension;
-
-        // 保存文件
-        File destFile = new File(uploadDir, newFilename);
-        file.transferTo(destFile);
-
-        return newFilename;
     }
 }

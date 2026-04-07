@@ -2,14 +2,17 @@ package cn.sdh.backend.controller;
 
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.result.Result;
-import cn.sdh.backend.dto.KnowledgeBaseRequest;
-import cn.sdh.backend.dto.LinkDocumentRequest;
+import cn.sdh.backend.dto.*;
 import cn.sdh.backend.entity.KnowledgeBase;
+import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
+import cn.sdh.backend.entity.Tag;
 import cn.sdh.backend.service.KnowledgeBaseService;
+import cn.sdh.backend.service.KnowledgeBaseTagService;
+import cn.sdh.backend.service.TagService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,10 +29,12 @@ import java.util.UUID;
 @Slf4j
 @RestController
 @RequestMapping("/api/knowledge-base")
+@RequiredArgsConstructor
 public class KnowledgeBaseController {
 
-    @Autowired
-    private KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeBaseTagService knowledgeBaseTagService;
+    private final TagService tagService;
 
     @Value("${upload.path:upload}")
     private String uploadPath;
@@ -54,17 +59,21 @@ public class KnowledgeBaseController {
     }
 
     /**
-     * 获取知识库列表
+     * 获取知识库列表（分页）
      */
     @GetMapping("/list")
-    public Result<List<KnowledgeBase>> getKnowledgeBaseList() {
+    public Result<Page<KnowledgeBase>> getKnowledgeBaseList(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer status) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
         }
 
-        List<KnowledgeBase> list = knowledgeBaseService.getKnowledgeBaseList(userId);
-        return Result.success(list);
+        Page<KnowledgeBase> result = knowledgeBaseService.getKnowledgeBasePage(userId, page, size, keyword, status);
+        return Result.success(result);
     }
 
     /**
@@ -168,7 +177,7 @@ public class KnowledgeBaseController {
         document.setCreateTime(LocalDateTime.now());
         document.setUpdateTime(LocalDateTime.now());
 
-        knowledgeBaseService.uploadDocumentToKnowledgeBase(id, document);
+//        knowledgeBaseService.uploadDocumentToKnowledgeBase(id, document);
 
         return Result.success("上传成功", null);
     }
@@ -177,7 +186,7 @@ public class KnowledgeBaseController {
      * 关联已有文档到知识库
      */
     @PostMapping("/{id}/documents/link")
-    public Result<Void> linkDocuments(@PathVariable Long id, @RequestBody LinkDocumentRequest request) {
+    public Result<Void> linkDocuments(@PathVariable Long id, @RequestBody LinkDocumentsRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -218,6 +227,124 @@ public class KnowledgeBaseController {
         Page<KnowledgeDocument> result = knowledgeBaseService.getAllDocumentsForLinking(
                 userId, page, size, excludeKnowledgeId);
         return Result.success(result);
+    }
+
+    /**
+     * 获取知识库统计信息
+     */
+    @GetMapping("/stats")
+    public Result<KnowledgeBaseService.KnowledgeBaseStats> getStats() {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        KnowledgeBaseService.KnowledgeBaseStats stats = knowledgeBaseService.getKnowledgeBaseStats(userId);
+        return Result.success(stats);
+    }
+
+    /**
+     * 获取知识库详情（包含统计信息和标签）
+     */
+    @GetMapping("/{id}/detail")
+    public Result<KnowledgeBaseDetailDTO> getKnowledgeBaseDetail(@PathVariable Long id) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        KnowledgeBase kb = knowledgeBaseService.getKnowledgeBaseById(id);
+        if (kb == null) {
+            return Result.notFound("知识库不存在");
+        }
+
+        KnowledgeBaseDetailDTO dto = new KnowledgeBaseDetailDTO();
+        dto.setKnowledgeBase(kb);
+
+        // 获取标签
+        List<Long> tagIds = knowledgeBaseTagService.getTagIdsByKnowledgeBaseId(id);
+        if (!tagIds.isEmpty()) {
+            dto.setTags(tagService.listByIds(tagIds));
+        }
+
+        // 统计信息
+        dto.setDocumentCount((int) knowledgeBaseService.getDocumentsByKnowledgeId(id, 1, 1).getTotal());
+        dto.setChunkCount((int) knowledgeBaseService.getChunksByKnowledgeId(id, 1, 1).getTotal());
+
+        return Result.success(dto);
+    }
+
+    /**
+     * 更新知识库配置
+     */
+    @PutMapping("/{id}/config")
+    public Result<Void> updateConfig(@PathVariable Long id, @RequestBody KnowledgeBaseConfigRequest request) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        KnowledgeBase kb = knowledgeBaseService.getKnowledgeBaseById(id);
+        if (kb == null) {
+            return Result.notFound("知识库不存在");
+        }
+
+        if (!kb.getUserId().equals(userId)) {
+            return Result.error("无权修改该知识库");
+        }
+
+        // 更新配置
+        knowledgeBaseService.updateKnowledgeBaseConfig(id, request.getChunkSize(), request.getChunkOverlap(), request.getEmbeddingModel());
+
+        // 更新标签
+        if (request.getTagIds() != null) {
+            knowledgeBaseTagService.setKnowledgeBaseTags(id, request.getTagIds());
+        }
+
+        return Result.success("更新成功", null);
+    }
+
+    /**
+     * 获取知识库分块列表
+     */
+    @GetMapping("/{id}/chunks")
+    public Result<Page<KnowledgeChunk>> getChunks(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        Page<KnowledgeChunk> result = knowledgeBaseService.getChunksByKnowledgeId(id, page, size);
+        return Result.success(result);
+    }
+
+    /**
+     * 添加知识库标签
+     */
+    @PostMapping("/{id}/tags")
+    public Result<Void> addTag(@PathVariable Long id, @RequestParam Long tagId) {
+        knowledgeBaseTagService.addTagToKnowledgeBase(id, tagId);
+        return Result.success("添加成功", null);
+    }
+
+    /**
+     * 移除知识库标签
+     */
+    @DeleteMapping("/{id}/tags/{tagId}")
+    public Result<Void> removeTag(@PathVariable Long id, @PathVariable Long tagId) {
+        knowledgeBaseTagService.removeTagFromKnowledgeBase(id, tagId);
+        return Result.success("移除成功", null);
+    }
+
+    /**
+     * 获取知识库标签列表
+     */
+    @GetMapping("/{id}/tags")
+    public Result<List<Tag>> getTags(@PathVariable Long id) {
+        List<Long> tagIds = knowledgeBaseTagService.getTagIdsByKnowledgeBaseId(id);
+        if (tagIds.isEmpty()) {
+            return Result.success(List.of());
+        }
+        return Result.success(tagService.listByIds(tagIds));
     }
 
     /**

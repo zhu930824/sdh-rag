@@ -1,5 +1,5 @@
 export { useUserStore } from './user'
 export { useAppStore } from './app'
-export { useKnowledgeStore } from './knowledge'
+export { useDocumentStore } from './document'
 export { useChatStore } from './chat'
 export { useWorkflowStore } from './workflow'

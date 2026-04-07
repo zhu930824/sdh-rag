@@ -66,6 +66,13 @@ xushu:
     user-ttl: 7200000
     user-token-name: token
 
+# MinIO 配置
+minio:
+  endpoint: http://192.168.2.128:9000
+  access-key: admin
+  secret-key: password
+  bucket-name: sdh-documents
+
 
 
 logging:

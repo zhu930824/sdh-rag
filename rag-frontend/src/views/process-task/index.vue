@@ -83,7 +83,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { EyeOutlined, TableOutlined, FileSearchOutlined, TagsOutlined } from '@ant-design/icons-vue'
 import { getProcessTaskList, createProcessTask, type DocumentProcessTask } from '@/api/process-task'
-import { getDocumentList, type KnowledgeDocument } from '@/api/knowledge'
+import { getDocumentList, type Document as KnowledgeDocument } from '@/api/document'
 
 import type { PageResult } from '@/types'
 

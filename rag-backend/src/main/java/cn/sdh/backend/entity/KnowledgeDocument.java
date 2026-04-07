@@ -30,7 +30,7 @@ public class KnowledgeDocument implements Serializable {
     private String fileType;
 
     /**
-     * 文件存储路径
+     * 文件存储路径（MinIO对象路径）
      */
     @TableField("file_path")
     private String filePath;
@@ -46,17 +46,6 @@ public class KnowledgeDocument implements Serializable {
      */
     @TableField("category_id")
     private Long categoryId;
-
-    /**
-     * 知识库ID
-     */
-    @TableField("knowledge_id")
-    private Long knowledgeId;
-
-    /**
-     * 分类（标签）
-     */
-    private String category;
 
     /**
      * 上传用户ID

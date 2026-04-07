@@ -25,6 +25,42 @@ public class KnowledgeDocumentRelation implements Serializable {
     @TableField("document_id")
     private Long documentId;
 
+    /**
+     * 处理状态：0-待处理，1-处理中，2-成功，3-失败
+     */
+    @TableField("process_status")
+    private Integer processStatus;
+
+    /**
+     * 分块数量
+     */
+    @TableField("chunk_count")
+    private Integer chunkCount;
+
+    /**
+     * 处理时间
+     */
+    @TableField("process_time")
+    private LocalDateTime processTime;
+
+    /**
+     * 切分时使用的分块大小
+     */
+    @TableField("chunk_size")
+    private Integer chunkSize;
+
+    /**
+     * 切分时使用的重叠大小
+     */
+    @TableField("chunk_overlap")
+    private Integer chunkOverlap;
+
+    /**
+     * 切分时使用的嵌入模型
+     */
+    @TableField("embedding_model")
+    private String embeddingModel;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 }

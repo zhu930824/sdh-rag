@@ -242,7 +242,6 @@ public class DocumentServiceImpl implements DocumentService {
         for (int i = 0; i < chunks.size(); i++) {
             DocumentChunk chunk = new DocumentChunk();
             chunk.setDocumentId(document.getId());
-            chunk.setKnowledgeId(document.getKnowledgeId());
             chunk.setCategoryId(document.getCategoryId());
             chunk.setChunkIndex(i);
             chunk.setContent(chunks.get(i));

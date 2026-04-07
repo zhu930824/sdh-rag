@@ -43,10 +43,8 @@ public class BatchProcessServiceImpl implements BatchProcessService {
         for (String fileUrl : fileUrls) {
             try {
                 KnowledgeDocument document = new KnowledgeDocument();
-                document.setKnowledgeId(knowledgeId);
                 document.setTitle(extractFileName(fileUrl));
                 document.setFilePath(fileUrl);
-                document.setCategory(category);
                 document.setStatus(0);
                 document.setCreateTime(LocalDateTime.now());
                 documentMapper.insert(document);
@@ -108,7 +106,6 @@ public class BatchProcessServiceImpl implements BatchProcessService {
         for (Long docId : documentIds) {
             KnowledgeDocument document = documentMapper.selectById(docId);
             if (document != null) {
-                document.setKnowledgeId(targetKnowledgeId);
                 document.setUpdateTime(LocalDateTime.now());
                 documentMapper.updateById(document);
                 successCount++;

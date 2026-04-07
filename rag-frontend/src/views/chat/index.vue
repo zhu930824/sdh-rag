@@ -224,7 +224,6 @@ onUnmounted(() => {
   display: flex;
   gap: 16px;
   height: calc(100vh - 64px - 48px);
-  overflow-y: auto;
 
   .session-sidebar {
     width: 280px;
@@ -233,7 +232,25 @@ onUnmounted(() => {
     transition: width var(--transition-duration);
 
     .sidebar-card {
-      margin-bottom: 20px;
+      height: 100%;
+    }
+
+    :deep(.ant-card) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      .ant-card-head {
+        flex-shrink: 0;
+      }
+
+      .ant-card-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
     }
 
     .panel-header {
@@ -262,7 +279,25 @@ onUnmounted(() => {
     min-width: 0;
 
     .chat-card {
-      margin-bottom: 20px;
+      height: 100%;
+    }
+
+    :deep(.ant-card) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      .ant-card-head {
+        flex-shrink: 0;
+      }
+
+      .ant-card-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
     }
 
     .card-header {

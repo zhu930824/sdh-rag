@@ -144,12 +144,44 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public boolean updateCategory(DocumentCategory category) {
-        return false;
+        DocumentCategory existing = categoryMapper.selectById(category.getId());
+        if (existing == null) {
+            throw new BusinessException("分类不存在");
+        }
+
+        // 不能将分类设置为自己的子分类
+        if (category.getParentId() != null && category.getParentId().equals(category.getId())) {
+            throw new BusinessException("不能将分类设置为自己的子分类");
+        }
+
+        return categoryMapper.updateById(category) > 0;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteCategory(Long id) {
-        return false;
+        DocumentCategory existing = categoryMapper.selectById(id);
+        if (existing == null) {
+            throw new BusinessException("分类不存在");
+        }
+
+        // 检查是否有子分类
+        LambdaQueryWrapper<DocumentCategory> categoryWrapper = new LambdaQueryWrapper<>();
+        categoryWrapper.eq(DocumentCategory::getParentId, id);
+        long childCount = categoryMapper.selectCount(categoryWrapper);
+        if (childCount > 0) {
+            throw new BusinessException("该分类下存在子分类，无法删除");
+        }
+
+        // 检查是否有关联文档
+        LambdaQueryWrapper<KnowledgeDocument> docWrapper = new LambdaQueryWrapper<>();
+        docWrapper.eq(KnowledgeDocument::getCategoryId, id);
+        long docCount = documentMapper.selectCount(docWrapper);
+        if (docCount > 0) {
+            throw new BusinessException("该分类下存在关联文档，无法删除");
+        }
+
+        return categoryMapper.deleteById(id) > 0;
     }
 
     @Override

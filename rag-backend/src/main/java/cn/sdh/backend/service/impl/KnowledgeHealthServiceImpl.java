@@ -39,7 +39,6 @@ public class KnowledgeHealthServiceImpl extends ServiceImpl<KnowledgeHealthMappe
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeHealth checkDocumentCount(Long knowledgeId) {
         LambdaQueryWrapper<KnowledgeDocument> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(KnowledgeDocument::getKnowledgeId, knowledgeId);
         long totalDocs = documentMapper.selectCount(wrapper);
 
         wrapper.eq(KnowledgeDocument::getStatus, 1);
@@ -152,26 +151,26 @@ public class KnowledgeHealthServiceImpl extends ServiceImpl<KnowledgeHealthMappe
     public List<Map<String, Object>> getHealthSummary() {
         List<Map<String, Object>> summary = new ArrayList<>();
 
-        LambdaQueryWrapper<KnowledgeDocument> wrapper = new LambdaQueryWrapper<>();
-        wrapper.select(KnowledgeDocument::getKnowledgeId)
-               .groupBy(KnowledgeDocument::getKnowledgeId);
-        List<KnowledgeDocument> docs = documentMapper.selectList(wrapper);
-
-        for (KnowledgeDocument doc : docs) {
-            Long knowledgeId = doc.getKnowledgeId();
-            if (knowledgeId == null) continue;
-
-            Map<String, Object> item = new HashMap<>();
-            item.put("knowledgeId", knowledgeId);
-            item.put("overallScore", getOverallHealthScore(knowledgeId));
-
-            KnowledgeHealth latest = healthMapper.selectLatestByType(knowledgeId, "document_count");
-            if (latest != null) {
-                item.put("lastCheckTime", latest.getCheckTime());
-            }
-
-            summary.add(item);
-        }
+//        LambdaQueryWrapper<KnowledgeDocument> wrapper = new LambdaQueryWrapper<>();
+//        wrapper.select(KnowledgeDocument::getKnowledgeId)
+//               .groupBy(KnowledgeDocument::getKnowledgeId);
+//        List<KnowledgeDocument> docs = documentMapper.selectList(wrapper);
+//
+//        for (KnowledgeDocument doc : docs) {
+//            Long knowledgeId = doc.getKnowledgeId();
+//            if (knowledgeId == null) continue;
+//
+//            Map<String, Object> item = new HashMap<>();
+//            item.put("knowledgeId", knowledgeId);
+//            item.put("overallScore", getOverallHealthScore(knowledgeId));
+//
+//            KnowledgeHealth latest = healthMapper.selectLatestByType(knowledgeId, "document_count");
+//            if (latest != null) {
+//                item.put("lastCheckTime", latest.getCheckTime());
+//            }
+//
+//            summary.add(item);
+//        }
 
         return summary;
     }

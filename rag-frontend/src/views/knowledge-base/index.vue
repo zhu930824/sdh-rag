@@ -258,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
@@ -312,12 +312,12 @@ const stats = reactive({
   activeBases: 0,
 })
 
-const statsData = [
+const statsData = computed(() => [
   { label: '知识库总数', value: stats.totalBases, icon: 'folder', color: '#1890ff' },
   { label: '文档总数', value: stats.totalDocuments, icon: 'file', color: '#52c41a' },
   { label: '分块总数', value: stats.totalChunks, icon: 'partition', color: '#722ed1' },
   { label: '启用数量', value: stats.activeBases, icon: 'check', color: '#13c2c2' },
-]
+])
 
 const formData = reactive<KnowledgeBaseFormData>({
   name: '',
@@ -458,14 +458,13 @@ async function handleDelete(kb: KnowledgeBase) {
 }
 
 function handleViewDetail(kb: KnowledgeBase) {
-  currentKb.value = kb
-  detailVisible.value = true
+  router.push(`/knowledge-base/${kb.id}`)
 }
 
 function handleViewDocuments(kb: KnowledgeBase | null) {
   if (!kb) return
   router.push({
-    path: '/knowledge',
+    path: '/knowledge-base',
     query: { knowledgeBaseId: kb.id },
   })
 }

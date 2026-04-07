@@ -506,14 +506,14 @@ onMounted(() => {
 // ============================================
 .hero-section {
   position: relative;
-  background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 50%, #14B8A6 100%);
+  background: linear-gradient(135deg, #6366F1 0%, #818CF8 50%, #A5B4FC 100%);
   border-radius: var(--radius-2xl);
   padding: 40px 48px;
   overflow: hidden;
   min-height: 280px;
 
   html.dark & {
-    background: linear-gradient(135deg, #0C4A6E 0%, #0E7490 50%, #115E59 100%);
+    background: linear-gradient(135deg, #312E81 0%, #3730A3 50%, #4338CA 100%);
   }
 }
 
@@ -531,7 +531,7 @@ onMounted(() => {
     &.hero-orb-1 {
       width: 300px;
       height: 300px;
-      background: #22D3EE;
+      background: #A5B4FC;
       top: -100px;
       right: 10%;
       animation: float 8s ease-in-out infinite;
@@ -540,7 +540,7 @@ onMounted(() => {
     &.hero-orb-2 {
       width: 200px;
       height: 200px;
-      background: #2DD4BF;
+      background: #C7D2FE;
       bottom: -50px;
       left: 20%;
       animation: float 6s ease-in-out infinite reverse;
@@ -549,7 +549,7 @@ onMounted(() => {
     &.hero-orb-3 {
       width: 150px;
       height: 150px;
-      background: #5EEAD4;
+      background: #E0E7FF;
       top: 30%;
       right: 30%;
       animation: float 10s ease-in-out infinite;
@@ -608,7 +608,7 @@ onMounted(() => {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #FEF08A 0%, #FDE047 50%, #FBBF24 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, #E0E7FF 50%, #C7D2FE 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -637,11 +637,11 @@ onMounted(() => {
   &.ant-btn-primary {
     background: #fff;
     border: none;
-    color: #0EA5E9;
+    color: #6366F1;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
 
     &:hover {
-      background: #F0FDFA;
+      background: #F5F3FF;
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
     }
@@ -778,7 +778,7 @@ onMounted(() => {
 
 .chart-bar {
   flex: 1;
-  background: linear-gradient(180deg, rgba(20, 184, 166, 0.8) 0%, rgba(20, 184, 166, 0.3) 100%);
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.8) 0%, rgba(165, 180, 252, 0.3) 100%);
   border-radius: 2px 2px 0 0;
   min-height: 4px;
   transition: height 0.5s ease;

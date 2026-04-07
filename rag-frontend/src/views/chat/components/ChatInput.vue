@@ -97,9 +97,9 @@ import {
   ArrowUpOutlined,
   PauseOutlined,
 } from '@ant-design/icons-vue'
-import { getCategories } from '@/api/knowledge'
+import { getCategoryList } from '@/api/document'
 import { getActiveModels } from '@/api/model'
-import type { DocumentCategory } from '@/api/knowledge'
+import type { DocumentCategory } from '@/api/document'
 import type { ModelConfig } from '@/types'
 
 const props = withDefaults(
@@ -144,7 +144,7 @@ const canSend = computed(() => {
 async function fetchKnowledgeList(): Promise<void> {
   knowledgeLoading.value = true
   try {
-    const res = await getCategories()
+    const res = await getCategoryList()
     knowledgeList.value = res.data || []
   } catch (error) {
     console.error('获取知识库列表失败:', error)

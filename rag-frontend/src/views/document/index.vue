@@ -1,93 +1,130 @@
 <template>
   <div class="document-container">
-    <a-card>
-      <template #title>
-        <div class="card-header">
-          <span class="card-title">文档管理</span>
-          <a-button type="primary">
-            <template #icon><UploadOutlined /></template>
-            上传文档
-          </a-button>
-        </div>
-      </template>
+    <div class="category-panel-wrapper">
+      <a-card :bordered="false" class="category-card">
+        <CategoryPanel />
+      </a-card>
+    </div>
 
-      <!-- 搜索栏 -->
-      <a-form layout="inline" :model="searchForm" class="search-form">
-        <a-form-item label="文档名称">
-          <a-input v-model:value="searchForm.keyword" placeholder="请输入文档名称" allow-clear />
-        </a-form-item>
-        <a-form-item label="知识库">
-          <a-select v-model:value="searchForm.knowledgeId" placeholder="请选择知识库" allow-clear style="width: 150px">
-            <a-select-option :value="1">产品文档库</a-select-option>
-            <a-select-option :value="2">技术文档库</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item>
-          <a-button type="primary" @click="handleSearch">
-            <template #icon><SearchOutlined /></template>
-            搜索
-          </a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">
-            <template #icon><ReloadOutlined /></template>
-            重置
-          </a-button>
-        </a-form-item>
-      </a-form>
-
-      <!-- 表格 -->
-      <a-table
-        :columns="columns"
-        :data-source="tableData"
-        :loading="loading"
-        :pagination="pagination"
-        @change="handleTableChange"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
-            <a-tag :color="record.status === '已处理' ? 'success' : 'warning'">
-              {{ record.status }}
-            </a-tag>
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleView(record)">查看</a-button>
-              <a-button type="link" size="small" @click="handleDownload(record)">下载</a-button>
-              <a-popconfirm title="确定要删除该文档吗？" @confirm="handleDelete(record)">
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </a-space>
-          </template>
+    <div class="content-panel">
+      <a-card :bordered="false" class="content-card">
+        <template #title>
+          <div class="card-header">
+            <div class="header-left">
+              <span class="card-title">文档列表</span>
+              <a-tag v-if="documentStore.currentCategory" color="blue" closable @close="handleClearCategory">
+                {{ getCategoryName(documentStore.currentCategory) }}
+              </a-tag>
+            </div>
+            <a-button type="primary" @click="showUploadDialog = true">
+              <template #icon><UploadOutlined /></template>
+              上传文档
+            </a-button>
+          </div>
         </template>
-      </a-table>
-    </a-card>
+
+        <!-- 搜索栏 -->
+        <div class="search-toolbar">
+          <a-form layout="inline" :model="searchForm" class="search-form">
+            <a-form-item>
+              <a-input
+                v-model:value="searchForm.keyword"
+                placeholder="请输入文档名称"
+                allow-clear
+                style="width: 200px"
+                @press-enter="handleSearch"
+              />
+            </a-form-item>
+            <a-form-item>
+              <a-button type="primary" @click="handleSearch">
+                <template #icon><SearchOutlined /></template>
+                搜索
+              </a-button>
+            </a-form-item>
+          </a-form>
+          <div class="toolbar-actions">
+            <a-button @click="handleReset">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
+          </div>
+        </div>
+
+        <!-- 表格 -->
+        <a-table
+          class="document-table"
+          :loading="documentStore.loading"
+          :data-source="documentStore.documentList"
+          :columns="columns"
+          :pagination="false"
+          :scroll="{ x: 1000 }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.dataIndex === 'fileType'">
+              <a-tag :color="getFileTypeColor(record.fileType)">
+                {{ record.fileType?.toUpperCase() || '未知' }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.dataIndex === 'fileSize'">
+              {{ formatFileSize(record.fileSize) }}
+            </template>
+            <template v-else-if="column.dataIndex === 'status'">
+              <a-tag :color="getStatusColor(record.status)">
+                {{ getStatusText(record.status) }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.dataIndex === 'action'">
+              <a-space>
+                <a-button type="link" size="small" @click="handleView(record)">查看</a-button>
+                <a-button type="link" size="small" @click="handleDownload(record)">下载</a-button>
+                <a-popconfirm title="确定要删除该文档吗？" @confirm="handleDelete(record)">
+                  <a-button type="link" size="small" danger>删除</a-button>
+                </a-popconfirm>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
+
+        <!-- 分页 -->
+        <div class="pagination">
+          <a-pagination
+            v-model:current="pagination.page"
+            v-model:page-size="pagination.size"
+            :total="documentStore.pagination.total"
+            :page-size-options="['10', '20', '50', '100']"
+            show-size-changer
+            show-quick-jumper
+            :show-total="(total: number) => `共 ${total} 条`"
+            @change="handlePageChange"
+            @showSizeChange="handleSizeChange"
+          />
+        </div>
+      </a-card>
+    </div>
+
+    <UploadDialog v-model:open="showUploadDialog" @success="handleUploadSuccess" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import {
-  UploadOutlined,
-  SearchOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons-vue'
+import { UploadOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { useDocumentStore } from '@/stores/document'
+import { showSuccess, showError } from '@/utils/message'
+import CategoryPanel from './components/CategoryPanel.vue'
+import UploadDialog from './components/UploadDialog.vue'
+import type { Document } from '@/api/document'
 
-interface DocumentItem {
-  id: number
-  name: string
-  knowledgeName: string
-  size: string
-  status: string
-  createTime: string
-}
+const documentStore = useDocumentStore()
 
-const loading = ref(false)
+const showUploadDialog = ref(false)
 
-// 搜索表单
 const searchForm = reactive({
   keyword: '',
-  knowledgeId: undefined as number | undefined,
 })
+
+const pagination = computed(() => documentStore.pagination)
 
 // 表格列定义
 const columns = [
@@ -99,24 +136,25 @@ const columns = [
   },
   {
     title: '文档名称',
-    dataIndex: 'name',
-    key: 'name',
+    dataIndex: 'title',
+    key: 'title',
     ellipsis: true,
   },
   {
-    title: '所属知识库',
-    dataIndex: 'knowledgeName',
-    key: 'knowledgeName',
-    width: 150,
+    title: '文件类型',
+    dataIndex: 'fileType',
+    key: 'fileType',
+    width: 100,
   },
   {
     title: '文件大小',
-    dataIndex: 'size',
-    key: 'size',
-    width: 120,
+    dataIndex: 'fileSize',
+    key: 'fileSize',
+    width: 100,
   },
   {
     title: '状态',
+    dataIndex: 'status',
     key: 'status',
     width: 100,
   },
@@ -128,82 +166,268 @@ const columns = [
   },
   {
     title: '操作',
+    dataIndex: 'action',
     key: 'action',
     width: 200,
     fixed: 'right' as const,
   },
 ]
 
-// 分页
-const pagination = reactive({
-  current: 1,
-  pageSize: 10,
-  total: 200,
-  showSizeChanger: true,
-  showQuickJumper: true,
-  showTotal: (total: number) => `共 ${total} 条`,
+onMounted(async () => {
+  await documentStore.fetchCategories()
+  await documentStore.fetchDocuments()
 })
 
-// 表格数据
-const tableData = ref<DocumentItem[]>([
-  { id: 1, name: '产品需求文档v1.0.pdf', knowledgeName: '产品文档库', size: '2.5MB', status: '已处理', createTime: '2024-01-15 10:30:00' },
-  { id: 2, name: '系统架构设计.docx', knowledgeName: '技术文档库', size: '1.8MB', status: '处理中', createTime: '2024-01-16 14:20:00' },
-  { id: 3, name: '用户操作手册.pdf', knowledgeName: '用户手册库', size: '3.2MB', status: '已处理', createTime: '2024-01-17 09:15:00' },
-])
-
-// 搜索
 function handleSearch() {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-    message.success('搜索完成')
-  }, 500)
+  // TODO: 实现搜索功能
+  message.info('搜索功能开发中')
 }
 
-// 重置
 function handleReset() {
   searchForm.keyword = ''
-  searchForm.knowledgeId = undefined
-  pagination.current = 1
+  documentStore.reset()
 }
 
-// 表格变化
-function handleTableChange(pag: any) {
-  pagination.current = pag.current
-  pagination.pageSize = pag.pageSize
+function handleClearCategory() {
+  documentStore.setCurrentCategory(null)
 }
 
-// 查看
-function handleView(record: DocumentItem) {
-  message.info(`查看文档：${record.name}`)
+function handlePageChange(page: number) {
+  documentStore.setPagination(page, pagination.value.size)
 }
 
-// 下载
-function handleDownload(record: DocumentItem) {
-  message.success(`开始下载：${record.name}`)
+function handleSizeChange(_current: number, size: number) {
+  documentStore.setPagination(1, size)
 }
 
-// 删除
-function handleDelete(record: DocumentItem) {
-  message.success(`已删除：${record.name}`)
+function handleView(record: Document) {
+  message.info(`查看文档：${record.title}`)
+}
+
+function handleDownload(record: Document) {
+  message.success(`开始下载：${record.title}`)
+}
+
+async function handleDelete(record: Document) {
+  try {
+    await documentStore.removeDocument(record.id)
+    showSuccess('删除成功')
+  } catch (error) {
+    showError('删除失败')
+  }
+}
+
+function handleUploadSuccess() {
+  showUploadDialog.value = false
+  documentStore.fetchDocuments()
+}
+
+function getCategoryName(categoryId: number): string {
+  const category = documentStore.categoryList.find(c => c.id === categoryId)
+  return category?.name || '未知分类'
+}
+
+function getFileTypeColor(fileType: string): string {
+  const colorMap: Record<string, string> = {
+    pdf: 'red',
+    doc: 'blue',
+    docx: 'blue',
+    txt: 'green',
+    xls: 'green',
+    xlsx: 'green',
+    ppt: 'orange',
+    pptx: 'orange',
+  }
+  return colorMap[fileType?.toLowerCase()] || 'default'
+}
+
+function getStatusColor(status: number): string {
+  const colorMap: Record<number, string> = {
+    0: 'warning',
+    1: 'success',
+    2: 'error',
+  }
+  return colorMap[status] || 'default'
+}
+
+function getStatusText(status: number): string {
+  const textMap: Record<number, string> = {
+    0: '处理中',
+    1: '已完成',
+    2: '失败',
+  }
+  return textMap[status] || '未知'
+}
+
+function formatFileSize(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 </script>
 
 <style scoped lang="scss">
 .document-container {
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  display: flex;
+  gap: 16px;
+  height: calc(100vh - 64px - 48px);
+  overflow: hidden;
 
-    .card-title {
-      font-size: 16px;
-      font-weight: 500;
+  .category-panel-wrapper {
+    width: 280px;
+    flex-shrink: 0;
+    height: 100%;
+
+    .category-card {
+      height: 100%;
+
+      :deep(.ant-card-body) {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
     }
   }
 
-  .search-form {
-    margin-bottom: 20px;
+  .content-panel {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+
+    .content-card {
+      height: 100%;
+
+      :deep(.ant-card) {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      :deep(.ant-card-head) {
+        flex-shrink: 0;
+      }
+
+      :deep(.ant-card-body) {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .card-title {
+          font-family: var(--font-display);
+          font-size: 18px;
+          font-weight: var(--font-weight-semibold);
+        }
+      }
+    }
+
+    .search-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .search-form {
+      flex: 1;
+    }
+
+    .document-table {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+
+      :deep(.ant-table-wrapper) {
+        height: 100%;
+      }
+
+      :deep(.ant-spin-nested-loading) {
+        height: 100%;
+      }
+
+      :deep(.ant-spin-container) {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      :deep(.ant-table) {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      :deep(.ant-table-container) {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      :deep(.ant-table-body) {
+        flex: 1;
+        overflow: auto !important;
+      }
+    }
+
+    .pagination {
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+  }
+}
+
+@media (max-width: 1200px) {
+  .document-container {
+    flex-direction: column;
+    height: calc(100vh - 64px - 48px);
+    overflow-y: auto;
+
+    .category-panel-wrapper {
+      width: 100%;
+      height: auto;
+
+      .category-card {
+        height: auto;
+
+        :deep(.ant-card-body) {
+          height: auto;
+          max-height: 300px;
+        }
+      }
+    }
+
+    .content-panel {
+      height: auto;
+
+      .content-card {
+        height: auto;
+      }
+
+      .document-table {
+        overflow: visible;
+      }
+    }
   }
 }
 </style>
