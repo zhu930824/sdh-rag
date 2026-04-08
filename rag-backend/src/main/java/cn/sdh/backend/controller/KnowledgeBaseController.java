@@ -6,6 +6,7 @@ import cn.sdh.backend.dto.*;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
+import cn.sdh.backend.entity.KnowledgeDocumentRelation;
 import cn.sdh.backend.entity.Tag;
 import cn.sdh.backend.service.KnowledgeBaseService;
 import cn.sdh.backend.service.KnowledgeBaseTagService;
@@ -192,8 +193,41 @@ public class KnowledgeBaseController {
             return Result.unauthorized();
         }
 
-        knowledgeBaseService.linkDocumentsToKnowledgeBase(id, request.getDocumentIds());
+        // 检查是否有文档级别配置
+        if (request.getConfigs() != null && !request.getConfigs().isEmpty()) {
+            knowledgeBaseService.linkDocumentsWithConfig(id, request.getConfigs());
+        } else {
+            knowledgeBaseService.linkDocumentsToKnowledgeBase(id, request.getDocumentIds());
+        }
         return Result.success("关联成功", null);
+    }
+
+    /**
+     * 更新文档关联配置
+     */
+    @PutMapping("/{id}/documents/{documentId}/config")
+    public Result<Void> updateDocumentConfig(
+            @PathVariable Long id,
+            @PathVariable Long documentId,
+            @RequestBody DocumentLinkConfig config) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        knowledgeBaseService.updateDocumentLinkConfig(id, documentId, config);
+        return Result.success("更新成功", null);
+    }
+
+    /**
+     * 获取文档关联详情（包含切分配置）
+     */
+    @GetMapping("/{id}/documents/{documentId}/relation")
+    public Result<KnowledgeDocumentRelation> getDocumentRelation(
+            @PathVariable Long id,
+            @PathVariable Long documentId) {
+        KnowledgeDocumentRelation relation = knowledgeBaseService.getDocumentProcessStatus(id, documentId);
+        return Result.success(relation);
     }
 
     /**
@@ -293,8 +327,20 @@ public class KnowledgeBaseController {
             return Result.error("无权修改该知识库");
         }
 
-        // 更新配置
-        knowledgeBaseService.updateKnowledgeBaseConfig(id, request.getChunkSize(), request.getChunkOverlap(), request.getEmbeddingModel());
+        // 更新配置（使用完整配置更新方法）
+        KnowledgeBase config = new KnowledgeBase();
+        config.setChunkSize(request.getChunkSize());
+        config.setChunkOverlap(request.getChunkOverlap());
+        config.setEmbeddingModel(request.getEmbeddingModel());
+        config.setRankModel(request.getRankModel());
+        config.setEnableRewrite(request.getEnableRewrite());
+        config.setSimilarityThreshold(request.getSimilarityThreshold());
+        config.setKeywordTopK(request.getKeywordTopK());
+        config.setVectorTopK(request.getVectorTopK());
+        config.setKeywordWeight(request.getKeywordWeight());
+        config.setVectorWeight(request.getVectorWeight());
+
+        knowledgeBaseService.updateKnowledgeBaseFullConfig(id, config);
 
         // 更新标签
         if (request.getTagIds() != null) {
@@ -308,12 +354,12 @@ public class KnowledgeBaseController {
      * 获取知识库分块列表
      */
     @GetMapping("/{id}/chunks")
-    public Result<Page<KnowledgeChunk>> getChunks(
+    public Result<Page<KnowledgeChunkVO>> getChunks(
             @PathVariable Long id,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Page<KnowledgeChunk> result = knowledgeBaseService.getChunksByKnowledgeId(id, page, size);
+        Page<KnowledgeChunkVO> result = knowledgeBaseService.getChunksByKnowledgeId(id, page, size);
         return Result.success(result);
     }
 

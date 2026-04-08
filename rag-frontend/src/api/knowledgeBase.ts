@@ -10,6 +10,14 @@ export interface KnowledgeBase {
   embeddingModel: string
   icon: string
   color: string
+  // 检索配置
+  rankModel: string
+  enableRewrite: boolean
+  similarityThreshold: number
+  keywordTopK: number
+  vectorTopK: number
+  keywordWeight: number
+  vectorWeight: number
   documentCount: number
   chunkCount: number
   status: number
@@ -71,11 +79,31 @@ export interface KnowledgeChunk {
   contentPreview: string
 }
 
+export interface DocumentLinkConfig {
+  documentId: number
+  chunkSize?: number
+  chunkOverlap?: number
+  embeddingModel?: string
+}
+
 export interface KnowledgeBaseConfigRequest {
   chunkSize?: number
   chunkOverlap?: number
   embeddingModel?: string
   tagIds?: number[]
+  // 检索配置
+  rankModel?: string
+  enableRewrite?: boolean
+  similarityThreshold?: number
+  keywordTopK?: number
+  vectorTopK?: number
+  keywordWeight?: number
+  vectorWeight?: number
+}
+
+export interface LinkDocumentsRequest {
+  documentIds?: number[]
+  configs?: DocumentLinkConfig[]
 }
 
 // 获取知识库列表
@@ -129,8 +157,31 @@ export function getKnowledgeBaseDocuments(id: number, params: { page: number; pa
 }
 
 // 关联文档到知识库
-export function linkDocumentsToKnowledgeBase(knowledgeBaseId: number, documentIds: number[]) {
-  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/link`, { documentIds })
+export function linkDocumentsToKnowledgeBase(knowledgeBaseId: number, request: LinkDocumentsRequest) {
+  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/link`, request)
+}
+
+// 更新文档关联配置
+export function updateDocumentLinkConfig(knowledgeBaseId: number, documentId: number, config: DocumentLinkConfig) {
+  return request.put(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}/config`, config)
+}
+
+// 获取文档关联详情
+export function getDocumentRelation(knowledgeBaseId: number, documentId: number) {
+  return request.get<KnowledgeDocumentRelation>(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}/relation`)
+}
+
+export interface KnowledgeDocumentRelation {
+  id: number
+  knowledgeId: number
+  documentId: number
+  processStatus: number
+  chunkCount: number
+  processTime: string
+  chunkSize: number
+  chunkOverlap: number
+  embeddingModel: string
+  createTime: string
 }
 
 // 移除文档关联

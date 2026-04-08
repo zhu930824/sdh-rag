@@ -1,56 +1,139 @@
 <template>
   <div class="config-panel">
-    <a-form
-      :model="form"
-      :label-col="{ span: 6 }"
-      :wrapper-col="{ span: 14 }"
-      @finish="handleSave"
-    >
-      <a-form-item label="分块大小" name="chunkSize">
-        <a-input-number
-          v-model:value="form.chunkSize"
-          :min="100"
-          :max="5000"
-          :step="100"
-          style="width: 200px"
-        />
-        <span class="form-hint">字符数，推荐 500-1000</span>
-      </a-form-item>
+    <a-collapse v-model:activeKey="activeKeys" :bordered="false">
+      <!-- 切分配置 -->
+      <a-collapse-panel key="chunk" header="切分配置">
+        <a-form
+          :model="form"
+          :label-col="{ span: 6 }"
+          :wrapper-col="{ span: 14 }"
+        >
+          <a-form-item label="分块大小" name="chunkSize">
+            <a-input-number
+              v-model:value="form.chunkSize"
+              :min="100"
+              :max="5000"
+              :step="100"
+              style="width: 200px"
+            />
+            <span class="form-hint">字符数，推荐 500-1000</span>
+          </a-form-item>
 
-      <a-form-item label="分块重叠" name="chunkOverlap">
-        <a-input-number
-          v-model:value="form.chunkOverlap"
-          :min="0"
-          :max="500"
-          :step="10"
-          style="width: 200px"
-        />
-        <span class="form-hint">字符数，推荐 50-100</span>
-      </a-form-item>
+          <a-form-item label="分块重叠" name="chunkOverlap">
+            <a-input-number
+              v-model:value="form.chunkOverlap"
+              :min="0"
+              :max="500"
+              :step="10"
+              style="width: 200px"
+            />
+            <span class="form-hint">字符数，推荐 50-100</span>
+          </a-form-item>
 
-      <a-form-item label="嵌入模型" name="embeddingModel">
-        <a-select v-model:value="form.embeddingModel" style="width: 300px">
-          <a-select-option value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</a-select-option>
-          <a-select-option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</a-select-option>
-          <a-select-option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</a-select-option>
-          <a-select-option value="dashscope/text-embedding-v2">text-embedding-v2 (通义千问)</a-select-option>
-          <a-select-option value="bge-small-zh">bge-small-zh (本地)</a-select-option>
-        </a-select>
-      </a-form-item>
+          <a-form-item label="嵌入模型" name="embeddingModel">
+            <a-select v-model:value="form.embeddingModel" style="width: 300px">
+              <a-select-option value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</a-select-option>
+              <a-select-option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</a-select-option>
+              <a-select-option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</a-select-option>
+              <a-select-option value="dashscope/text-embedding-v2">text-embedding-v2 (通义千问)</a-select-option>
+              <a-select-option value="bge-small-zh">bge-small-zh (本地)</a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-form>
+      </a-collapse-panel>
 
-      <a-form-item :wrapper-col="{ offset: 6, span: 14 }">
-        <a-space>
-          <a-button type="primary" html-type="submit" :loading="saving">保存配置</a-button>
-          <a-button @click="handleReset">重置</a-button>
-        </a-space>
-      </a-form-item>
-    </a-form>
+      <!-- 检索配置 -->
+      <a-collapse-panel key="retrieval" header="检索配置">
+        <a-form
+          :model="form"
+          :label-col="{ span: 6 }"
+          :wrapper-col="{ span: 14 }"
+        >
+          <a-form-item label="重排序模型" name="rankModel">
+            <a-select v-model:value="form.rankModel" style="width: 300px" allow-clear placeholder="不启用重排序">
+              <a-select-option value="bge-reranker-v2-m3">bge-reranker-v2-m3</a-select-option>
+              <a-select-option value="cohere-rerank">Cohere Rerank</a-select-option>
+              <a-select-option value="dashscope/rerank">通义千问 Rerank</a-select-option>
+            </a-select>
+          </a-form-item>
+
+          <a-form-item label="多轮对话改写" name="enableRewrite">
+            <a-switch v-model:checked="form.enableRewrite" />
+            <span class="form-hint">根据对话历史改写查询，提高多轮对话检索效果</span>
+          </a-form-item>
+
+          <a-form-item label="相似度阈值" name="similarityThreshold">
+            <a-slider
+              v-model:value="form.similarityThreshold"
+              :min="0"
+              :max="1"
+              :step="0.05"
+              style="width: 200px"
+            />
+            <span class="form-hint">{{ (form.similarityThreshold * 100).toFixed(0) }}%</span>
+          </a-form-item>
+
+          <a-form-item label="关键字TopK" name="keywordTopK">
+            <a-input-number
+              v-model:value="form.keywordTopK"
+              :min="1"
+              :max="50"
+              style="width: 200px"
+            />
+            <span class="form-hint">关键字检索返回数量</span>
+          </a-form-item>
+
+          <a-form-item label="向量TopK" name="vectorTopK">
+            <a-input-number
+              v-model:value="form.vectorTopK"
+              :min="1"
+              :max="50"
+              style="width: 200px"
+            />
+            <span class="form-hint">向量检索返回数量</span>
+          </a-form-item>
+
+          <a-form-item label="检索权重配置">
+            <div class="weight-config">
+              <div class="weight-item">
+                <span>关键字权重:</span>
+                <a-input-number
+                  v-model:value="form.keywordWeight"
+                  :min="0"
+                  :max="1"
+                  :step="0.1"
+                  style="width: 100px"
+                />
+              </div>
+              <div class="weight-item">
+                <span>向量权重:</span>
+                <a-input-number
+                  v-model:value="form.vectorWeight"
+                  :min="0"
+                  :max="1"
+                  :step="0.1"
+                  style="width: 100px"
+                />
+              </div>
+            </div>
+            <div class="form-hint">两者之和应为1，系统会自动归一化</div>
+          </a-form-item>
+        </a-form>
+      </a-collapse-panel>
+    </a-collapse>
+
+    <div class="actions">
+      <a-space>
+        <a-button type="primary" :loading="saving" @click="handleSave">保存配置</a-button>
+        <a-button @click="handleReset">重置</a-button>
+      </a-space>
+    </div>
 
     <a-divider />
 
     <a-alert
       message="配置修改说明"
-      description="修改分块配置后，新关联的文档将使用新配置进行处理。已处理的文档需要重新处理才能应用新配置。"
+      description="修改分块配置后，新关联的文档将使用新配置进行处理。已处理的文档需要重新处理才能应用新配置。检索配置即时生效。"
       type="info"
       show-icon
     />
@@ -66,15 +149,34 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'save', config: { chunkSize: number; chunkOverlap: number; embeddingModel: string }): void
+  (e: 'save', config: {
+    chunkSize: number
+    chunkOverlap: number
+    embeddingModel: string
+    rankModel?: string
+    enableRewrite?: boolean
+    similarityThreshold?: number
+    keywordTopK?: number
+    vectorTopK?: number
+    keywordWeight?: number
+    vectorWeight?: number
+  }): void
 }>()
 
 const saving = ref(false)
+const activeKeys = ref(['chunk', 'retrieval'])
 
 const form = reactive({
   chunkSize: 500,
   chunkOverlap: 50,
   embeddingModel: 'text-embedding-ada-002',
+  rankModel: '',
+  enableRewrite: false,
+  similarityThreshold: 0.7,
+  keywordTopK: 10,
+  vectorTopK: 10,
+  keywordWeight: 0.3,
+  vectorWeight: 0.7,
 })
 
 watch(() => props.knowledgeBase, (kb) => {
@@ -82,6 +184,13 @@ watch(() => props.knowledgeBase, (kb) => {
     form.chunkSize = kb.chunkSize || 500
     form.chunkOverlap = kb.chunkOverlap || 50
     form.embeddingModel = kb.embeddingModel || 'text-embedding-ada-002'
+    form.rankModel = kb.rankModel || ''
+    form.enableRewrite = kb.enableRewrite || false
+    form.similarityThreshold = kb.similarityThreshold || 0.7
+    form.keywordTopK = kb.keywordTopK || 10
+    form.vectorTopK = kb.vectorTopK || 10
+    form.keywordWeight = kb.keywordWeight || 0.3
+    form.vectorWeight = kb.vectorWeight || 0.7
   }
 }, { immediate: true })
 
@@ -90,6 +199,13 @@ function handleSave() {
     chunkSize: form.chunkSize,
     chunkOverlap: form.chunkOverlap,
     embeddingModel: form.embeddingModel,
+    rankModel: form.rankModel || undefined,
+    enableRewrite: form.enableRewrite,
+    similarityThreshold: form.similarityThreshold,
+    keywordTopK: form.keywordTopK,
+    vectorTopK: form.vectorTopK,
+    keywordWeight: form.keywordWeight,
+    vectorWeight: form.vectorWeight,
   })
 }
 
@@ -98,18 +214,41 @@ function handleReset() {
     form.chunkSize = props.knowledgeBase.chunkSize || 500
     form.chunkOverlap = props.knowledgeBase.chunkOverlap || 50
     form.embeddingModel = props.knowledgeBase.embeddingModel || 'text-embedding-ada-002'
+    form.rankModel = props.knowledgeBase.rankModel || ''
+    form.enableRewrite = props.knowledgeBase.enableRewrite || false
+    form.similarityThreshold = props.knowledgeBase.similarityThreshold || 0.7
+    form.keywordTopK = props.knowledgeBase.keywordTopK || 10
+    form.vectorTopK = props.knowledgeBase.vectorTopK || 10
+    form.keywordWeight = props.knowledgeBase.keywordWeight || 0.3
+    form.vectorWeight = props.knowledgeBase.vectorWeight || 0.7
   }
 }
 </script>
 
 <style scoped lang="scss">
 .config-panel {
-  max-width: 600px;
+  max-width: 800px;
 
   .form-hint {
     margin-left: 12px;
     color: var(--text-tertiary);
     font-size: 12px;
-}
+  }
+
+  .weight-config {
+    display: flex;
+    gap: 24px;
+
+    .weight-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+
+  .actions {
+    margin-top: 16px;
+    padding: 16px 0;
+  }
 }
 </style>

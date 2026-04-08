@@ -231,8 +231,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         }
 
         // 默认值
-        if (chunkSize == null || chunkSize <= 0) chunkSize = 500;
-        if (chunkOverlap == null || chunkOverlap < 0) chunkOverlap = 50;
+        if (chunkSize <= 0) chunkSize = 500;
+        if (chunkOverlap < 0) chunkOverlap = 50;
 
         TokenTextSplitter splitter = new TokenTextSplitter(
                 chunkSize,

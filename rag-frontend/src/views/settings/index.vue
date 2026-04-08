@@ -38,27 +38,6 @@
           </a-form>
         </a-tab-pane>
 
-        <a-tab-pane key="model" tab="模型配置">
-          <a-form :model="settings" :label-col="{ span: 4 }" :wrapper-col="{ span: 16 }" class="settings-form">
-            <a-form-item label="默认模型">
-              <a-select v-model:value="settings.defaultModel" placeholder="请选择默认模型">
-                <a-select-option value="gpt-4">GPT-4</a-select-option>
-                <a-select-option value="gpt-3.5-turbo">GPT-3.5 Turbo</a-select-option>
-                <a-select-option value="claude-3">Claude 3</a-select-option>
-              </a-select>
-            </a-form-item>
-            <a-form-item label="Temperature">
-              <a-slider v-model:value="settings.temperature" :min="0" :max="2" :step="0.1" />
-            </a-form-item>
-            <a-form-item label="最大Token数">
-              <a-input-number v-model:value="settings.maxTokens" :min="100" :max="4000" :step="100" />
-            </a-form-item>
-            <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" @click="saveSettings">保存设置</a-button>
-            </a-form-item>
-          </a-form>
-        </a-tab-pane>
-
         <a-tab-pane key="notification" tab="通知设置">
           <a-form :model="settings" :label-col="{ span: 4 }" :wrapper-col="{ span: 16 }" class="settings-form">
             <a-form-item label="系统通知">
@@ -92,9 +71,6 @@ const loading = ref(false)
 const settings = reactive({
   systemName: '智能知识库',
   defaultTheme: 'auto',
-  defaultModel: 'gpt-3.5-turbo',
-  temperature: 0.7,
-  maxTokens: 2000,
   enableNotification: true,
   enableEmail: false,
   notificationEmail: '',
@@ -108,11 +84,6 @@ async function loadSettings() {
       if (data.data.basic) {
         settings.systemName = data.data.basic.systemName || '智能知识库'
         settings.defaultTheme = data.data.basic.defaultTheme || 'auto'
-      }
-      if (data.data.model) {
-        settings.defaultModel = data.data.model.defaultModel || 'gpt-3.5-turbo'
-        settings.temperature = data.data.model.temperature ?? 0.7
-        settings.maxTokens = data.data.model.maxTokens ?? 2000
       }
       if (data.data.notification) {
         settings.enableNotification = data.data.notification.enableNotification ?? true
@@ -134,12 +105,6 @@ async function saveSettings(): Promise<void> {
       await updateSettingByKey('basic', {
         systemName: settings.systemName,
         defaultTheme: settings.defaultTheme,
-      })
-    } else if (activeTab.value === 'model') {
-      await updateSettingByKey('model', {
-        defaultModel: settings.defaultModel,
-        temperature: settings.temperature,
-        maxTokens: settings.maxTokens,
       })
     } else if (activeTab.value === 'notification') {
       await updateSettingByKey('notification', {

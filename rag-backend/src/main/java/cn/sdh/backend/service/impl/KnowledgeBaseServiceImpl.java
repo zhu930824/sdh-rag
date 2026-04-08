@@ -1,6 +1,8 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.common.exception.BusinessException;
+import cn.sdh.backend.dto.DocumentLinkConfig;
+import cn.sdh.backend.dto.KnowledgeChunkVO;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
@@ -24,7 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 知识库服务实现
@@ -61,6 +65,25 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
         if (knowledgeBase.getIsPublic() == null) {
             knowledgeBase.setIsPublic(false);
+        }
+        // 设置检索配置默认值
+        if (knowledgeBase.getSimilarityThreshold() == null) {
+            knowledgeBase.setSimilarityThreshold(0.7);
+        }
+        if (knowledgeBase.getKeywordTopK() == null) {
+            knowledgeBase.setKeywordTopK(10);
+        }
+        if (knowledgeBase.getVectorTopK() == null) {
+            knowledgeBase.setVectorTopK(10);
+        }
+        if (knowledgeBase.getKeywordWeight() == null) {
+            knowledgeBase.setKeywordWeight(0.3);
+        }
+        if (knowledgeBase.getVectorWeight() == null) {
+            knowledgeBase.setVectorWeight(0.7);
+        }
+        if (knowledgeBase.getEnableRewrite() == null) {
+            knowledgeBase.setEnableRewrite(false);
         }
 
         knowledgeBase.setCreateTime(LocalDateTime.now());
@@ -128,6 +151,52 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
         kb.setUpdateTime(LocalDateTime.now());
 
+        return knowledgeBaseMapper.updateById(kb) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateKnowledgeBaseFullConfig(Long id, KnowledgeBase config) {
+        KnowledgeBase kb = knowledgeBaseMapper.selectById(id);
+        if (kb == null) {
+            return false;
+        }
+
+        // 更新切分配置
+        if (config.getChunkSize() != null) {
+            kb.setChunkSize(config.getChunkSize());
+        }
+        if (config.getChunkOverlap() != null) {
+            kb.setChunkOverlap(config.getChunkOverlap());
+        }
+        if (config.getEmbeddingModel() != null) {
+            kb.setEmbeddingModel(config.getEmbeddingModel());
+        }
+
+        // 更新检索配置
+        if (config.getRankModel() != null) {
+            kb.setRankModel(config.getRankModel());
+        }
+        if (config.getEnableRewrite() != null) {
+            kb.setEnableRewrite(config.getEnableRewrite());
+        }
+        if (config.getSimilarityThreshold() != null) {
+            kb.setSimilarityThreshold(config.getSimilarityThreshold());
+        }
+        if (config.getKeywordTopK() != null) {
+            kb.setKeywordTopK(config.getKeywordTopK());
+        }
+        if (config.getVectorTopK() != null) {
+            kb.setVectorTopK(config.getVectorTopK());
+        }
+        if (config.getKeywordWeight() != null) {
+            kb.setKeywordWeight(config.getKeywordWeight());
+        }
+        if (config.getVectorWeight() != null) {
+            kb.setVectorWeight(config.getVectorWeight());
+        }
+
+        kb.setUpdateTime(LocalDateTime.now());
         return knowledgeBaseMapper.updateById(kb) > 0;
     }
 
@@ -216,6 +285,103 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public boolean linkDocumentsWithConfig(Long knowledgeId, List<DocumentLinkConfig> configs) {
+        if (configs == null || configs.isEmpty()) {
+            return true;
+        }
+
+        KnowledgeBase knowledgeBase = getKnowledgeBaseById(knowledgeId);
+        if (knowledgeBase == null) {
+            throw new BusinessException("知识库不存在");
+        }
+
+        for (DocumentLinkConfig config : configs) {
+            Long documentId = config.getDocumentId();
+            if (documentId == null) {
+                continue;
+            }
+
+            // 检查是否已关联
+            KnowledgeDocumentRelation existing = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
+            if (existing != null) {
+                // 已关联，更新配置
+                if (config.getChunkSize() != null) {
+                    existing.setChunkSize(config.getChunkSize());
+                } else {
+                    existing.setChunkSize(knowledgeBase.getChunkSize());
+                }
+                if (config.getChunkOverlap() != null) {
+                    existing.setChunkOverlap(config.getChunkOverlap());
+                } else {
+                    existing.setChunkOverlap(knowledgeBase.getChunkOverlap());
+                }
+                if (config.getEmbeddingModel() != null) {
+                    existing.setEmbeddingModel(config.getEmbeddingModel());
+                } else {
+                    existing.setEmbeddingModel(knowledgeBase.getEmbeddingModel());
+                }
+                relationMapper.updateById(existing);
+                continue;
+            }
+
+            // 创建关联记录，使用文档专属配置或知识库默认值
+            KnowledgeDocumentRelation relation = new KnowledgeDocumentRelation();
+            relation.setKnowledgeId(knowledgeId);
+            relation.setDocumentId(documentId);
+            relation.setProcessStatus(0); // 待处理
+            relation.setChunkCount(0);
+
+            // 使用文档自定义配置，如果没有则使用知识库默认值
+            relation.setChunkSize(config.getChunkSize() != null ? config.getChunkSize() : knowledgeBase.getChunkSize());
+            relation.setChunkOverlap(config.getChunkOverlap() != null ? config.getChunkOverlap() : knowledgeBase.getChunkOverlap());
+            relation.setEmbeddingModel(config.getEmbeddingModel() != null ? config.getEmbeddingModel() : knowledgeBase.getEmbeddingModel());
+            relation.setCreateTime(LocalDateTime.now());
+            relationMapper.insert(relation);
+
+            // 异步处理文档
+            documentProcessService.processDocumentForKnowledge(
+                    documentId,
+                    knowledgeId,
+                    relation.getChunkSize(),
+                    relation.getChunkOverlap()
+            );
+        }
+
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateDocumentLinkConfig(Long knowledgeId, Long documentId, DocumentLinkConfig config) {
+        KnowledgeDocumentRelation relation = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
+        if (relation == null) {
+            throw new BusinessException("文档未关联到该知识库");
+        }
+
+        KnowledgeBase knowledgeBase = getKnowledgeBaseById(knowledgeId);
+
+        // 更新配置
+        if (config.getChunkSize() != null) {
+            relation.setChunkSize(config.getChunkSize());
+        } else if (knowledgeBase != null) {
+            relation.setChunkSize(knowledgeBase.getChunkSize());
+        }
+        if (config.getChunkOverlap() != null) {
+            relation.setChunkOverlap(config.getChunkOverlap());
+        } else if (knowledgeBase != null) {
+            relation.setChunkOverlap(knowledgeBase.getChunkOverlap());
+        }
+        if (config.getEmbeddingModel() != null) {
+            relation.setEmbeddingModel(config.getEmbeddingModel());
+        } else if (knowledgeBase != null) {
+            relation.setEmbeddingModel(knowledgeBase.getEmbeddingModel());
+        }
+
+        return relationMapper.updateById(relation) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean unlinkDocumentFromKnowledgeBase(Long knowledgeId, Long documentId) {
         // 取消文档关联（清理向量）
         documentProcessService.unlinkDocumentFromKnowledge(documentId, knowledgeId);
@@ -285,14 +451,49 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
 
     @Override
-    public Page<KnowledgeChunk> getChunksByKnowledgeId(Long knowledgeId, int page, int size) {
+    public Page<KnowledgeChunkVO> getChunksByKnowledgeId(Long knowledgeId, int page, int size) {
         Page<KnowledgeChunk> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<KnowledgeChunk> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(KnowledgeChunk::getKnowledgeId, knowledgeId)
                 .orderByAsc(KnowledgeChunk::getDocumentId)
                 .orderByAsc(KnowledgeChunk::getChunkIndex);
 
-        return chunkMapper.selectPage(pageParam, wrapper);
+        Page<KnowledgeChunk> chunkPage = chunkMapper.selectPage(pageParam, wrapper);
+
+        // 转换为 VO
+        Page<KnowledgeChunkVO> voPage = new Page<>(page, size);
+        voPage.setTotal(chunkPage.getTotal());
+        voPage.setPages(chunkPage.getPages());
+
+        if (chunkPage.getRecords().isEmpty()) {
+            voPage.setRecords(List.of());
+            return voPage;
+        }
+
+        // 批量获取文档信息
+        List<Long> documentIds = chunkPage.getRecords().stream()
+                .map(KnowledgeChunk::getDocumentId)
+                .distinct()
+                .toList();
+
+        Map<Long, KnowledgeDocument> documentMap = new HashMap<>();
+        if (!documentIds.isEmpty()) {
+            List<KnowledgeDocument> documents = documentMapper.selectBatchIds(documentIds);
+            for (KnowledgeDocument doc : documents) {
+                documentMap.put(doc.getId(), doc);
+            }
+        }
+
+        // 转换记录
+        List<KnowledgeChunkVO> voList = chunkPage.getRecords().stream()
+                .map(chunk -> {
+                    KnowledgeDocument doc = documentMap.get(chunk.getDocumentId());
+                    return KnowledgeChunkVO.fromEntity(chunk, doc);
+                })
+                .toList();
+
+        voPage.setRecords(voList);
+        return voPage;
     }
 
     @Override

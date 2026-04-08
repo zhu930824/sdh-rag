@@ -1,5 +1,7 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.dto.DocumentLinkConfig;
+import cn.sdh.backend.dto.KnowledgeChunkVO;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
@@ -64,6 +66,14 @@ public interface KnowledgeBaseService {
     boolean updateKnowledgeBaseConfig(Long id, Integer chunkSize, Integer chunkOverlap, String embeddingModel);
 
     /**
+     * 更新知识库完整配置（包括检索配置）
+     * @param id 知识库ID
+     * @param knowledgeBase 知识库实体（包含所有配置）
+     * @return 是否成功
+     */
+    boolean updateKnowledgeBaseFullConfig(Long id, KnowledgeBase knowledgeBase);
+
+    /**
      * 删除知识库
      * @param id 知识库ID
      * @param userId 用户ID
@@ -87,6 +97,23 @@ public interface KnowledgeBaseService {
      * @return 是否成功
      */
     boolean linkDocumentsToKnowledgeBase(Long knowledgeId, List<Long> documentIds);
+
+    /**
+     * 关联文档到知识库（带单独配置）
+     * @param knowledgeId 知识库ID
+     * @param configs 文档关联配置列表
+     * @return 是否成功
+     */
+    boolean linkDocumentsWithConfig(Long knowledgeId, List<DocumentLinkConfig> configs);
+
+    /**
+     * 更新文档关联配置
+     * @param knowledgeId 知识库ID
+     * @param documentId 文档ID
+     * @param config 配置
+     * @return 是否成功
+     */
+    boolean updateDocumentLinkConfig(Long knowledgeId, Long documentId, DocumentLinkConfig config);
 
     /**
      * 移除文档与知识库的关联
@@ -126,9 +153,9 @@ public interface KnowledgeBaseService {
      * @param knowledgeId 知识库ID
      * @param page 页码
      * @param size 每页大小
-     * @return 分页结果
+     * @return 分页结果（包含文档信息）
      */
-    Page<KnowledgeChunk> getChunksByKnowledgeId(Long knowledgeId, int page, int size);
+    Page<KnowledgeChunkVO> getChunksByKnowledgeId(Long knowledgeId, int page, int size);
 
     /**
      * 添加知识库标签

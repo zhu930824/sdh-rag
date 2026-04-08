@@ -65,6 +65,48 @@ public class KnowledgeBase implements Serializable {
      */
     private String color;
 
+    /**
+     * 重排序模型
+     */
+    @TableField("rank_model")
+    private String rankModel;
+
+    /**
+     * 是否启用多轮对话改写
+     */
+    @TableField("enable_rewrite")
+    private Boolean enableRewrite;
+
+    /**
+     * 相似度阈值
+     */
+    @TableField("similarity_threshold")
+    private Double similarityThreshold;
+
+    /**
+     * 关键字检索TopK
+     */
+    @TableField("keyword_top_k")
+    private Integer keywordTopK;
+
+    /**
+     * 向量检索TopK
+     */
+    @TableField("vector_top_k")
+    private Integer vectorTopK;
+
+    /**
+     * 关键字权重
+     */
+    @TableField("keyword_weight")
+    private Double keywordWeight;
+
+    /**
+     * 向量权重
+     */
+    @TableField("vector_weight")
+    private Double vectorWeight;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 

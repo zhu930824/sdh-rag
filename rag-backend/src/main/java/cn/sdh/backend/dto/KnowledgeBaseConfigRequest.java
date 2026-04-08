@@ -29,4 +29,39 @@ public class KnowledgeBaseConfigRequest {
      * 标签ID列表
      */
     private List<Long> tagIds;
+
+    /**
+     * 重排序模型
+     */
+    private String rankModel;
+
+    /**
+     * 是否启用多轮对话改写
+     */
+    private Boolean enableRewrite;
+
+    /**
+     * 相似度阈值
+     */
+    private Double similarityThreshold;
+
+    /**
+     * 关键字检索TopK
+     */
+    private Integer keywordTopK;
+
+    /**
+     * 向量检索TopK
+     */
+    private Integer vectorTopK;
+
+    /**
+     * 关键字权重
+     */
+    private Double keywordWeight;
+
+    /**
+     * 向量权重
+     */
+    private Double vectorWeight;
 }

@@ -1,11 +1,14 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.DocumentChunk;
+import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.mapper.DocumentChunkMapper;
+import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.service.HybridSearchService;
 import cn.sdh.backend.service.EmbeddingService;
+import cn.sdh.backend.service.AiChatService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -25,18 +28,52 @@ public class HybridSearchServiceImpl implements HybridSearchService {
 
     private final DocumentChunkMapper chunkMapper;
     private final KnowledgeDocumentMapper documentMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final EmbeddingService embeddingService;
+    private final AiChatService aiChatService;
     private final ObjectMapper objectMapper;
 
     private static final double DEFAULT_KEYWORD_WEIGHT = 0.3;
     private static final double DEFAULT_SEMANTIC_WEIGHT = 0.7;
+    private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.7;
+    private static final int DEFAULT_TOP_K = 10;
     private static final double BM25_K1 = 1.2;
     private static final double BM25_B = 0.75;
 
     @Override
-    public List<Map<String, Object>> hybridSearch(Long knowledgeId, String query, int topK, 
+    public List<Map<String, Object>> hybridSearchWithKnowledgeBaseConfig(Long knowledgeId, String query) {
+        KnowledgeBase kb = knowledgeBaseMapper.selectById(knowledgeId);
+        if (kb == null) {
+            log.warn("知识库不存在: {}", knowledgeId);
+            return Collections.emptyList();
+        }
+
+        int keywordTopK = kb.getKeywordTopK() != null ? kb.getKeywordTopK() : DEFAULT_TOP_K;
+        int vectorTopK = kb.getVectorTopK() != null ? kb.getVectorTopK() : DEFAULT_TOP_K;
+        double keywordWeight = kb.getKeywordWeight() != null ? kb.getKeywordWeight() : DEFAULT_KEYWORD_WEIGHT;
+        double vectorWeight = kb.getVectorWeight() != null ? kb.getVectorWeight() : DEFAULT_SEMANTIC_WEIGHT;
+        double similarityThreshold = kb.getSimilarityThreshold() != null ? kb.getSimilarityThreshold() : DEFAULT_SIMILARITY_THRESHOLD;
+
+        // 多轮对话改写
+        if (Boolean.TRUE.equals(kb.getEnableRewrite())) {
+            // 这里暂时不实现改写逻辑，实际项目中需要传入对话历史
+            log.debug("多轮对话改写已启用");
+        }
+
+        return hybridSearchWithThreshold(knowledgeId, query, Math.max(keywordTopK, vectorTopK),
+                keywordWeight, vectorWeight, similarityThreshold);
+    }
+
+    @Override
+    public List<Map<String, Object>> hybridSearch(Long knowledgeId, String query, int topK,
             double keywordWeight, double semanticWeight) {
-        log.info("执行混合搜索: knowledgeId={}, query={}, topK={}", knowledgeId, query, topK);
+        return hybridSearchWithThreshold(knowledgeId, query, topK, keywordWeight, semanticWeight, 0.0);
+    }
+
+    @Override
+    public List<Map<String, Object>> hybridSearchWithThreshold(Long knowledgeId, String query, int topK,
+            double keywordWeight, double semanticWeight, double similarityThreshold) {
+        log.info("执行混合搜索: knowledgeId={}, query={}, topK={}, threshold={}", knowledgeId, query, topK, similarityThreshold);
 
         if (keywordWeight + semanticWeight != 1.0) {
             keywordWeight = DEFAULT_KEYWORD_WEIGHT;
@@ -66,10 +103,10 @@ public class HybridSearchServiceImpl implements HybridSearchService {
         for (Map<String, Object> item : mergedResults.values()) {
             double keywordScore = ((Number) item.getOrDefault("keywordScore", 0.0)).doubleValue();
             double semanticScore = ((Number) item.getOrDefault("semanticScore", 0.0)).doubleValue();
-            
+
             double normalizedKeyword = normalizeScore(keywordScore, 0, 10);
             double normalizedSemantic = normalizeScore(semanticScore, 0, 1);
-            
+
             double finalScore = keywordWeight * normalizedKeyword + semanticWeight * normalizedSemantic;
             item.put("finalScore", finalScore);
         }
@@ -79,6 +116,12 @@ public class HybridSearchServiceImpl implements HybridSearchService {
                 ((Number) b.get("finalScore")).doubleValue(),
                 ((Number) a.get("finalScore")).doubleValue()
             ))
+            // 应用相似度阈值过滤
+            .filter(item -> {
+                if (similarityThreshold <= 0) return true;
+                double score = ((Number) item.get("finalScore")).doubleValue();
+                return score >= similarityThreshold;
+            })
             .limit(topK)
             .collect(Collectors.toList());
 
@@ -375,5 +418,40 @@ public class HybridSearchServiceImpl implements HybridSearchService {
         }
 
         return Math.min(0.3, similarCount * 0.1);
+    }
+
+    @Override
+    public String rewriteQuery(String query, List<Map<String, String>> chatHistory) {
+        if (chatHistory == null || chatHistory.isEmpty()) {
+            return query;
+        }
+
+        try {
+            // 构建改写提示词
+            StringBuilder prompt = new StringBuilder();
+            prompt.append("根据以下对话历史，将用户的最新问题改写为一个独立的、完整的查询语句。");
+            prompt.append("\n\n对话历史：\n");
+
+            int historyCount = Math.min(chatHistory.size(), 5); // 最多使用最近5轮对话
+            for (int i = chatHistory.size() - historyCount; i < chatHistory.size(); i++) {
+                Map<String, String> turn = chatHistory.get(i);
+                prompt.append("用户：").append(turn.getOrDefault("question", "")).append("\n");
+                prompt.append("助手：").append(turn.getOrDefault("answer", "")).append("\n");
+            }
+
+            prompt.append("\n当前问题：").append(query);
+            prompt.append("\n\n请直接输出改写后的查询语句，不要有任何解释：");
+
+            // 调用LLM进行改写
+            String rewrittenQuery = aiChatService.chat(prompt.toString(), null);
+            if (rewrittenQuery != null && !rewrittenQuery.trim().isEmpty()) {
+                log.info("查询改写: {} -> {}", query, rewrittenQuery);
+                return rewrittenQuery.trim();
+            }
+        } catch (Exception e) {
+            log.warn("查询改写失败: {}", e.getMessage());
+        }
+
+        return query;
     }
 }

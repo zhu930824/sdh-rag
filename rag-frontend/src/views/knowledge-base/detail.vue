@@ -284,7 +284,15 @@ async function handleLinkDocuments() {
     return
   }
   try {
-    await linkDocumentsToKnowledgeBase(knowledgeBaseId.value, selectedDocumentIds.value)
+    // 获取配置
+    const configs = linkDocumentRef.value?.getConfigs()
+    const isCustomMode = linkDocumentRef.value?.isCustomMode()
+
+    if (isCustomMode && configs) {
+      await linkDocumentsToKnowledgeBase(knowledgeBaseId.value, { configs })
+    } else {
+      await linkDocumentsToKnowledgeBase(knowledgeBaseId.value, { documentIds: selectedDocumentIds.value })
+    }
     message.success('关联成功')
     showLinkDocumentModal.value = false
     selectedDocumentIds.value = []
@@ -331,7 +339,18 @@ async function handleRemoveTag(tagId: number) {
   }
 }
 
-async function handleSaveConfig(config: { chunkSize: number; chunkOverlap: number; embeddingModel: string }) {
+async function handleSaveConfig(config: {
+  chunkSize: number
+  chunkOverlap: number
+  embeddingModel: string
+  rankModel?: string
+  enableRewrite?: boolean
+  similarityThreshold?: number
+  keywordTopK?: number
+  vectorTopK?: number
+  keywordWeight?: number
+  vectorWeight?: number
+}) {
   try {
     await updateKnowledgeBaseConfig(knowledgeBaseId.value, config)
     message.success('配置保存成功')
@@ -443,28 +462,11 @@ onMounted(() => {
   }
 
   .content-card {
-    flex: 1;
-    min-height: 0;
+    flex: none;
+    min-height: 500px;
 
     :deep(.ant-card-body) {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
-
-    :deep(.ant-tabs) {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
-
-    :deep(.ant-tabs-content) {
-      flex: 1;
-      min-height: 0;
-    }
-
-    :deep(.ant-tabs-tabpane) {
-      height: 100%;
+      padding-top: 12px;
     }
   }
 }
