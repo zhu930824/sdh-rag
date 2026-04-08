@@ -68,15 +68,31 @@
             <template v-else-if="column.dataIndex === 'fileSize'">
               {{ formatFileSize(record.fileSize) }}
             </template>
-            <template v-else-if="column.dataIndex === 'status'">
-              <a-tag :color="getStatusColor(record.status)">
-                {{ getStatusText(record.status) }}
-              </a-tag>
+            <template v-else-if="column.dataIndex === 'tags'">
+              <div class="document-tags">
+                <template v-if="record.tags?.length">
+                  <a-tag
+                    v-for="(tag, index) in record.tags.slice(0, 3)"
+                    :key="tag.id"
+                    :color="tag.color || 'blue'"
+                    closable
+                    @close="handleRemoveTag(record.id, tag.id)"
+                  >
+                    {{ tag.name }}
+                  </a-tag>
+                  <a-tooltip v-if="record.tags.length > 3" :title="record.tags.slice(3).map(t => t.name).join(', ')">
+                    <span class="more-tags">+{{ record.tags.length - 3 }}</span>
+                  </a-tooltip>
+                </template>
+                <span v-else class="no-tags">暂无标签</span>
+              </div>
             </template>
             <template v-else-if="column.dataIndex === 'action'">
               <a-space>
-                <a-button type="link" size="small" @click="handleView(record)">查看</a-button>
-                <a-button type="link" size="small" @click="handleDownload(record)">下载</a-button>
+                <a-button type="link" size="small" @click="openTagModal(record)">
+                  <TagOutlined />
+                  添加标签
+                </a-button>
                 <a-popconfirm title="确定要删除该文档吗？" @confirm="handleDelete(record)">
                   <a-button type="link" size="small" danger>删除</a-button>
                 </a-popconfirm>
@@ -103,15 +119,52 @@
     </div>
 
     <UploadDialog v-model:open="showUploadDialog" @success="handleUploadSuccess" />
+
+    <!-- 添加标签弹窗 -->
+    <a-modal
+      v-model:open="tagModalVisible"
+      title="添加标签"
+      :width="450"
+      @ok="handleAddTags"
+      @cancel="tagModalVisible = false"
+    >
+      <a-form :label-col="{ span: 6 }">
+        <a-form-item label="选择标签">
+          <a-select
+            v-model:value="selectedTagIds"
+            mode="multiple"
+            placeholder="请选择标签（可多选）"
+            style="width: 100%"
+            :loading="tagsLoading"
+            :options="availableTagOptions"
+            :filter-option="filterTagOption"
+            show-search
+          />
+        </a-form-item>
+        <a-form-item label="当前标签">
+          <div class="current-tags">
+            <a-tag
+              v-for="tag in currentDocument?.tags"
+              :key="tag.id"
+              :color="tag.color || 'blue'"
+            >
+              {{ tag.name }}
+            </a-tag>
+            <span v-if="!currentDocument?.tags?.length" class="no-tags-text">暂无标签</span>
+          </div>
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { UploadOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { UploadOutlined, SearchOutlined, ReloadOutlined, TagOutlined } from '@ant-design/icons-vue'
 import { useDocumentStore } from '@/stores/document'
 import { showSuccess, showError } from '@/utils/message'
+import { getAllTags, addDocumentTag, removeDocumentTag, type Tag } from '@/api/tag'
 import CategoryPanel from './components/CategoryPanel.vue'
 import UploadDialog from './components/UploadDialog.vue'
 import type { Document } from '@/api/document'
@@ -119,12 +172,28 @@ import type { Document } from '@/api/document'
 const documentStore = useDocumentStore()
 
 const showUploadDialog = ref(false)
+const tagModalVisible = ref(false)
+const selectedTagIds = ref<number[]>([])
+const currentDocument = ref<Document | null>(null)
+const allTags = ref<Tag[]>([])
+const tagsLoading = ref(false)
 
 const searchForm = reactive({
   keyword: '',
 })
 
 const pagination = computed(() => documentStore.pagination)
+
+// 可选标签选项（排除已选标签）
+const availableTagOptions = computed(() => {
+  const currentTagIds = currentDocument.value?.tags?.map(t => t.id) || []
+  return allTags.value
+    .filter(tag => !currentTagIds.includes(tag.id))
+    .map(tag => ({
+      label: tag.name,
+      value: tag.id,
+    }))
+})
 
 // 表格列定义
 const columns = [
@@ -153,10 +222,10 @@ const columns = [
     width: 100,
   },
   {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-    width: 100,
+    title: '标签',
+    dataIndex: 'tags',
+    key: 'tags',
+    width: 200,
   },
   {
     title: '上传时间',
@@ -168,7 +237,7 @@ const columns = [
     title: '操作',
     dataIndex: 'action',
     key: 'action',
-    width: 200,
+    width: 160,
     fixed: 'right' as const,
   },
 ]
@@ -176,7 +245,20 @@ const columns = [
 onMounted(async () => {
   await documentStore.fetchCategories()
   await documentStore.fetchDocuments()
+  await fetchAllTags()
 })
+
+async function fetchAllTags() {
+  tagsLoading.value = true
+  try {
+    const res = await getAllTags()
+    if (res.code === 200 || res.code === 0) {
+      allTags.value = res.data || []
+    }
+  } finally {
+    tagsLoading.value = false
+  }
+}
 
 function handleSearch() {
   // TODO: 实现搜索功能
@@ -200,14 +282,6 @@ function handleSizeChange(_current: number, size: number) {
   documentStore.setPagination(1, size)
 }
 
-function handleView(record: Document) {
-  message.info(`查看文档：${record.title}`)
-}
-
-function handleDownload(record: Document) {
-  message.success(`开始下载：${record.title}`)
-}
-
 async function handleDelete(record: Document) {
   try {
     await documentStore.removeDocument(record.id)
@@ -220,6 +294,46 @@ async function handleDelete(record: Document) {
 function handleUploadSuccess() {
   showUploadDialog.value = false
   documentStore.fetchDocuments()
+}
+
+function openTagModal(record: Document) {
+  currentDocument.value = record
+  selectedTagIds.value = []
+  tagModalVisible.value = true
+}
+
+async function handleAddTags() {
+  if (!currentDocument.value || selectedTagIds.value.length === 0) {
+    message.warning('请选择标签')
+    return
+  }
+
+  try {
+    // 批量添加标签
+    const promises = selectedTagIds.value.map(tagId => addDocumentTag(currentDocument.value!.id, tagId))
+    await Promise.all(promises)
+    showSuccess('添加标签成功')
+    tagModalVisible.value = false
+    await documentStore.fetchDocuments()
+  } catch (error) {
+    showError('添加标签失败')
+  }
+}
+
+async function handleRemoveTag(documentId: number, tagId: number) {
+  try {
+    const res = await removeDocumentTag(documentId, tagId)
+    if (res.code === 200 || res.code === 0) {
+      showSuccess('移除标签成功')
+      await documentStore.fetchDocuments()
+    }
+  } catch (error) {
+    showError('移除标签失败')
+  }
+}
+
+function filterTagOption(input: string, option: { label: string }) {
+  return option.label.toLowerCase().includes(input.toLowerCase())
 }
 
 function getCategoryName(categoryId: number): string {
@@ -239,24 +353,6 @@ function getFileTypeColor(fileType: string): string {
     pptx: 'orange',
   }
   return colorMap[fileType?.toLowerCase()] || 'default'
-}
-
-function getStatusColor(status: number): string {
-  const colorMap: Record<number, string> = {
-    0: 'warning',
-    1: 'success',
-    2: 'error',
-  }
-  return colorMap[status] || 'default'
-}
-
-function getStatusText(status: number): string {
-  const textMap: Record<number, string> = {
-    0: '处理中',
-    1: '已完成',
-    2: '失败',
-  }
-  return textMap[status] || '未知'
 }
 
 function formatFileSize(bytes: number): string {
@@ -388,12 +484,54 @@ function formatFileSize(bytes: number): string {
       }
     }
 
+    .document-tags {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 4px;
+      align-items: center;
+      overflow: hidden;
+      white-space: nowrap;
+
+      .no-tags {
+        color: var(--text-tertiary);
+        font-size: 12px;
+      }
+
+      .more-tags {
+        display: inline-flex;
+        align-items: center;
+        padding: 0 7px;
+        font-size: 12px;
+        line-height: 20px;
+        border-radius: 4px;
+        background: #f0f0f0;
+        color: #666;
+        cursor: pointer;
+        flex-shrink: 0;
+
+        &:hover {
+          background: #e0e0e0;
+        }
+      }
+    }
+
     .pagination {
       margin-top: 16px;
       display: flex;
       justify-content: flex-end;
       flex-shrink: 0;
     }
+  }
+}
+
+.current-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+
+  .no-tags-text {
+    color: var(--text-tertiary);
+    font-size: 12px;
   }
 }
 

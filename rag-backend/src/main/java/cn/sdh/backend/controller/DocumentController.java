@@ -3,32 +3,40 @@ package cn.sdh.backend.controller;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.CategoryRequest;
+import cn.sdh.backend.dto.DocumentWithTagsResponse;
 import cn.sdh.backend.entity.DocumentCategory;
 import cn.sdh.backend.entity.KnowledgeDocument;
+import cn.sdh.backend.entity.Tag;
 import cn.sdh.backend.service.KnowledgeService;
 import cn.sdh.backend.service.MinioService;
+import cn.sdh.backend.service.TagService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
- * 知识库控制器
+ * 文档控制器
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/knowledge")
+@RequestMapping("/api/document")
 @RequiredArgsConstructor
-public class KnowledgeController {
+public class DocumentController {
 
     private final KnowledgeService knowledgeService;
     private final MinioService minioService;
+    private final TagService tagService;
 
     /**
      * 上传文档
@@ -66,7 +74,6 @@ public class KnowledgeController {
         document.setFileSize(fileSize);
         document.setCategoryId(categoryId);
         document.setUserId(userId);
-        document.setStatus(0); // 处理中
         document.setCreateTime(LocalDateTime.now());
         document.setUpdateTime(LocalDateTime.now());
 
@@ -78,7 +85,7 @@ public class KnowledgeController {
     /**
      * 获取文档预览URL
      */
-    @GetMapping("/document/{id}/preview")
+    @GetMapping("/{id}/preview")
     public Result<String> getDocumentPreviewUrl(@PathVariable Long id) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -95,10 +102,10 @@ public class KnowledgeController {
     }
 
     /**
-     * 获取文档列表（分页）
+     * 获取文档列表（分页，包含标签）
      */
-    @GetMapping("/document/list")
-    public Result<Page<KnowledgeDocument>> getDocumentList(
+    @GetMapping("/list")
+    public Result<Page<DocumentWithTagsResponse>> getDocumentList(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) Long categoryId) {
@@ -108,15 +115,39 @@ public class KnowledgeController {
             return Result.unauthorized();
         }
 
-        Page<KnowledgeDocument> result = knowledgeService.getDocumentList(page, size, categoryId, userId);
-        return Result.success(result);
+        Page<KnowledgeDocument> documentPage = knowledgeService.getDocumentList(page, size, categoryId, userId);
+
+        // 转换为包含标签的响应
+        Page<DocumentWithTagsResponse> responsePage = new Page<>(documentPage.getCurrent(), documentPage.getSize(), documentPage.getTotal());
+
+        List<DocumentWithTagsResponse> responseList = new ArrayList<>();
+        for (KnowledgeDocument doc : documentPage.getRecords()) {
+            DocumentWithTagsResponse response = new DocumentWithTagsResponse();
+            BeanUtils.copyProperties(doc, response);
+
+            // 获取文档标签
+            List<Tag> tags = tagService.getDocumentTags(doc.getId());
+            List<DocumentWithTagsResponse.TagInfo> tagInfos = tags.stream().map(tag -> {
+                DocumentWithTagsResponse.TagInfo tagInfo = new DocumentWithTagsResponse.TagInfo();
+                tagInfo.setId(tag.getId());
+                tagInfo.setName(tag.getName());
+                tagInfo.setColor(tag.getColor());
+                return tagInfo;
+            }).collect(Collectors.toList());
+            response.setTags(tagInfos);
+
+            responseList.add(response);
+        }
+        responsePage.setRecords(responseList);
+
+        return Result.success(responsePage);
     }
 
     /**
      * 搜索文档
      */
     @GetMapping("/search")
-    public Result<Page<KnowledgeDocument>> searchDocuments(
+    public Result<Page<DocumentWithTagsResponse>> searchDocuments(
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
@@ -126,8 +157,32 @@ public class KnowledgeController {
             return Result.unauthorized();
         }
 
-        Page<KnowledgeDocument> result = knowledgeService.searchDocuments(keyword, page, size, userId);
-        return Result.success(result);
+        Page<KnowledgeDocument> documentPage = knowledgeService.searchDocuments(keyword, page, size, userId);
+
+        // 转换为包含标签的响应
+        Page<DocumentWithTagsResponse> responsePage = new Page<>(documentPage.getCurrent(), documentPage.getSize(), documentPage.getTotal());
+
+        List<DocumentWithTagsResponse> responseList = new ArrayList<>();
+        for (KnowledgeDocument doc : documentPage.getRecords()) {
+            DocumentWithTagsResponse response = new DocumentWithTagsResponse();
+            BeanUtils.copyProperties(doc, response);
+
+            // 获取文档标签
+            List<Tag> tags = tagService.getDocumentTags(doc.getId());
+            List<DocumentWithTagsResponse.TagInfo> tagInfos = tags.stream().map(tag -> {
+                DocumentWithTagsResponse.TagInfo tagInfo = new DocumentWithTagsResponse.TagInfo();
+                tagInfo.setId(tag.getId());
+                tagInfo.setName(tag.getName());
+                tagInfo.setColor(tag.getColor());
+                return tagInfo;
+            }).collect(Collectors.toList());
+            response.setTags(tagInfos);
+
+            responseList.add(response);
+        }
+        responsePage.setRecords(responseList);
+
+        return Result.success(responsePage);
     }
 
     /**

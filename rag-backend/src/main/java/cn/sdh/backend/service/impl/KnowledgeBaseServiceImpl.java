@@ -301,50 +301,99 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 continue;
             }
 
+            // 设置默认切分模式
+            if (config.getChunkMode() == null) {
+                config.setChunkMode("default");
+            }
+
             // 检查是否已关联
             KnowledgeDocumentRelation existing = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
             if (existing != null) {
                 // 已关联，更新配置
-                if (config.getChunkSize() != null) {
-                    existing.setChunkSize(config.getChunkSize());
-                } else {
+                existing.setChunkMode(config.getChunkMode());
+
+                // 根据切分模式设置参数
+                if ("custom".equals(config.getChunkMode())) {
+                    // 设置切分方式
+                    existing.setSplitType(config.getSplitType() != null ? config.getSplitType() : "length");
+
+                    // 根据切分方式设置参数
+                    if ("length".equals(config.getSplitType()) || config.getSplitType() == null) {
+                        existing.setChunkSize(config.getChunkSize() != null ? config.getChunkSize() : knowledgeBase.getChunkSize());
+                        existing.setChunkOverlap(config.getChunkOverlap() != null ? config.getChunkOverlap() : knowledgeBase.getChunkOverlap());
+                    } else if ("page".equals(config.getSplitType())) {
+                        existing.setPagesPerChunk(config.getPagesPerChunk());
+                    } else if ("heading".equals(config.getSplitType())) {
+                        existing.setHeadingLevels(cn.hutool.json.JSONUtil.toJsonStr(config.getHeadingLevels()));
+                    } else if ("regex".equals(config.getSplitType())) {
+                        existing.setRegexPattern(config.getRegexPattern());
+                    }
+                } else if ("default".equals(config.getChunkMode())) {
                     existing.setChunkSize(knowledgeBase.getChunkSize());
-                }
-                if (config.getChunkOverlap() != null) {
-                    existing.setChunkOverlap(config.getChunkOverlap());
-                } else {
                     existing.setChunkOverlap(knowledgeBase.getChunkOverlap());
                 }
+                // smart 模式不需要设置 chunkSize 和 chunkOverlap
+
                 if (config.getEmbeddingModel() != null) {
                     existing.setEmbeddingModel(config.getEmbeddingModel());
                 } else {
                     existing.setEmbeddingModel(knowledgeBase.getEmbeddingModel());
                 }
+
+                // 保存智能配置
+                if (config.getSmartConfig() != null) {
+                    existing.setSmartConfig(cn.hutool.json.JSONUtil.toJsonStr(config.getSmartConfig()));
+                }
+
                 relationMapper.updateById(existing);
+
+                // 异步重新处理文档
+                documentProcessService.processDocumentForKnowledge(documentId, knowledgeId, config);
                 continue;
             }
 
-            // 创建关联记录，使用文档专属配置或知识库默认值
+            // 创建关联记录
             KnowledgeDocumentRelation relation = new KnowledgeDocumentRelation();
             relation.setKnowledgeId(knowledgeId);
             relation.setDocumentId(documentId);
             relation.setProcessStatus(0); // 待处理
             relation.setChunkCount(0);
+            relation.setChunkMode(config.getChunkMode());
 
-            // 使用文档自定义配置，如果没有则使用知识库默认值
-            relation.setChunkSize(config.getChunkSize() != null ? config.getChunkSize() : knowledgeBase.getChunkSize());
-            relation.setChunkOverlap(config.getChunkOverlap() != null ? config.getChunkOverlap() : knowledgeBase.getChunkOverlap());
+            // 根据切分模式设置参数
+            if ("custom".equals(config.getChunkMode())) {
+                // 设置切分方式
+                relation.setSplitType(config.getSplitType() != null ? config.getSplitType() : "length");
+
+                // 根据切分方式设置参数
+                if ("length".equals(config.getSplitType()) || config.getSplitType() == null) {
+                    relation.setChunkSize(config.getChunkSize() != null ? config.getChunkSize() : knowledgeBase.getChunkSize());
+                    relation.setChunkOverlap(config.getChunkOverlap() != null ? config.getChunkOverlap() : knowledgeBase.getChunkOverlap());
+                } else if ("page".equals(config.getSplitType())) {
+                    relation.setPagesPerChunk(config.getPagesPerChunk());
+                } else if ("heading".equals(config.getSplitType())) {
+                    relation.setHeadingLevels(cn.hutool.json.JSONUtil.toJsonStr(config.getHeadingLevels()));
+                } else if ("regex".equals(config.getSplitType())) {
+                    relation.setRegexPattern(config.getRegexPattern());
+                }
+            } else if ("default".equals(config.getChunkMode())) {
+                relation.setChunkSize(knowledgeBase.getChunkSize());
+                relation.setChunkOverlap(knowledgeBase.getChunkOverlap());
+            }
+            // smart 模式在处理时根据 smartConfig 动态调整
+
             relation.setEmbeddingModel(config.getEmbeddingModel() != null ? config.getEmbeddingModel() : knowledgeBase.getEmbeddingModel());
             relation.setCreateTime(LocalDateTime.now());
+
+            // 保存智能配置
+            if (config.getSmartConfig() != null) {
+                relation.setSmartConfig(cn.hutool.json.JSONUtil.toJsonStr(config.getSmartConfig()));
+            }
+
             relationMapper.insert(relation);
 
             // 异步处理文档
-            documentProcessService.processDocumentForKnowledge(
-                    documentId,
-                    knowledgeId,
-                    relation.getChunkSize(),
-                    relation.getChunkOverlap()
-            );
+            documentProcessService.processDocumentForKnowledge(documentId, knowledgeId, config);
         }
 
         return true;
@@ -360,17 +409,47 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         KnowledgeBase knowledgeBase = getKnowledgeBaseById(knowledgeId);
 
-        // 更新配置
-        if (config.getChunkSize() != null) {
-            relation.setChunkSize(config.getChunkSize());
-        } else if (knowledgeBase != null) {
-            relation.setChunkSize(knowledgeBase.getChunkSize());
+        // 更新切分模式
+        if (config.getChunkMode() != null) {
+            relation.setChunkMode(config.getChunkMode());
+
+            // 根据切分模式设置参数
+            if ("custom".equals(config.getChunkMode())) {
+                // 更新切分方式
+                if (config.getSplitType() != null) {
+                    relation.setSplitType(config.getSplitType());
+                }
+
+                // 根据切分方式更新参数
+                if ("length".equals(config.getSplitType()) || config.getSplitType() == null) {
+                    if (config.getChunkSize() != null) {
+                        relation.setChunkSize(config.getChunkSize());
+                    }
+                    if (config.getChunkOverlap() != null) {
+                        relation.setChunkOverlap(config.getChunkOverlap());
+                    }
+                } else if ("page".equals(config.getSplitType())) {
+                    if (config.getPagesPerChunk() != null) {
+                        relation.setPagesPerChunk(config.getPagesPerChunk());
+                    }
+                } else if ("heading".equals(config.getSplitType())) {
+                    if (config.getHeadingLevels() != null) {
+                        relation.setHeadingLevels(cn.hutool.json.JSONUtil.toJsonStr(config.getHeadingLevels()));
+                    }
+                } else if ("regex".equals(config.getSplitType())) {
+                    if (config.getRegexPattern() != null) {
+                        relation.setRegexPattern(config.getRegexPattern());
+                    }
+                }
+            } else if ("default".equals(config.getChunkMode())) {
+                if (knowledgeBase != null) {
+                    relation.setChunkSize(knowledgeBase.getChunkSize());
+                    relation.setChunkOverlap(knowledgeBase.getChunkOverlap());
+                }
+            }
+            // smart 模式不需要设置 chunkSize 和 chunkOverlap
         }
-        if (config.getChunkOverlap() != null) {
-            relation.setChunkOverlap(config.getChunkOverlap());
-        } else if (knowledgeBase != null) {
-            relation.setChunkOverlap(knowledgeBase.getChunkOverlap());
-        }
+
         if (config.getEmbeddingModel() != null) {
             relation.setEmbeddingModel(config.getEmbeddingModel());
         } else if (knowledgeBase != null) {
@@ -389,7 +468,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
 
     @Override
-    public Page<KnowledgeDocument> getAllDocumentsForLinking(Long userId, int page, int size, Long excludeKnowledgeId) {
+    public void reprocessDocument(Long knowledgeId, Long documentId) {
+        documentProcessService.reprocessDocument(documentId, knowledgeId);
+    }
+
+    @Override
+    public Page<KnowledgeDocument> getAllDocumentsForLinking(Long userId, int page, int size, Long excludeKnowledgeId, String keyword) {
         Page<KnowledgeDocument> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<KnowledgeDocument> wrapper = new LambdaQueryWrapper<>();
 
@@ -401,6 +485,11 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             if (linkedDocumentIds != null && !linkedDocumentIds.isEmpty()) {
                 wrapper.notIn(KnowledgeDocument::getId, linkedDocumentIds);
             }
+        }
+
+        // 关键词搜索
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            wrapper.like(KnowledgeDocument::getTitle, keyword);
         }
 
         wrapper.orderByDesc(KnowledgeDocument::getCreateTime);

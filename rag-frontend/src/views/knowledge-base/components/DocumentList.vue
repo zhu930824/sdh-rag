@@ -13,6 +13,11 @@
             {{ getStatusText(record.processStatus) }}
           </a-tag>
         </template>
+        <template v-else-if="column.dataIndex === 'chunkMode'">
+          <a-tag :color="getChunkModeColor(record.chunkMode)">
+            {{ getChunkModeText(record.chunkMode) }}
+          </a-tag>
+        </template>
         <template v-else-if="column.dataIndex === 'chunkConfig'">
           <div class="chunk-config">
             <span class="config-item" title="分块大小">
@@ -36,6 +41,13 @@
             <a-button type="link" size="small" @click="showConfigModal(record)">
               配置
             </a-button>
+            <a-popconfirm
+              v-if="record.processStatus === 2 || record.processStatus === 3"
+              title="确定要重新处理该文档吗？"
+              @confirm="handleReprocess(record.id)"
+            >
+              <a-button type="link" size="small">重处理</a-button>
+            </a-popconfirm>
             <a-popconfirm
               title="确定要移除该文档吗？"
               @confirm="handleUnlink(record.id)"
@@ -62,30 +74,85 @@
     <a-modal
       v-model:open="configModalVisible"
       title="文档切分配置"
-      :width="480"
+      :width="560"
       @ok="handleSaveConfig"
     >
       <a-form :model="configForm" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }">
-        <a-form-item label="分块大小">
-          <a-input-number
-            v-model:value="configForm.chunkSize"
-            :min="100"
-            :max="5000"
-            :step="100"
-            style="width: 200px"
-          />
-          <span class="form-hint">字符数</span>
+        <a-form-item label="切分模式">
+          <a-radio-group v-model:value="configForm.chunkMode">
+            <a-radio-button value="default">默认</a-radio-button>
+            <a-radio-button value="smart">智能</a-radio-button>
+            <a-radio-button value="custom">自定义</a-radio-button>
+          </a-radio-group>
         </a-form-item>
-        <a-form-item label="分块重叠">
-          <a-input-number
-            v-model:value="configForm.chunkOverlap"
-            :min="0"
-            :max="500"
-            :step="10"
-            style="width: 200px"
-          />
-          <span class="form-hint">字符数</span>
-        </a-form-item>
+
+        <template v-if="configForm.chunkMode === 'custom'">
+          <a-form-item label="切分方式">
+            <a-select v-model:value="configForm.splitType" style="width: 200px">
+              <a-select-option value="length">按长度切分</a-select-option>
+              <a-select-option value="page">按页切分</a-select-option>
+              <a-select-option value="heading">按标题切分</a-select-option>
+              <a-select-option value="regex">按正则切分</a-select-option>
+            </a-select>
+          </a-form-item>
+
+          <template v-if="configForm.splitType === 'length'">
+            <a-form-item label="分块大小">
+              <a-input-number
+                v-model:value="configForm.chunkSize"
+                :min="100"
+                :max="5000"
+                :step="100"
+                style="width: 200px"
+              />
+              <span class="form-hint">字符数</span>
+            </a-form-item>
+            <a-form-item label="分块重叠">
+              <a-input-number
+                v-model:value="configForm.chunkOverlap"
+                :min="0"
+                :max="500"
+                :step="10"
+                style="width: 200px"
+              />
+              <span class="form-hint">字符数</span>
+            </a-form-item>
+          </template>
+
+          <template v-if="configForm.splitType === 'page'">
+            <a-form-item label="每块页数">
+              <a-input-number
+                v-model:value="configForm.pagesPerChunk"
+                :min="1"
+                :max="50"
+                style="width: 200px"
+              />
+              <span class="form-hint">页</span>
+            </a-form-item>
+          </template>
+
+          <template v-if="configForm.splitType === 'heading'">
+            <a-form-item label="标题层级">
+              <a-checkbox-group v-model:value="configForm.headingLevels">
+                <a-checkbox value="h1">H1</a-checkbox>
+                <a-checkbox value="h2">H2</a-checkbox>
+                <a-checkbox value="h3">H3</a-checkbox>
+                <a-checkbox value="h4">H4</a-checkbox>
+              </a-checkbox-group>
+            </a-form-item>
+          </template>
+
+          <template v-if="configForm.splitType === 'regex'">
+            <a-form-item label="正则表达式">
+              <a-input
+                v-model:value="configForm.regexPattern"
+                placeholder="例如：\n\n\n"
+                style="width: 100%"
+              />
+            </a-form-item>
+          </template>
+        </template>
+
         <a-form-item label="嵌入模型">
           <a-select v-model:value="configForm.embeddingModel" style="width: 200px" allow-clear>
             <a-select-option value="text-embedding-ada-002">text-embedding-ada-002</a-select-option>
@@ -120,6 +187,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'unlink', documentId: number): void
+  (e: 'reprocess', documentId: number): void
   (e: 'refresh'): void
 }>()
 
@@ -135,8 +203,13 @@ const pagination = reactive({
 })
 
 const configForm = reactive({
+  chunkMode: 'default' as string,
+  splitType: 'length' as string,
   chunkSize: undefined as number | undefined,
   chunkOverlap: undefined as number | undefined,
+  pagesPerChunk: undefined as number | undefined,
+  headingLevels: [] as string[],
+  regexPattern: undefined as string | undefined,
   embeddingModel: undefined as string | undefined,
 })
 
@@ -144,10 +217,11 @@ const columns = [
   { title: 'ID', dataIndex: 'id', width: 80 },
   { title: '文档名称', dataIndex: 'title', ellipsis: true },
   { title: '处理状态', dataIndex: 'status', width: 100 },
+  { title: '切分模式', dataIndex: 'chunkMode', width: 100 },
   { title: '切分配置', dataIndex: 'chunkConfig', width: 140 },
   { title: '嵌入模型', dataIndex: 'embeddingModel', width: 120 },
   { title: '分块数', dataIndex: 'chunkCount', width: 80 },
-  { title: '操作', dataIndex: 'action', width: 140 },
+  { title: '操作', dataIndex: 'action', width: 160 },
 ]
 
 async function loadDocuments() {
@@ -186,6 +260,24 @@ function getStatusText(status: number): string {
   return texts[status] || '未知'
 }
 
+function getChunkModeColor(mode: string): string {
+  const colors: Record<string, string> = {
+    default: 'blue',
+    smart: 'green',
+    custom: 'orange',
+  }
+  return colors[mode] || 'default'
+}
+
+function getChunkModeText(mode: string): string {
+  const texts: Record<string, string> = {
+    default: '默认',
+    smart: '智能',
+    custom: '自定义',
+  }
+  return texts[mode] || '默认'
+}
+
 function formatModelName(model: string): string {
   if (!model) return '-'
   if (model.includes('ada')) return 'Ada-002'
@@ -197,8 +289,13 @@ function formatModelName(model: string): string {
 
 function showConfigModal(record: any) {
   currentDocument.value = record
+  configForm.chunkMode = record.chunkMode || 'default'
+  configForm.splitType = record.splitType || 'length'
   configForm.chunkSize = record.chunkSize
   configForm.chunkOverlap = record.chunkOverlap
+  configForm.pagesPerChunk = record.pagesPerChunk
+  configForm.headingLevels = record.headingLevels ? JSON.parse(record.headingLevels) : ['h1', 'h2']
+  configForm.regexPattern = record.regexPattern
   configForm.embeddingModel = record.embeddingModel
   configModalVisible.value = true
 }
@@ -209,10 +306,30 @@ async function handleSaveConfig() {
   try {
     const config: DocumentLinkConfig = {
       documentId: currentDocument.value.id,
-      chunkSize: configForm.chunkSize,
-      chunkOverlap: configForm.chunkOverlap,
+      chunkMode: configForm.chunkMode,
       embeddingModel: configForm.embeddingModel,
     }
+
+    if (configForm.chunkMode === 'custom') {
+      config.splitType = configForm.splitType
+
+      switch (configForm.splitType) {
+        case 'length':
+          config.chunkSize = configForm.chunkSize
+          config.chunkOverlap = configForm.chunkOverlap
+          break
+        case 'page':
+          config.pagesPerChunk = configForm.pagesPerChunk
+          break
+        case 'heading':
+          config.headingLevels = configForm.headingLevels
+          break
+        case 'regex':
+          config.regexPattern = configForm.regexPattern
+          break
+      }
+    }
+
     await updateDocumentLinkConfig(props.knowledgeBaseId, currentDocument.value.id, config)
     message.success('配置已保存')
     configModalVisible.value = false
@@ -225,6 +342,10 @@ async function handleSaveConfig() {
 
 function handleUnlink(documentId: number) {
   emit('unlink', documentId)
+}
+
+function handleReprocess(documentId: number) {
+  emit('reprocess', documentId)
 }
 
 watch(() => props.knowledgeBaseId, loadDocuments, { immediate: true })

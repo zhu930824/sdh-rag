@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { DocumentCategory, Document, CategoryRequest, PageResult } from '@/api/document'
+import type { DocumentCategory, Document, CategoryRequest } from '@/api/document'
+import type { PageResult } from '@/types'
 import {
   getCategoryList,
   createCategory as createCategoryApi,
@@ -92,6 +93,8 @@ export const useDocumentStore = defineStore('document', () => {
         params.categoryId = currentCategory.value
       }
       const res = await getDocumentList(params)
+      console.log('文档列表响应:', res)
+      console.log('文档列表数据:', res.data?.records)
       documentList.value = res.data?.records || []
       pagination.value.total = res.data?.total || 0
     } catch (error) {

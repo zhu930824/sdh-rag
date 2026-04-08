@@ -32,7 +32,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     private final KnowledgeDocumentMapper documentMapper;
     private final DocumentChunkMapper chunkMapper;
-    private final DocumentChunkService chunkService;
+    private final DocumentChunkService documentChunkService;
     private final EmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
 
@@ -64,7 +64,7 @@ public class DocumentServiceImpl implements DocumentService {
             List<String> chunks = splitContent(content);
 
             // 删除旧的分块
-            chunkService.deleteByDocument(documentId);
+            documentChunkService.deleteByDocument(documentId);
 
             // 保存新的分块
             saveChunks(document, chunks);
@@ -94,7 +94,7 @@ public class DocumentServiceImpl implements DocumentService {
             throw new RuntimeException("文档不存在: " + documentId);
         }
 
-        List<DocumentChunk> chunks = chunkService.getChunksByDocument(documentId);
+        List<DocumentChunk> chunks = documentChunkService.getChunksByDocument(documentId);
 
         for (DocumentChunk chunk : chunks) {
             try {
@@ -166,7 +166,7 @@ public class DocumentServiceImpl implements DocumentService {
         for (KnowledgeDocument document : oldDocuments) {
             try {
                 // 先删除分块
-                chunkService.deleteByDocument(document.getId());
+                documentChunkService.deleteByDocument(document.getId());
                 // 再删除文档
                 documentMapper.deleteById(document.getId());
                 count++;

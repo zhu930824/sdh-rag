@@ -1,6 +1,23 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, register, getUserInfo, logout, type LoginRequest, type RegisterRequest, type UserInfo } from '@/api/user'
+import {
+  login,
+  register,
+  getUserInfo,
+  logout,
+  updateProfile,
+  changePassword,
+  uploadAvatar,
+  updatePreference,
+  getUserStats,
+  type LoginRequest,
+  type RegisterRequest,
+  type UserInfo,
+  type UpdateProfileRequest,
+  type ChangePasswordRequest,
+  type UserPreferenceRequest,
+  type UserStatsResponse,
+} from '@/api/user'
 import { message } from 'ant-design-vue'
 
 // Token存储键名
@@ -21,6 +38,8 @@ export const useUserStore = defineStore('user', () => {
   const avatar = computed(() => userInfo.value?.avatar || '')
   const permissions = computed(() => userInfo.value?.permissions || [])
   const role = computed(() => userInfo.value?.role || '')
+  const userLevel = computed(() => userInfo.value?.userLevel || 1)
+  const experience = computed(() => userInfo.value?.experience || 0)
 
   // 保存Token到本地存储
   function saveToken(newToken: string, remember: boolean = false): void {
@@ -115,6 +134,108 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // 更新个人信息
+  async function updateProfileAction(data: UpdateProfileRequest): Promise<boolean> {
+    loading.value = true
+    try {
+      const result = await updateProfile(data)
+      if (result.code === 200 || result.code === 0) {
+        message.success('更新成功')
+        // 重新获取用户信息
+        await fetchUserInfo()
+        return true
+      }
+      message.error(result.message || '更新失败')
+      return false
+    } catch (error) {
+      console.error('更新个人信息失败:', error)
+      message.error('更新失败')
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 修改密码
+  async function changePasswordAction(data: ChangePasswordRequest): Promise<boolean> {
+    loading.value = true
+    try {
+      const result = await changePassword(data)
+      if (result.code === 200 || result.code === 0) {
+        message.success('密码修改成功')
+        return true
+      }
+      message.error(result.message || '密码修改失败')
+      return false
+    } catch (error) {
+      console.error('修改密码失败:', error)
+      message.error('密码修改失败')
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 上传头像
+  async function uploadAvatarAction(file: File): Promise<string | null> {
+    loading.value = true
+    try {
+      const result = await uploadAvatar(file)
+      if (result.code === 200 || result.code === 0) {
+        message.success('头像上传成功')
+        // 更新本地用户信息
+        if (userInfo.value) {
+          userInfo.value.avatar = result.data.avatar
+        }
+        return result.data.avatar
+      }
+      message.error(result.message || '头像上传失败')
+      return null
+    } catch (error) {
+      console.error('上传头像失败:', error)
+      message.error('头像上传失败')
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 更新偏好设置
+  async function updatePreferenceAction(data: UserPreferenceRequest): Promise<boolean> {
+    loading.value = true
+    try {
+      const result = await updatePreference(data)
+      if (result.code === 200 || result.code === 0) {
+        message.success('设置保存成功')
+        // 重新获取用户信息
+        await fetchUserInfo()
+        return true
+      }
+      message.error(result.message || '设置保存失败')
+      return false
+    } catch (error) {
+      console.error('更新偏好设置失败:', error)
+      message.error('设置保存失败')
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 获取用户统计数据
+  async function fetchUserStats(): Promise<UserStatsResponse | null> {
+    try {
+      const result = await getUserStats()
+      if (result.code === 200 || result.code === 0) {
+        return result.data
+      }
+      return null
+    } catch (error) {
+      console.error('获取用户统计数据失败:', error)
+      return null
+    }
+  }
+
   // 自动恢复登录状态
   async function restoreLoginState(): Promise<boolean> {
     // 检查是否有保存的token
@@ -140,11 +261,18 @@ export const useUserStore = defineStore('user', () => {
     avatar,
     permissions,
     role,
+    userLevel,
+    experience,
     // 方法
     login: loginAction,
     register: registerAction,
     logout: logoutAction,
     fetchUserInfo,
+    updateProfile: updateProfileAction,
+    changePassword: changePasswordAction,
+    uploadAvatar: uploadAvatarAction,
+    updatePreference: updatePreferenceAction,
+    fetchUserStats,
     restoreLoginState,
     clearAuth,
   }

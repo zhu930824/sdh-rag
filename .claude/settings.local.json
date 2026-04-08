@@ -12,7 +12,8 @@
       "WebFetch(domain:github.com)",
       "WebSearch",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep -l \"interface PageResult\\\\|interface Result\\\\|interface ApiResponse\\\\|interface BackendResponse\" rag-frontend/src/api/*.ts)"
     ]
   }
 }

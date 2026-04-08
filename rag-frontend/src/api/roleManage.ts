@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import type { ApiResponse, PageResult } from '@/types'
 
 /**
  * 角色信息
@@ -36,78 +37,58 @@ export interface RoleFormData {
 }
 
 /**
- * 分页响应（MyBatis Plus IPage格式）
- */
-export interface PageResult<T> {
-  records: T[]
-  total: number
-  current: number
-  size: number
-  pages: number
-}
-
-/**
- * 通用响应
- */
-export interface Result<T = any> {
-  code: number
-  message: string
-  data: T
-}
-
-/**
  * 获取角色列表
  */
-export function getRoleList(params: RoleQueryParams): Promise<Result<PageResult<RoleItem>>> {
+export function getRoleList(params: RoleQueryParams): Promise<ApiResponse<PageResult<RoleItem>>> {
   return request.get('/api/role/list', { params })
 }
 
 /**
  * 获取所有启用的角色
  */
-export function getAllRoles(): Promise<Result<RoleItem[]>> {
+export function getAllRoles(): Promise<ApiResponse<RoleItem[]>> {
   return request.get('/api/role/all')
 }
 
 /**
  * 获取角色详情
  */
-export function getRoleDetail(id: number): Promise<Result<RoleItem>> {
+export function getRoleDetail(id: number): Promise<ApiResponse<RoleItem>> {
   return request.get(`/api/role/${id}`)
 }
 
 /**
  * 创建角色
  */
-export function createRole(data: RoleFormData): Promise<Result<null>> {
+export function createRole(data: RoleFormData): Promise<ApiResponse<null>> {
   return request.post('/api/role', data)
 }
 
 /**
  * 更新角色
  */
-export function updateRole(id: number, data: Partial<RoleFormData>): Promise<Result<null>> {
+export function updateRole(id: number, data: Partial<RoleFormData>): Promise<ApiResponse<null>> {
   return request.put(`/api/role/${id}`, data)
 }
 
 /**
  * 删除角色
  */
-export function deleteRole(id: number): Promise<Result<null>> {
+export function deleteRole(id: number): Promise<ApiResponse<null>> {
   return request.delete(`/api/role/${id}`)
 }
 
 /**
  * 批量删除角色
  */
-export function batchDeleteRoles(ids: number[]): Promise<Result<{ success: number; fail: number }>> {
+export function batchDeleteRoles(ids: number[]): Promise<ApiResponse<{ success: number; fail: number }>> {
   return request.post('/api/role/batch-delete', { ids })
 }
 
 /**
  * 切换角色状态
  */
-export function toggleRoleStatus(id: number): Promise<Result<null>> {
+export function toggleRoleStatus(id: number): Promise<ApiResponse<null>> {
   return request.put(`/api/role/${id}/status`)
 }
 

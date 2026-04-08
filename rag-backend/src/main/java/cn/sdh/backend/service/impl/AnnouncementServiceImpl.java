@@ -1,9 +1,7 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.Announcement;
-import cn.sdh.backend.entity.AnnouncementRead;
 import cn.sdh.backend.mapper.AnnouncementMapper;
-import cn.sdh.backend.mapper.AnnouncementReadMapper;
 import cn.sdh.backend.service.AnnouncementService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -22,7 +20,7 @@ import java.util.List;
 public class AnnouncementServiceImpl extends ServiceImpl<AnnouncementMapper, Announcement> implements AnnouncementService {
 
     private final AnnouncementMapper announcementMapper;
-    private final AnnouncementReadMapper announcementReadMapper;
+
 
     @Override
     public IPage<Announcement> getPage(Integer page, Integer pageSize, String type, Integer status) {
@@ -69,34 +67,5 @@ public class AnnouncementServiceImpl extends ServiceImpl<AnnouncementMapper, Ann
         }
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void markAsRead(Long announcementId, Long userId) {
-        LambdaQueryWrapper<AnnouncementRead> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(AnnouncementRead::getAnnouncementId, announcementId)
-               .eq(AnnouncementRead::getUserId, userId);
-        
-        if (announcementReadMapper.selectCount(wrapper) > 0) {
-            return;
-        }
 
-        AnnouncementRead read = new AnnouncementRead();
-        read.setAnnouncementId(announcementId);
-        read.setUserId(userId);
-        read.setReadTime(LocalDateTime.now());
-        announcementReadMapper.insert(read);
-    }
-
-    @Override
-    public int getReadCount(Long announcementId) {
-        return announcementMapper.countReads(announcementId);
-    }
-
-    @Override
-    public boolean hasRead(Long announcementId, Long userId) {
-        LambdaQueryWrapper<AnnouncementRead> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(AnnouncementRead::getAnnouncementId, announcementId)
-               .eq(AnnouncementRead::getUserId, userId);
-        return announcementReadMapper.selectCount(wrapper) > 0;
-    }
 }

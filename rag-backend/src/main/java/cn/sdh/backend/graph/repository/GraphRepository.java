@@ -33,36 +33,34 @@ public interface GraphRepository extends Neo4jRepository<EntityNode, Long> {
     Map<String, Object> findNeighbors(@Param("nodeId") Long nodeId);
 
     /**
-     * 获取子图数据
+     * 获取全图概览 - 分步查询
+     * 第一步：获取top节点ID列表
+     */
+    @Query("MATCH (n) RETURN id(n) as id ORDER BY n.weight DESC, n.frequency DESC LIMIT $limit")
+    List<Map<String, Object>> getTopNodeIds(@Param("limit") int limit);
+
+    /**
+     * 获取指定节点ID列表的节点详情
      */
     @Query("MATCH (n) WHERE id(n) IN $nodeIds " +
-           "OPTIONAL MATCH (n)-[r]-(m) WHERE id(m) IN $nodeIds " +
-           "RETURN collect(DISTINCT {id: id(n), labels: labels(n), name: n.name, " +
-           "entityType: n.entityType, weight: n.weight, documentId: n.documentId}) as nodes, " +
-           "collect(DISTINCT {type: type(r), source: id(startNode(r)), target: id(endNode(r))}) as relationships")
-    Map<String, Object> getSubgraph(@Param("nodeIds") List<Long> nodeIds);
+           "RETURN id(n) as id, labels(n) as labels, n.name as name, " +
+           "n.entityType as entityType, n.weight as weight, n.documentId as documentId, n.frequency as frequency")
+    List<Map<String, Object>> getNodesByIds(@Param("nodeIds") List<Long> nodeIds);
 
     /**
-     * 获取全图概览（限制节点数量）
+     * 获取指定节点ID列表之间的关系
      */
-    @Query("MATCH (n) " +
-           "WITH n ORDER BY n.weight DESC, n.frequency DESC LIMIT $limit " +
-           "OPTIONAL MATCH (n)-[r]-(m) WHERE m IN (MATCH (x) RETURN x ORDER BY x.weight DESC LIMIT $limit) " +
-           "RETURN collect(DISTINCT {id: id(n), labels: labels(n), name: n.name, " +
-           "entityType: n.entityType, weight: n.weight, documentId: n.documentId}) as nodes, " +
-           "collect(DISTINCT {type: type(r), source: id(startNode(r)), target: id(endNode(r))}) as relationships")
-    Map<String, Object> getGraphOverview(@Param("limit") int limit);
+    @Query("MATCH (a)-[r]-(b) WHERE id(a) IN $nodeIds AND id(b) IN $nodeIds " +
+           "RETURN DISTINCT type(r) as type, id(startNode(r)) as source, id(endNode(r)) as target, r.weight as weight")
+    List<Map<String, Object>> getRelationshipsBetweenNodes(@Param("nodeIds") List<Long> nodeIds);
 
     /**
-     * 以某节点为中心展开图
+     * 以某节点为中心展开图 - 获取指定深度内的所有节点ID
      */
-    @Query("MATCH path = (center)-[*1..$depth]-(leaf) WHERE id(center) = $centerNodeId " +
-           "RETURN collect(DISTINCT {id: id(center), labels: labels(center), name: center.name, " +
-           "entityType: center.entityType, weight: center.weight, documentId: center.documentId}) + " +
-           "collect(DISTINCT {id: id(leaf), labels: labels(leaf), name: leaf.name, " +
-           "entityType: leaf.entityType, weight: leaf.weight, documentId: leaf.documentId}) as nodes, " +
-           "collect(DISTINCT {type: type(r), source: id(startNode(r)), target: id(endNode(r))}) as relationships")
-    Map<String, Object> expandFromNode(@Param("centerNodeId") Long centerNodeId, @Param("depth") int depth);
+    @Query("MATCH (center) WHERE id(center) = $centerNodeId " +
+           "OPTIONAL MATCH (center)-[*1..$depth]-(leaf) " +
+           "RETURN collect(DISTINCT id(center)) + collect(DISTINCT id(leaf)) as nodeIds")
+    List<Long> expandNodeIds(@Param("centerNodeId") Long centerNodeId, @Param("depth") int depth);
 
     /**
      * 获取图统计信息

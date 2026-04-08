@@ -141,12 +141,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '公告管理', icon: 'Notification', requiresAuth: true, permission: '/announcement' } as RouteMeta,
       },
       {
-        path: 'approval',
-        name: 'Approval',
-        component: () => import('@/views/approval/index.vue'),
-        meta: { title: '审核中心', icon: 'Audit', requiresAuth: true, permission: '/approval' } as RouteMeta,
-      },
-      {
         path: 'process-task',
         name: 'ProcessTask',
         component: () => import('@/views/process-task/index.vue'),

@@ -23,44 +23,46 @@ public class LLMEntityExtractor implements EntityExtractor {
 
     private final ChatClient.Builder chatClientBuilder;
 
-    private static final String EXTRACTION_PROMPT = """
-        请从以下文本中提取实体、关系、概念和关键词。
-
-        文本内容：
-        %s
-
-        请以JSON格式返回结果，格式如下：
-        {
-            "entities": [
-                {"name": "实体名称", "entityType": "PERSON/ORG/LOCATION/DATE/MISC", "description": "描述", "confidence": 0.9}
-            ],
-            "relations": [
-                {"sourceName": "源实体", "sourceType": "PERSON", "targetName": "目标实体", "targetType": "ORG", "relationType": "WORKS_FOR/LOCATED_IN/RELATED_TO", "weight": 1.0}
-            ],
-            "concepts": [
-                {"name": "概念名称", "description": "概念描述", "category": "分类"}
-            ],
-            "keywords": [
-                {"keyword": "关键词", "tfidf": 0.8}
-            ]
-        }
-
-        实体类型说明：
-        - PERSON: 人物
-        - ORG: 组织机构
-        - LOCATION: 地点
-        - DATE: 日期
-        - MISC: 其他
-
-        关系类型说明：
-        - WORKS_FOR: 工作于
-        - LOCATED_IN: 位于
-        - RELATED_TO: 相关
-        - PART_OF: 部分于
-        - INSTANCE_OF: 实例
-
-        只返回JSON，不要有其他内容。
-        """;
+//    private static final String EXTRACTION_PROMPT = """
+//        请从以下文本中提取实体、关系、概念和关键词。
+//
+//        文本内容：
+//        %s
+//
+//        请以JSON格式返回结果，格式如下：
+//        {
+//            "entities": [
+//                {"name": "实体名称", "entityType": "PERSON/ORG/LOCATION/DATE/MISC", "description": "描述", "confidence": 0.9}
+//            ],
+//            "relations": [
+//                {"sourceName": "源实体", "sourceType": "PERSON", "targetName": "目标实体", "targetType": "ORG", "relationType": "WORKS_FOR/LOCATED_IN/RELATED_TO", "weight": 1.0}
+//            ],
+//            "concepts": [
+//                {"name": "概念名称", "description": "概念描述", "category": "分类"}
+//            ],
+//            "keywords": [
+//                {"keyword": "关键词", "tfidf": 0.8}
+//            ]
+//        }
+//
+//        实体类型说明：
+//        - PERSON: 人物
+//        - ORG: 组织机构
+//        - LOCATION: 地点
+//        - DATE: 日期
+//        - MISC: 其他
+//
+//        关系类型说明：
+//        - WORKS_FOR: 工作于
+//        - LOCATED_IN: 位于
+//        - RELATED_TO: 相关
+//        - PART_OF: 部分于
+//        - INSTANCE_OF: 实例
+//
+//        只返回JSON，不要有其他内容。
+//        """;
+//
+    private static final String EXTRACTION_PROMPT ="";
 
     @Override
     public EntityExtractionResult extract(String text, Long documentId) {

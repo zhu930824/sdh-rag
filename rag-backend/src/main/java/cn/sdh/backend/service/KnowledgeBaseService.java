@@ -124,14 +124,22 @@ public interface KnowledgeBaseService {
     boolean unlinkDocumentFromKnowledgeBase(Long knowledgeId, Long documentId);
 
     /**
+     * 重新处理文档
+     * @param knowledgeId 知识库ID
+     * @param documentId 文档ID
+     */
+    void reprocessDocument(Long knowledgeId, Long documentId);
+
+    /**
      * 获取所有文档（用于关联选择）
      * @param userId 用户ID
      * @param page 页码
      * @param size 每页大小
      * @param excludeKnowledgeId 排除已关联到该知识库的文档
+     * @param keyword 关键词搜索
      * @return 分页结果
      */
-    Page<KnowledgeDocument> getAllDocumentsForLinking(Long userId, int page, int size, Long excludeKnowledgeId);
+    Page<KnowledgeDocument> getAllDocumentsForLinking(Long userId, int page, int size, Long excludeKnowledgeId, String keyword);
 
     /**
      * 获取文档处理状态

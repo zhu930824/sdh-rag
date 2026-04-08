@@ -33,7 +33,7 @@ export interface KnowledgeBaseFormData {
   icon: string
   color: string
   isPublic: boolean
-  embeddingModel: string
+  embeddingModel?: string
   chunkSize?: number
   chunkOverlap?: number
 }
@@ -79,11 +79,25 @@ export interface KnowledgeChunk {
   contentPreview: string
 }
 
+export interface SmartChunkConfig {
+  respectParagraphs?: boolean
+  respectHeaders?: boolean
+  maxChunkSize?: number
+  minChunkSize?: number
+  sentenceMode?: string
+}
+
 export interface DocumentLinkConfig {
   documentId: number
+  chunkMode?: string // 'default' | 'smart' | 'custom'
+  splitType?: string // 'length' | 'page' | 'heading' | 'regex' (仅 custom 模式)
   chunkSize?: number
   chunkOverlap?: number
+  pagesPerChunk?: number
+  headingLevels?: string[]
+  regexPattern?: string
   embeddingModel?: string
+  smartConfig?: SmartChunkConfig
 }
 
 export interface KnowledgeBaseConfigRequest {
@@ -157,8 +171,8 @@ export function getKnowledgeBaseDocuments(id: number, params: { page: number; pa
 }
 
 // 关联文档到知识库
-export function linkDocumentsToKnowledgeBase(knowledgeBaseId: number, request: LinkDocumentsRequest) {
-  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/link`, request)
+export function linkDocumentsToKnowledgeBase(knowledgeBaseId: number, data: LinkDocumentsRequest) {
+  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/link`, data)
 }
 
 // 更新文档关联配置
@@ -178,9 +192,16 @@ export interface KnowledgeDocumentRelation {
   processStatus: number
   chunkCount: number
   processTime: string
+  chunkMode: string
+  splitType: string
   chunkSize: number
   chunkOverlap: number
+  pagesPerChunk: number
+  headingLevels: string
+  regexPattern: string
   embeddingModel: string
+  smartConfig: string
+  errorMessage: string
   createTime: string
 }
 
@@ -189,11 +210,17 @@ export function unlinkDocumentFromKnowledgeBase(knowledgeBaseId: number, documen
   return request.delete(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}`)
 }
 
+// 重新处理文档
+export function reprocessDocument(knowledgeBaseId: number, documentId: number) {
+  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}/reprocess`)
+}
+
 // 获取可关联的文档列表
 export function getAvailableDocuments(params: {
   page: number
   pageSize: number
   excludeKnowledgeId?: number
+  keyword?: string
 }) {
   return request.get<{ records: any[]; total: number }>('/api/knowledge-base/documents/available', { params })
 }

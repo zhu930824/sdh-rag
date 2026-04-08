@@ -244,7 +244,6 @@ const menuTreeData = ref<TreeProps['treeData']>([
       { label: '数据统计', value: '/stats' },
       { label: '热点词分析', value: '/hotwords' },
       { label: '问答评价', value: '/feedback' },
-      { label: '审核中心', value: '/approval' },
     ],
   },
   {

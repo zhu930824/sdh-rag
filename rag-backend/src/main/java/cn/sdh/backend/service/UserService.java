@@ -1,6 +1,10 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.dto.ChangePasswordRequest;
+import cn.sdh.backend.dto.UpdateProfileRequest;
 import cn.sdh.backend.dto.UserManageRequest;
+import cn.sdh.backend.dto.UserPreferenceRequest;
+import cn.sdh.backend.dto.UserStatsResponse;
 import cn.sdh.backend.entity.User;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
@@ -100,4 +104,43 @@ public interface UserService {
      * @return 是否成功
      */
     boolean toggleStatus(Long id);
+
+    /**
+     * 更新个人资料
+     * @param userId 用户ID
+     * @param request 更新请求
+     * @return 是否成功
+     */
+    boolean updateProfile(Long userId, UpdateProfileRequest request);
+
+    /**
+     * 修改密码
+     * @param userId 用户ID
+     * @param request 修改密码请求
+     * @return 是否成功
+     */
+    boolean changePassword(Long userId, ChangePasswordRequest request);
+
+    /**
+     * 更新头像
+     * @param userId 用户ID
+     * @param avatarUrl 头像URL
+     * @return 是否成功
+     */
+    boolean updateAvatar(Long userId, String avatarUrl);
+
+    /**
+     * 更新用户偏好设置
+     * @param userId 用户ID
+     * @param request 偏好设置请求
+     * @return 是否成功
+     */
+    boolean updatePreference(Long userId, UserPreferenceRequest request);
+
+    /**
+     * 获取用户统计数据
+     * @param userId 用户ID
+     * @return 统计数据
+     */
+    UserStatsResponse getUserStats(Long userId);
 }

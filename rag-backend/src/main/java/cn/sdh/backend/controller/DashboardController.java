@@ -1,6 +1,7 @@
 package cn.sdh.backend.controller;
 
 import cn.sdh.backend.common.result.Result;
+import cn.sdh.backend.entity.DashboardStats;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.mapper.UserMapper;
@@ -11,13 +12,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Data
-class DashboardStats {
-    private Long knowledgeCount;
-    private Long documentCount;
-    private Long chatCount;
-    private Long userCount;
-}
 
 @RestController
 @RequestMapping("/api/dashboard")

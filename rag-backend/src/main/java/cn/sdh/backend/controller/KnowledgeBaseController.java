@@ -245,13 +245,28 @@ public class KnowledgeBaseController {
     }
 
     /**
+     * 重新处理文档
+     */
+    @PostMapping("/{id}/documents/{documentId}/reprocess")
+    public Result<Void> reprocessDocument(@PathVariable Long id, @PathVariable Long documentId) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        knowledgeBaseService.reprocessDocument(id, documentId);
+        return Result.success("已提交重新处理", null);
+    }
+
+    /**
      * 获取可关联的文档列表
      */
     @GetMapping("/documents/available")
     public Result<Page<KnowledgeDocument>> getAvailableDocuments(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) Long excludeKnowledgeId) {
+            @RequestParam(required = false) Long excludeKnowledgeId,
+            @RequestParam(required = false) String keyword) {
 
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -259,7 +274,7 @@ public class KnowledgeBaseController {
         }
 
         Page<KnowledgeDocument> result = knowledgeBaseService.getAllDocumentsForLinking(
-                userId, page, size, excludeKnowledgeId);
+                userId, page, size, excludeKnowledgeId, keyword);
         return Result.success(result);
     }
 

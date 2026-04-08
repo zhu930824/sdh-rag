@@ -117,9 +117,6 @@ const availableEvents = [
   { value: 'task.complete', label: '任务完成' },
   { value: 'task.fail', label: '任务失败' },
   { value: 'system.alert', label: '系统告警' },
-  { value: 'approval.submit', label: '审批提交' },
-  { value: 'approval.approve', label: '审批通过' },
-  { value: 'approval.reject', label: '审批拒绝' }
 ]
 
 const loadWebhooks = async () => {

@@ -64,11 +64,6 @@
         <span>问答评价</span>
       </a-menu-item>
 
-      <a-menu-item key="/approval">
-        <template #icon><AuditOutlined /></template>
-        <span>审核中心</span>
-      </a-menu-item>
-
       <div class="menu-divider" />
 
       <!-- More -->
@@ -136,7 +131,6 @@ import {
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
-  AuditOutlined,
   CloudUploadOutlined,
   TagsOutlined,
   AudioOutlined,

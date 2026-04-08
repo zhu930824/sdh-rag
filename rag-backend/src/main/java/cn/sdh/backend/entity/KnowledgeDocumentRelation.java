@@ -44,6 +44,18 @@ public class KnowledgeDocumentRelation implements Serializable {
     private LocalDateTime processTime;
 
     /**
+     * 切分策略模式：default-默认，smart-智能切分，custom-自定义
+     */
+    @TableField("chunk_mode")
+    private String chunkMode;
+
+    /**
+     * 自定义切分方式：length-按长度，page-按页，heading-按标题，regex-按正则
+     */
+    @TableField("split_type")
+    private String splitType;
+
+    /**
      * 切分时使用的分块大小
      */
     @TableField("chunk_size")
@@ -56,10 +68,40 @@ public class KnowledgeDocumentRelation implements Serializable {
     private Integer chunkOverlap;
 
     /**
+     * 每块页数（按页切分时使用）
+     */
+    @TableField("pages_per_chunk")
+    private Integer pagesPerChunk;
+
+    /**
+     * 标题层级（按标题切分时使用，JSON数组格式）
+     */
+    @TableField("heading_levels")
+    private String headingLevels;
+
+    /**
+     * 正则表达式（按正则切分时使用）
+     */
+    @TableField("regex_pattern")
+    private String regexPattern;
+
+    /**
      * 切分时使用的嵌入模型
      */
     @TableField("embedding_model")
     private String embeddingModel;
+
+    /**
+     * 智能切分配置（JSON格式）
+     */
+    @TableField("smart_config")
+    private String smartConfig;
+
+    /**
+     * 处理错误信息
+     */
+    @TableField("error_message")
+    private String errorMessage;
 
     @TableField("create_time")
     private LocalDateTime createTime;

@@ -16,9 +16,8 @@ public interface AnnouncementService extends IService<Announcement> {
 
     void offline(Long id);
 
-    void markAsRead(Long announcementId, Long userId);
 
-    int getReadCount(Long announcementId);
 
-    boolean hasRead(Long announcementId, Long userId);
+
+
 }

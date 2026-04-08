@@ -164,29 +164,42 @@
         </div>
       </div>
 
-      <!-- Quick Actions -->
+      <!-- Announcements -->
       <div class="section-card content-card">
         <div class="section-header">
           <h2 class="section-title">
-            <ThunderboltOutlined />
-            快捷操作
+            <NotificationOutlined />
+            系统公告
           </h2>
+          <a class="section-link" @click="router.push('/announcement')">
+            查看全部 <RightOutlined />
+          </a>
         </div>
-        <div class="quick-actions">
+        <div class="announcement-list">
           <div
-            v-for="(action, index) in quickActions"
-            :key="action.label"
-            class="quick-action-card"
-            :style="{ animationDelay: `${index * 0.1}s` }"
-            @click="router.push(action.route)"
+            v-for="(announcement, index) in announcements"
+            :key="announcement.id"
+            class="announcement-item"
+            :style="{ animationDelay: `${index * 0.05}s` }"
+            @click="showAnnouncementDetail(announcement)"
           >
-            <div class="quick-action-icon" :style="{ background: action.gradient }">
-              <component :is="action.icon" />
+            <div class="announcement-tag" :class="announcement.type">
+              {{ getAnnouncementTypeText(announcement.type) }}
             </div>
-            <div class="quick-action-text">
-              <span class="quick-action-label">{{ action.label }}</span>
-              <span class="quick-action-desc">{{ action.desc }}</span>
+            <div class="announcement-content">
+              <div class="announcement-title">
+                <span v-if="announcement.isTop" class="top-badge">置顶</span>
+                {{ announcement.title }}
+              </div>
+              <div class="announcement-meta">
+                <span>{{ announcement.publishTime }}</span>
+              </div>
             </div>
+            <RightOutlined class="announcement-arrow" />
+          </div>
+          <div v-if="announcements.length === 0" class="empty-state">
+            <NotificationOutlined />
+            <span>暂无公告</span>
           </div>
         </div>
       </div>
@@ -281,7 +294,6 @@ import {
   InboxOutlined,
   StarOutlined,
   CompassOutlined,
-  ThunderboltOutlined,
   SecurityScanOutlined,
   CloudServerOutlined,
   RocketOutlined,
@@ -290,11 +302,10 @@ import {
   CheckCircleOutlined,
   SafetyCertificateOutlined,
   DatabaseOutlined,
-  SettingOutlined,
-  PlusOutlined,
-  SearchOutlined,
+  NotificationOutlined,
 } from '@ant-design/icons-vue'
 import { getDashboardStats } from '@/api/dashboard'
+import { getActiveAnnouncements, type Announcement } from '@/api/announcement'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -428,36 +439,7 @@ const features = [
   },
 ]
 
-const quickActions = [
-  {
-    label: '新建知识库',
-    desc: '创建新的知识库',
-    icon: PlusOutlined,
-    gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-    route: '/knowledge-base',
-  },
-  {
-    label: '上传文档',
-    desc: '添加文档到知识库',
-    icon: FileTextOutlined,
-    gradient: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
-    route: '/knowledge',
-  },
-  {
-    label: '开始问答',
-    desc: '与 AI 进行对话',
-    icon: MessageOutlined,
-    gradient: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
-    route: '/chat',
-  },
-  {
-    label: '系统设置',
-    desc: '配置系统参数',
-    icon: SettingOutlined,
-    gradient: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
-    route: '/settings',
-  },
-]
+const announcements = ref<Announcement[]>([])
 
 const recentActivities = ref([
   { id: 1, title: '上传了文档《产品需求规格说明书.pdf》', time: '5分钟前', type: '文档', icon: FileTextOutlined, color: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', status: 'success', statusText: '完成' },
@@ -487,8 +469,35 @@ async function loadStats() {
   }
 }
 
+async function loadAnnouncements() {
+  try {
+    const { data } = await getActiveAnnouncements()
+    if (data.data) {
+      announcements.value = data.data.slice(0, 5)
+    }
+  } catch (error) {
+    console.error('加载公告失败:', error)
+  }
+}
+
+function getAnnouncementTypeText(type: string): string {
+  const map: Record<string, string> = {
+    system: '系统',
+    update: '更新',
+    notice: '通知',
+    maintenance: '维护',
+  }
+  return map[type] || '公告'
+}
+
+function showAnnouncementDetail(announcement: Announcement) {
+  // 可以跳转到公告详情或弹窗显示
+  console.log('查看公告:', announcement)
+}
+
 onMounted(() => {
   loadStats()
+  loadAnnouncements()
 })
 </script>
 
@@ -1108,63 +1117,110 @@ onMounted(() => {
 }
 
 // ============================================
-// Quick Actions
+// Announcement List
 // ============================================
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+.announcement-list {
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
-.quick-action-card {
+.announcement-item {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
-  background: var(--bg-surface-secondary);
-  border-radius: var(--radius-xl);
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
-  transition: all var(--duration-normal) var(--ease-default);
+  transition: background var(--duration-fast);
+
+  &:last-child {
+    border-bottom: none;
+  }
 
   &:hover {
-    background: var(--bg-surface-tertiary);
-    transform: translateY(-2px);
+    .announcement-title {
+      color: var(--primary-color);
+    }
 
-    .quick-action-icon {
-      transform: scale(1.05);
+    .announcement-arrow {
+      opacity: 1;
+      transform: translateX(4px);
     }
   }
 }
 
-.quick-action-icon {
-  width: 48px;
-  height: 48px;
+.announcement-tag {
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
+
+  &.system {
+    background: var(--primary-lighter);
+    color: var(--primary-color);
+  }
+
+  &.update {
+    background: var(--success-light);
+    color: var(--success-color);
+  }
+
+  &.notice {
+    background: var(--warning-light);
+    color: var(--warning-color);
+  }
+
+  &.maintenance {
+    background: var(--danger-light);
+    color: var(--danger-color);
+  }
+}
+
+.announcement-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.announcement-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  transition: color var(--duration-fast);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-lg);
-  color: #fff;
-  font-size: 22px;
-  flex-shrink: 0;
-  transition: transform var(--duration-normal) var(--ease-spring);
+  gap: 8px;
+
+  .top-badge {
+    background: #EF4444;
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: var(--radius-full);
+    font-weight: var(--font-weight-medium);
+  }
 }
 
-.quick-action-text {
+.announcement-meta {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.quick-action-label {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.quick-action-desc {
+  align-items: center;
+  gap: 8px;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
+}
+
+.announcement-arrow {
+  opacity: 0;
+  transform: translateX(0);
+  transition: all var(--duration-normal) var(--ease-default);
+  color: var(--primary-color);
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 // ============================================

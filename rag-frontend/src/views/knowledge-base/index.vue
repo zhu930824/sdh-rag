@@ -199,14 +199,6 @@
             />
           </div>
         </a-form-item>
-        <a-form-item label="嵌入模型" name="embeddingModel">
-          <a-select v-model:value="formData.embeddingModel" placeholder="请选择嵌入模型">
-            <a-select-option value="text-embedding-ada-002">text-embedding-ada-002</a-select-option>
-            <a-select-option value="text-embedding-3-small">text-embedding-3-small</a-select-option>
-            <a-select-option value="text-embedding-3-large">text-embedding-3-large</a-select-option>
-            <a-select-option value="dashscope/text-embedding-v2">通义千问 text-embedding-v2</a-select-option>
-          </a-select>
-        </a-form-item>
         <a-form-item label="是否公开" name="isPublic">
           <a-switch v-model:checked="formData.isPublic" />
           <span class="form-hint">公开后其他用户可查看和使用此知识库</span>
@@ -226,7 +218,6 @@
         <a-descriptions-item label="描述">{{ currentKb.description || '暂无描述' }}</a-descriptions-item>
         <a-descriptions-item label="文档数量">{{ currentKb.documentCount || 0 }}</a-descriptions-item>
         <a-descriptions-item label="分块数量">{{ currentKb.chunkCount || 0 }}</a-descriptions-item>
-        <a-descriptions-item label="嵌入模型">{{ currentKb.embeddingModel || '未设置' }}</a-descriptions-item>
         <a-descriptions-item label="状态">
           <a-tag :color="currentKb.status === 1 ? 'green' : 'red'">
             {{ currentKb.status === 1 ? '启用' : '禁用' }}
@@ -325,16 +316,12 @@ const formData = reactive<KnowledgeBaseFormData>({
   icon: 'KB',
   color: '#1890ff',
   isPublic: false,
-  embeddingModel: 'text-embedding-ada-002',
 })
 
 const formRules: Record<string, Rule[]> = {
   name: [
     { required: true, message: '请输入知识库名称', trigger: 'blur' },
     { min: 2, max: 50, message: '名称长度在 2 到 50 个字符', trigger: 'blur' },
-  ],
-  embeddingModel: [
-    { required: true, message: '请选择嵌入模型', trigger: 'change' },
   ],
 }
 
@@ -407,7 +394,6 @@ function showCreateModal() {
     icon: 'KB',
     color: '#1890ff',
     isPublic: false,
-    embeddingModel: 'text-embedding-ada-002',
   })
   modalVisible.value = true
 }
@@ -421,7 +407,6 @@ function handleEdit(kb: KnowledgeBase) {
     icon: kb.icon || 'KB',
     color: kb.color || '#1890ff',
     isPublic: kb.isPublic,
-    embeddingModel: kb.embeddingModel,
   })
   modalVisible.value = true
 }

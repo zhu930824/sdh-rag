@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import type { ApiResponse, PageResult } from '@/types'
 
 /**
  * 用户信息
@@ -39,78 +40,58 @@ export interface UserFormData {
 }
 
 /**
- * 分页响应（MyBatis Plus IPage格式）
- */
-export interface PageResult<T> {
-  records: T[]
-  total: number
-  current: number
-  size: number
-  pages: number
-}
-
-/**
- * 通用响应
- */
-export interface Result<T = any> {
-  code: number
-  message: string
-  data: T
-}
-
-/**
  * 获取用户列表
  */
-export function getUserList(params: UserQueryParams): Promise<Result<PageResult<UserItem>>> {
+export function getUserList(params: UserQueryParams): Promise<ApiResponse<PageResult<UserItem>>> {
   return request.get('/api/user/list', { params })
 }
 
 /**
  * 获取用户详情
  */
-export function getUserDetail(id: number): Promise<Result<UserItem>> {
+export function getUserDetail(id: number): Promise<ApiResponse<UserItem>> {
   return request.get(`/api/user/${id}`)
 }
 
 /**
  * 创建用户
  */
-export function createUser(data: UserFormData): Promise<Result<null>> {
+export function createUser(data: UserFormData): Promise<ApiResponse<null>> {
   return request.post('/api/user', data)
 }
 
 /**
  * 更新用户
  */
-export function updateUser(id: number, data: Partial<UserFormData>): Promise<Result<null>> {
+export function updateUser(id: number, data: Partial<UserFormData>): Promise<ApiResponse<null>> {
   return request.put(`/api/user/${id}`, data)
 }
 
 /**
  * 删除用户
  */
-export function deleteUser(id: number): Promise<Result<null>> {
+export function deleteUser(id: number): Promise<ApiResponse<null>> {
   return request.delete(`/api/user/${id}`)
 }
 
 /**
  * 批量删除用户
  */
-export function batchDeleteUsers(ids: number[]): Promise<Result<null>> {
+export function batchDeleteUsers(ids: number[]): Promise<ApiResponse<null>> {
   return request.post('/api/user/batch-delete', { ids })
 }
 
 /**
  * 重置用户密码
  */
-export function resetUserPassword(id: number): Promise<Result<{ password: string }>> {
+export function resetUserPassword(id: number): Promise<ApiResponse<{ password: string }>> {
   return request.post(`/api/user/${id}/reset-password`)
 }
 
 /**
  * 切换用户状态
  */
-export function toggleUserStatus(id: number): Promise<Result<null>> {
+export function toggleUserStatus(id: number): Promise<ApiResponse<null>> {
   return request.put(`/api/user/${id}/status`)
 }
 

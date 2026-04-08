@@ -134,7 +134,10 @@ public class OperationLogAspect {
     }
 
     private String getOperationContent(String methodName, Object[] args) {
-        String className = args.length > 0 ? args[0].getClass().getSimpleName() : "";
+        if (args == null || args.length == 0 || args[0] == null) {
+            return methodName;
+        }
+        String className = args[0].getClass().getSimpleName();
         return methodName + " " + className;
     }
 

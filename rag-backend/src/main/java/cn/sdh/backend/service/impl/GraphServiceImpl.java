@@ -33,18 +33,33 @@ public class GraphServiceImpl implements GraphService {
 
     @Override
     public GraphDataResponse getGraphData(Long centerNodeId, int depth) {
-        List<GraphDataResponse.NodeData> nodes = new ArrayList<>();
-        List<GraphDataResponse.EdgeData> edges = new ArrayList<>();
+        List<Long> nodeIds;
 
         if (centerNodeId != null) {
             // 以指定节点为中心展开
-            Map<String, Object> result = graphRepository.expandFromNode(centerNodeId, depth);
-            return parseGraphResult(result);
+            nodeIds = graphRepository.expandNodeIds(centerNodeId, depth);
         } else {
-            // 获取全图概览
-            Map<String, Object> result = graphRepository.getGraphOverview(100);
-            return parseGraphResult(result);
+            // 获取全图概览 - top 100节点
+            List<Map<String, Object>> topNodeResults = graphRepository.getTopNodeIds(100);
+            nodeIds = topNodeResults.stream()
+                    .map(m -> ((Number) m.get("id")).longValue())
+                    .collect(Collectors.toList());
         }
+
+        if (nodeIds == null || nodeIds.isEmpty()) {
+            return GraphDataResponse.builder().nodes(new ArrayList<>()).edges(new ArrayList<>()).build();
+        }
+
+        // 过滤掉null值
+        nodeIds = nodeIds.stream().filter(Objects::nonNull).collect(Collectors.toList());
+
+        // 获取节点详情
+        List<Map<String, Object>> nodesData = graphRepository.getNodesByIds(nodeIds);
+
+        // 获取关系
+        List<Map<String, Object>> relationshipsData = graphRepository.getRelationshipsBetweenNodes(nodeIds);
+
+        return buildGraphResponse(nodesData, relationshipsData);
     }
 
     @Override
@@ -184,6 +199,64 @@ public class GraphServiceImpl implements GraphService {
         return results;
     }
 
+    /**
+     * 构建图响应数据
+     */
+    private GraphDataResponse buildGraphResponse(List<Map<String, Object>> nodesData, List<Map<String, Object>> relationshipsData) {
+        List<GraphDataResponse.NodeData> nodes = new ArrayList<>();
+        List<GraphDataResponse.EdgeData> edges = new ArrayList<>();
+
+        Set<Long> addedNodeIds = new HashSet<>();
+        if (nodesData != null) {
+            for (Map<String, Object> n : nodesData) {
+                Long id = ((Number) n.get("id")).longValue();
+                if (addedNodeIds.contains(id)) {
+                    continue;
+                }
+                addedNodeIds.add(id);
+
+                List<String> labels = (List<String>) n.get("labels");
+                String type = labels != null && !labels.isEmpty() ? labels.get(0) : "Unknown";
+
+                nodes.add(GraphDataResponse.NodeData.builder()
+                        .id(id)
+                        .label((String) n.get("name"))
+                        .type(type)
+                        .entityType((String) n.get("entityType"))
+                        .description((String) n.get("description"))
+                        .documentId(n.get("documentId") != null ? ((Number) n.get("documentId")).longValue() : null)
+                        .weight(n.get("weight") != null ? ((Number) n.get("weight")).intValue() : 0)
+                        .frequency(n.get("frequency") != null ? ((Number) n.get("frequency")).intValue() : 0)
+                        .build());
+            }
+        }
+
+        Set<String> addedEdgeIds = new HashSet<>();
+        if (relationshipsData != null) {
+            for (Map<String, Object> r : relationshipsData) {
+                Long source = ((Number) r.get("source")).longValue();
+                Long target = ((Number) r.get("target")).longValue();
+                String type = (String) r.get("type");
+                String edgeId = source + "-" + type + "-" + target;
+
+                if (addedEdgeIds.contains(edgeId)) {
+                    continue;
+                }
+                addedEdgeIds.add(edgeId);
+
+                edges.add(GraphDataResponse.EdgeData.builder()
+                        .id(edgeId)
+                        .source(source)
+                        .target(target)
+                        .relationType(type)
+                        .weight(r.get("weight") != null ? ((Number) r.get("weight")).doubleValue() : 1.0)
+                        .build());
+            }
+        }
+
+        return GraphDataResponse.builder().nodes(nodes).edges(edges).build();
+    }
+
     private GraphDataResponse parseGraphResult(Map<String, Object> result) {
         List<GraphDataResponse.NodeData> nodes = new ArrayList<>();
         List<GraphDataResponse.EdgeData> edges = new ArrayList<>();
@@ -192,12 +265,13 @@ public class GraphServiceImpl implements GraphService {
             return GraphDataResponse.builder().nodes(nodes).edges(edges).build();
         }
 
-        List<Map<String, Object>> nodesData = (List<Map<String, Object>>) result.get("nodes");
+        // 处理邻居节点（返回的是neighbors字段）
+        List<Map<String, Object>> neighborsData = (List<Map<String, Object>>) result.get("neighbors");
         List<Map<String, Object>> relationshipsData = (List<Map<String, Object>>) result.get("relationships");
 
-        if (nodesData != null) {
+        if (neighborsData != null) {
             Set<Long> addedIds = new HashSet<>();
-            for (Map<String, Object> n : nodesData) {
+            for (Map<String, Object> n : neighborsData) {
                 Long id = ((Number) n.get("id")).longValue();
                 if (addedIds.contains(id)) {
                     continue;

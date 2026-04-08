@@ -76,12 +76,8 @@ declare module 'vue' {
     ATreeSelect: typeof import('ant-design-vue/es')['TreeSelect']
     AUpload: typeof import('ant-design-vue/es')['Upload']
     AUploadDragger: typeof import('ant-design-vue/es')['UploadDragger']
-    EmptyState: typeof import('./components/EmptyState.vue')['default']
-    GlobalSearch: typeof import('./components/GlobalSearch.vue')['default']
-    Loading: typeof import('./components/Loading.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    Skeleton: typeof import('./components/Skeleton.vue')['default']
     TableToolbar: typeof import('./components/TableToolbar.vue')['default']
   }
 }

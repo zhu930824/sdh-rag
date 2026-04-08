@@ -35,24 +35,24 @@ public class AnnouncementController {
         return Result.success(announcementService.getActiveAnnouncements());
     }
 
-    @GetMapping("/{id}")
-    public Result<Map<String, Object>> getDetail(@PathVariable Long id) {
-        Announcement announcement = announcementService.getById(id);
-        if (announcement == null) {
-            return Result.notFound("公告不存在");
-        }
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("announcement", announcement);
-        result.put("readCount", announcementService.getReadCount(id));
-        
-        Long userId = UserContext.getCurrentUserId();
-        if (userId != null) {
-            result.put("isRead", announcementService.hasRead(id, userId));
-        }
-        
-        return Result.success(result);
-    }
+//    @GetMapping("/{id}")
+//    public Result<Map<String, Object>> getDetail(@PathVariable Long id) {
+//        Announcement announcement = announcementService.getById(id);
+//        if (announcement == null) {
+//            return Result.notFound("公告不存在");
+//        }
+//
+//        Map<String, Object> result = new HashMap<>();
+//        result.put("announcement", announcement);
+//        result.put("readCount", announcementService.getReadCount(id));
+//
+//        Long userId = UserContext.getCurrentUserId();
+//        if (userId != null) {
+//            result.put("isRead", announcementService.hasRead(id, userId));
+//        }
+//
+//        return Result.success(result);
+//    }
 
     @PostMapping
     public Result<Void> create(@Valid @RequestBody Announcement announcement) {
@@ -104,14 +104,14 @@ public class AnnouncementController {
         return Result.success();
     }
 
-    @PostMapping("/{id}/read")
-    public Result<Void> markAsRead(@PathVariable Long id) {
-        Long userId = UserContext.getCurrentUserId();
-        if (userId == null) {
-            return Result.unauthorized();
-        }
-        
-        announcementService.markAsRead(id, userId);
-        return Result.success();
-    }
+//    @PostMapping("/{id}/read")
+//    public Result<Void> markAsRead(@PathVariable Long id) {
+//        Long userId = UserContext.getCurrentUserId();
+//        if (userId == null) {
+//            return Result.unauthorized();
+//        }
+//
+//        announcementService.markAsRead(id, userId);
+//        return Result.success();
+//    }
 }

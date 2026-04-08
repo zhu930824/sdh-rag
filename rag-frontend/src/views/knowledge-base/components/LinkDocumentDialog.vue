@@ -169,6 +169,13 @@
               style="width: 180px"
             />
           </div>
+          <div class="param-item full-width">
+            <a-alert
+              message="按页切分适用于PDF等有明确分页的文档，系统会尝试识别分页符"
+              type="info"
+              show-icon
+            />
+          </div>
         </div>
 
         <!-- 按标题切分参数 -->
@@ -181,6 +188,13 @@
               <a-checkbox value="h3">三级标题 (H3)</a-checkbox>
               <a-checkbox value="h4">四级标题 (H4)</a-checkbox>
             </a-checkbox-group>
+          </div>
+          <div class="param-item full-width">
+            <a-alert
+              message="系统会在选中的标题层级处进行切分，每个标题下的内容作为一个分块"
+              type="info"
+              show-icon
+            />
           </div>
         </div>
 
@@ -203,6 +217,61 @@
           </div>
         </div>
 
+        <!-- 嵌入模型 -->
+        <div class="param-form" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+          <div class="param-item">
+            <div class="param-label">嵌入模型</div>
+            <a-select v-model:value="splitConfig.embeddingModel" style="width: 280px">
+              <a-select-option value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</a-select-option>
+              <a-select-option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</a-select-option>
+              <a-select-option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</a-select-option>
+              <a-select-option value="dashscope/text-embedding-v2">text-embedding-v2 (通义千问)</a-select-option>
+            </a-select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 智能切分配置 -->
+      <div v-if="selectedStrategy === 'smart'" class="config-section">
+        <div class="section-title">智能切分参数</div>
+        <div class="param-form">
+          <div class="param-item">
+            <div class="param-label">最大分块大小</div>
+            <a-input-number
+              v-model:value="splitConfig.smartConfig.maxChunkSize"
+              :min="200"
+              :max="5000"
+              :step="100"
+              addon-after="字符"
+              style="width: 180px"
+            />
+          </div>
+          <div class="param-item">
+            <div class="param-label">最小分块大小</div>
+            <a-input-number
+              v-model:value="splitConfig.smartConfig.minChunkSize"
+              :min="50"
+              :max="1000"
+              :step="50"
+              addon-after="字符"
+              style="width: 180px"
+            />
+          </div>
+        </div>
+        <div class="param-form" style="margin-top: 16px;">
+          <div class="param-item full-width">
+            <a-checkbox v-model:checked="splitConfig.smartConfig.respectParagraphs">
+              识别段落结构
+            </a-checkbox>
+            <span class="param-hint">尽量保持段落完整性</span>
+          </div>
+          <div class="param-item full-width">
+            <a-checkbox v-model:checked="splitConfig.smartConfig.respectHeaders">
+              识别标题层级
+            </a-checkbox>
+            <span class="param-hint">在标题处优先分割</span>
+          </div>
+        </div>
         <!-- 嵌入模型 -->
         <div class="param-form" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
           <div class="param-item">
@@ -252,6 +321,7 @@ const selectedRowKeys = ref<number[]>([])
 const selectedStrategy = ref('default')
 
 const splitConfig = reactive({
+  // 自定义配置参数
   splitType: 'length',
   chunkSize: 500,
   chunkOverlap: 50,
@@ -259,6 +329,14 @@ const splitConfig = reactive({
   headingLevels: ['h1', 'h2'] as string[],
   regexPattern: '',
   embeddingModel: 'text-embedding-ada-002',
+  // 智能切分参数
+  smartConfig: {
+    respectParagraphs: true,
+    respectHeaders: true,
+    maxChunkSize: 1000,
+    minChunkSize: 100,
+    sentenceMode: 'semantic',
+  },
 })
 
 const strategies = [
@@ -269,9 +347,9 @@ const strategies = [
     icon: AppstoreOutlined,
   },
   {
-    key: 'auto',
+    key: 'smart',
     name: '智能切分',
-    desc: '根据文档内容自动选择最优切分方式',
+    desc: '根据文档结构智能识别段落和标题，自动优化切分',
     icon: ThunderboltOutlined,
   },
   {
@@ -364,47 +442,55 @@ onMounted(() => {
 
 defineExpose({
   getConfigs: (): DocumentLinkConfig[] => {
-    const baseConfig: any = {
-      embeddingModel: splitConfig.embeddingModel,
-    }
-
     if (selectedStrategy.value === 'default') {
-      return selectedRowKeys.value.map(id => ({ documentId: id }))
-    }
-
-    if (selectedStrategy.value === 'auto') {
       return selectedRowKeys.value.map(id => ({
         documentId: id,
-        autoSplit: true,
-        ...baseConfig,
+        chunkMode: 'default',
+      }))
+    }
+
+    if (selectedStrategy.value === 'smart') {
+      return selectedRowKeys.value.map(id => ({
+        documentId: id,
+        chunkMode: 'smart',
+        embeddingModel: splitConfig.embeddingModel,
+        smartConfig: {
+          respectParagraphs: splitConfig.smartConfig.respectParagraphs,
+          respectHeaders: splitConfig.smartConfig.respectHeaders,
+          maxChunkSize: splitConfig.smartConfig.maxChunkSize,
+          minChunkSize: splitConfig.smartConfig.minChunkSize,
+          sentenceMode: splitConfig.smartConfig.sentenceMode,
+        },
       }))
     }
 
     // 自定义配置
-    const customSplitConfig: any = {
+    const customConfig: DocumentLinkConfig = {
+      chunkMode: 'custom',
       splitType: splitConfig.splitType,
-      ...baseConfig,
+      embeddingModel: splitConfig.embeddingModel,
     }
 
+    // 根据切分方式设置不同参数
     switch (splitConfig.splitType) {
       case 'length':
-        customSplitConfig.chunkSize = splitConfig.chunkSize
-        customSplitConfig.chunkOverlap = splitConfig.chunkOverlap
+        customConfig.chunkSize = splitConfig.chunkSize
+        customConfig.chunkOverlap = splitConfig.chunkOverlap
         break
       case 'page':
-        customSplitConfig.pagesPerChunk = splitConfig.pagesPerChunk
+        customConfig.pagesPerChunk = splitConfig.pagesPerChunk
         break
       case 'heading':
-        customSplitConfig.headingLevels = splitConfig.headingLevels
+        customConfig.headingLevels = splitConfig.headingLevels
         break
       case 'regex':
-        customSplitConfig.regexPattern = splitConfig.regexPattern
+        customConfig.regexPattern = splitConfig.regexPattern
         break
     }
 
     return selectedRowKeys.value.map(id => ({
       documentId: id,
-      ...customSplitConfig,
+      ...customConfig,
     }))
   },
   isCustomMode: () => selectedStrategy.value === 'custom',
@@ -706,11 +792,19 @@ defineExpose({
 
       &.full-width {
         width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
       }
 
       .param-label {
         font-size: 13px;
         color: var(--text-primary);
+      }
+
+      .param-hint {
+        font-size: 12px;
+        color: var(--text-tertiary);
       }
     }
   }

@@ -38,11 +38,32 @@ export interface UserInfo {
   username: string
   nickname: string
   email?: string
+  phone?: string
+  signature?: string
   avatar?: string
   role?: string
   roles: string[]
   permissions?: string[]
   createTime: string
+  defaultModelId?: number
+  theme?: string
+  language?: string
+  emailNotification?: boolean
+  soundNotification?: boolean
+  replyLanguage?: string
+  userLevel?: number
+  experience?: number
+}
+
+export interface UserStats {
+  knowledgeCount: number
+  documentCount: number
+  chatCount: number
+  todayChatCount: number
+  workflowCount: number
+  promptCount: number
+  userLevel: number
+  experience: number
 }
 
 export interface LoginParams {

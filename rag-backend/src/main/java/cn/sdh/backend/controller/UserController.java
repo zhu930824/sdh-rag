@@ -2,9 +2,13 @@ package cn.sdh.backend.controller;
 
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.result.Result;
+import cn.sdh.backend.dto.ChangePasswordRequest;
 import cn.sdh.backend.dto.LoginRequest;
 import cn.sdh.backend.dto.RegisterRequest;
+import cn.sdh.backend.dto.UpdateProfileRequest;
 import cn.sdh.backend.dto.UserInfoResponse;
+import cn.sdh.backend.dto.UserPreferenceRequest;
+import cn.sdh.backend.dto.UserStatsResponse;
 import cn.sdh.backend.entity.Role;
 import cn.sdh.backend.entity.User;
 import cn.sdh.backend.mapper.RoleMapper;
@@ -15,9 +19,16 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -36,6 +47,9 @@ public class UserController {
 
     @Autowired
     private RoleMapper roleMapper;
+
+    @Value("${file.upload.path:./uploads}")
+    private String uploadPath;
 
     /**
      * 用户登录
@@ -92,6 +106,108 @@ public class UserController {
         // JWT是无状态的，登出只需前端删除Token即可
         // 如果需要服务端控制，可以将Token加入黑名单（Redis）
         return Result.success("登出成功", null);
+    }
+
+    /**
+     * 更新个人信息
+     */
+    @PutMapping("/profile")
+    public Result<Void> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        boolean success = userService.updateProfile(userId, request);
+        return success ? Result.success("更新成功", null) : Result.error("更新失败");
+    }
+
+    /**
+     * 修改密码
+     */
+    @PutMapping("/password")
+    public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        boolean success = userService.changePassword(userId, request);
+        return success ? Result.success("密码修改成功", null) : Result.error("密码修改失败");
+    }
+
+    /**
+     * 上传头像
+     */
+    @PostMapping("/avatar")
+    public Result<Map<String, String>> uploadAvatar(@RequestParam("file") MultipartFile file) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        if (file.isEmpty()) {
+            return Result.error("请选择要上传的文件");
+        }
+
+        try {
+            // 创建上传目录
+            String avatarDir = uploadPath + "/avatars";
+            Path dirPath = Paths.get(avatarDir);
+            if (!Files.exists(dirPath)) {
+                Files.createDirectories(dirPath);
+            }
+
+            // 生成文件名
+            String originalFilename = file.getOriginalFilename();
+            String extension = originalFilename != null && originalFilename.contains(".")
+                    ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                    : ".jpg";
+            String filename = userId + "_" + System.currentTimeMillis() + extension;
+
+            // 保存文件
+            Path filePath = Paths.get(avatarDir, filename);
+            file.transferTo(filePath.toFile());
+
+            // 更新用户头像URL
+            String avatarUrl = "/uploads/avatars/" + filename;
+            userService.updateAvatar(userId, avatarUrl);
+
+            Map<String, String> data = new HashMap<>();
+            data.put("avatar", avatarUrl);
+            return Result.success("头像上传成功", data);
+        } catch (IOException e) {
+            log.error("上传头像失败", e);
+            return Result.error("上传头像失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新用户偏好设置
+     */
+    @PutMapping("/preference")
+    public Result<Void> updatePreference(@RequestBody UserPreferenceRequest request) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        boolean success = userService.updatePreference(userId, request);
+        return success ? Result.success("设置更新成功", null) : Result.error("设置更新失败");
+    }
+
+    /**
+     * 获取用户统计数据
+     */
+    @GetMapping("/stats")
+    public Result<UserStatsResponse> getUserStats() {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.unauthorized();
+        }
+
+        UserStatsResponse stats = userService.getUserStats(userId);
+        return Result.success(stats);
     }
 
     /**

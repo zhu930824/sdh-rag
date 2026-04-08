@@ -1,5 +1,6 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.dto.DocumentLinkConfig;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.entity.KnowledgeDocumentRelation;
 
@@ -11,7 +12,15 @@ import java.util.List;
 public interface DocumentProcessService {
 
     /**
-     * 处理文档（关联到知识库时调用）
+     * 处理文档（关联到知识库时调用）- 使用切分配置
+     * @param documentId 文档ID
+     * @param knowledgeId 知识库ID
+     * @param config 文档关联配置
+     */
+    void processDocumentForKnowledge(Long documentId, Long knowledgeId, DocumentLinkConfig config);
+
+    /**
+     * 处理文档（关联到知识库时调用）- 简化版本，使用默认配置
      * @param documentId 文档ID
      * @param knowledgeId 知识库ID
      * @param chunkSize 分块大小

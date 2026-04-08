@@ -57,7 +57,7 @@
           </a-menu-item>
 
           <!-- 分隔线（在特定菜单后） -->
-          <div v-if="['/chat', 'knowledge', '/model', '/approval', '/tag'].includes(item.key)" class="nav-divider" />
+          <div v-if="['/chat', 'knowledge', '/model', '/tag'].includes(item.key)" class="nav-divider" />
         </template>
       </a-menu>
     </nav>
@@ -94,7 +94,6 @@ import {
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
-  AuditOutlined,
   CloudUploadOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -169,12 +168,6 @@ const menuConfig: MenuItem[] = [
     label: '问答评价',
     icon: LikeOutlined,
     permission: '/feedback',
-  },
-  {
-    key: '/approval',
-    label: '审核中心',
-    icon: AuditOutlined,
-    permission: '/approval',
   },
   {
     key: '/process-task',

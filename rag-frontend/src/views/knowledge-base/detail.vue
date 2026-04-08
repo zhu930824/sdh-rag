@@ -84,6 +84,7 @@
             ref="documentListRef"
             :knowledge-base-id="knowledgeBaseId"
             @unlink="handleUnlinkDocument"
+            @reprocess="handleReprocessDocument"
           />
         </a-tab-pane>
         <a-tab-pane key="chunks" tab="分块管理">
@@ -171,6 +172,7 @@ import {
   updateKnowledgeBaseConfig,
   linkDocumentsToKnowledgeBase,
   unlinkDocumentFromKnowledgeBase,
+  reprocessDocument,
   addKnowledgeBaseTag,
   removeKnowledgeBaseTag,
   type KnowledgeBase,
@@ -286,9 +288,8 @@ async function handleLinkDocuments() {
   try {
     // 获取配置
     const configs = linkDocumentRef.value?.getConfigs()
-    const isCustomMode = linkDocumentRef.value?.isCustomMode()
 
-    if (isCustomMode && configs) {
+    if (configs && configs.length > 0) {
       await linkDocumentsToKnowledgeBase(knowledgeBaseId.value, { configs })
     } else {
       await linkDocumentsToKnowledgeBase(knowledgeBaseId.value, { documentIds: selectedDocumentIds.value })
@@ -310,6 +311,16 @@ async function handleUnlinkDocument(documentId: number) {
     loadDetail()
   } catch (error) {
     message.error('移除失败')
+  }
+}
+
+async function handleReprocessDocument(documentId: number) {
+  try {
+    await reprocessDocument(knowledgeBaseId.value, documentId)
+    message.success('已提交重新处理')
+    documentListRef.value?.loadDocuments()
+  } catch (error) {
+    message.error('重新处理失败')
   }
 }
 
