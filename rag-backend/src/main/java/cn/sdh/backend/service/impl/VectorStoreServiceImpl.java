@@ -362,7 +362,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                     .query(query)
                     .from(page * size)
                     .size(size)
-                    .sort(sort -> sort.field(f -> f.field("chunk_index").order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))),
+                    .sort(sort -> sort.field(f -> f.field("chunk_id").order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))),
                     Map.class);
 
             return convertHitsToDocuments(response.hits().hits());

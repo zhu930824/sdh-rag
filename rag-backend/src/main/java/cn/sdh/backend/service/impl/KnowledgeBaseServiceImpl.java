@@ -710,9 +710,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             }
 
             vo.setKnowledgeId(knowledgeId);
-            // 使用 ES 中存储的 chunk_index
+            // 优先使用 ES 中存储的 chunk_index，否则使用 chunk_id 作为排序依据
             if (chunkIndex instanceof Number) {
                 vo.setChunkIndex(((Number) chunkIndex).intValue());
+            } else if (chunkId instanceof Number) {
+                // 旧数据没有 chunk_index，用 chunk_id 作为序号参考
+                vo.setChunkIndex(((Number) chunkId).intValue());
             }
             vo.setContent(esDoc.getText());
             vo.setChunkSize(esDoc.getText() != null ? esDoc.getText().length() : 0);
