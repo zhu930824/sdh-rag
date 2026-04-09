@@ -63,7 +63,7 @@ public class WorkflowController {
         return Result.success(workflow);
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody Workflow workflow) {
         Workflow existing = workflowService.getById(id);
         if (existing == null) {
@@ -81,7 +81,7 @@ public class WorkflowController {
         return Result.success();
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         Workflow existing = workflowService.getById(id);
         if (existing == null) {
@@ -97,7 +97,7 @@ public class WorkflowController {
         return Result.success();
     }
 
-    @PutMapping("/{id}/status")
+    @PostMapping("/status/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         Workflow existing = workflowService.getById(id);
         if (existing == null) {

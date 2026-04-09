@@ -221,11 +221,20 @@
         <div class="param-form" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
           <div class="param-item">
             <div class="param-label">嵌入模型</div>
-            <a-select v-model:value="splitConfig.embeddingModel" style="width: 280px">
-              <a-select-option value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</a-select-option>
-              <a-select-option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</a-select-option>
-              <a-select-option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</a-select-option>
-              <a-select-option value="dashscope/text-embedding-v2">text-embedding-v2 (通义千问)</a-select-option>
+            <a-select
+              v-model:value="splitConfig.embeddingModel"
+              style="width: 280px"
+              placeholder="请选择嵌入模型"
+              :loading="loadingModels"
+              allow-clear
+            >
+              <a-select-option
+                v-for="model in embeddingModels"
+                :key="model.id"
+                :value="model.modelId"
+              >
+                {{ model.name }}
+              </a-select-option>
             </a-select>
           </div>
         </div>
@@ -276,11 +285,20 @@
         <div class="param-form" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
           <div class="param-item">
             <div class="param-label">嵌入模型</div>
-            <a-select v-model:value="splitConfig.embeddingModel" style="width: 280px">
-              <a-select-option value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</a-select-option>
-              <a-select-option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</a-select-option>
-              <a-select-option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</a-select-option>
-              <a-select-option value="dashscope/text-embedding-v2">text-embedding-v2 (通义千问)</a-select-option>
+            <a-select
+              v-model:value="splitConfig.embeddingModel"
+              style="width: 280px"
+              placeholder="请选择嵌入模型"
+              :loading="loadingModels"
+              allow-clear
+            >
+              <a-select-option
+                v-for="model in embeddingModels"
+                :key="model.id"
+                :value="model.modelId"
+              >
+                {{ model.name }}
+              </a-select-option>
             </a-select>
           </div>
         </div>
@@ -299,6 +317,8 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { FileTextOutlined, CheckOutlined, SettingOutlined, ThunderboltOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 import { getAvailableDocuments, type DocumentLinkConfig } from '@/api/knowledgeBase'
+import { getActiveModels } from '@/api/model'
+import type { ModelConfig } from '@/types'
 
 const props = defineProps<{
   knowledgeBaseId: number
@@ -319,6 +339,13 @@ const documents = ref<any[]>([])
 const searchKeyword = ref('')
 const selectedRowKeys = ref<number[]>([])
 const selectedStrategy = ref('default')
+const allModels = ref<ModelConfig[]>([])
+const loadingModels = ref(false)
+
+// 嵌入模型列表
+const embeddingModels = computed(() => {
+  return allModels.value.filter(m => m.modelType === 'embedding' && m.status === 1)
+})
 
 const splitConfig = reactive({
   // 自定义配置参数
@@ -328,7 +355,7 @@ const splitConfig = reactive({
   pagesPerChunk: 1,
   headingLevels: ['h1', 'h2'] as string[],
   regexPattern: '',
-  embeddingModel: 'text-embedding-ada-002',
+  embeddingModel: '',
   // 智能切分参数
   smartConfig: {
     respectParagraphs: true,
@@ -429,18 +456,63 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+// 加载模型列表
+async function loadModels() {
+  loadingModels.value = true
+  try {
+    const res = await getActiveModels()
+    if (res.code === 200) {
+      allModels.value = res.data || []
+    }
+  } catch (error) {
+    console.error('加载模型列表失败', error)
+  } finally {
+    loadingModels.value = false
+  }
+}
+
 watch(() => props.selectedIds, (ids) => {
   selectedRowKeys.value = ids || []
 }, { immediate: true })
 
 onMounted(() => {
   loadDocuments()
+  loadModels()
   if (props.defaultChunkSize) splitConfig.chunkSize = props.defaultChunkSize
   if (props.defaultChunkOverlap) splitConfig.chunkOverlap = props.defaultChunkOverlap
   if (props.defaultEmbeddingModel) splitConfig.embeddingModel = props.defaultEmbeddingModel
 })
 
 defineExpose({
+  reset: () => {
+    // 重置到第一步
+    currentStep.value = 1
+    // 清空选中的文档
+    selectedRowKeys.value = []
+    emit('selection-change', [])
+    // 重置策略选择
+    selectedStrategy.value = 'default'
+    // 重置搜索关键词
+    searchKeyword.value = ''
+    // 重置分页
+    pagination.current = 1
+    // 重置自定义配置
+    splitConfig.splitType = 'length'
+    splitConfig.chunkSize = 500
+    splitConfig.chunkOverlap = 50
+    splitConfig.pagesPerChunk = 1
+    splitConfig.headingLevels = ['h1', 'h2']
+    splitConfig.regexPattern = ''
+    splitConfig.embeddingModel = ''
+    // 重置智能切分配置
+    splitConfig.smartConfig.respectParagraphs = true
+    splitConfig.smartConfig.respectHeaders = true
+    splitConfig.smartConfig.maxChunkSize = 1000
+    splitConfig.smartConfig.minChunkSize = 100
+    splitConfig.smartConfig.sentenceMode = 'semantic'
+    // 重新加载文档列表
+    loadDocuments()
+  },
   getConfigs: (): DocumentLinkConfig[] => {
     if (selectedStrategy.value === 'default') {
       return selectedRowKeys.value.map(id => ({

@@ -69,13 +69,13 @@ public class ModelConfigController {
         return Result.success();
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody ModelConfigRequest request) {
         ModelConfig existing = modelConfigService.getById(id);
         if (existing == null) {
             return Result.notFound("模型配置不存在");
         }
-        
+
         ModelConfig config = new ModelConfig();
         config.setId(id);
         config.setName(request.getName());
@@ -100,7 +100,7 @@ public class ModelConfigController {
         return Result.success();
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         ModelConfig config = modelConfigService.getById(id);
         if (config == null) {
@@ -110,7 +110,7 @@ public class ModelConfigController {
         return Result.success();
     }
 
-    @PutMapping("/{id}/default")
+    @PostMapping("/default/{id}")
     public Result<Void> setDefault(@PathVariable Long id) {
         ModelConfig config = modelConfigService.getById(id);
         if (config == null) {
@@ -123,6 +123,15 @@ public class ModelConfigController {
     @GetMapping("/active")
     public Result<List<ModelConfigResponse>> getActiveList() {
         List<ModelConfig> configs = modelConfigService.getActiveList();
+        List<ModelConfigResponse> responses = configs.stream()
+                .map(ModelConfigResponse::fromEntity)
+                .collect(Collectors.toList());
+        return Result.success(responses);
+    }
+
+    @GetMapping("/active/chat")
+    public Result<List<ModelConfigResponse>> getActiveChatModels() {
+        List<ModelConfig> configs = modelConfigService.getActiveChatModels();
         List<ModelConfigResponse> responses = configs.stream()
                 .map(ModelConfigResponse::fromEntity)
                 .collect(Collectors.toList());

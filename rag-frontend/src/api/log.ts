@@ -39,7 +39,7 @@ export function getLogDetail(id: number): Promise<ApiResponse<OperationLog>> {
 }
 
 export function deleteLog(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/log/${id}`)
+  return request.post(`/api/log/delete/${id}`)
 }
 
 export function batchDeleteLogs(ids: number[]): Promise<ApiResponse<{ success: number; fail: number }>> {
@@ -47,5 +47,5 @@ export function batchDeleteLogs(ids: number[]): Promise<ApiResponse<{ success: n
 }
 
 export function clearLogs(): Promise<ApiResponse<null>> {
-  return request.delete('/api/log/clear')
+  return request.post('/api/log/clear')
 }

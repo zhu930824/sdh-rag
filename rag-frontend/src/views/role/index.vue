@@ -222,8 +222,8 @@ const menuTreeData = ref<TreeProps['treeData']>([
     label: '知识管理',
     value: 'knowledge-group',
     children: [
-      { label: '知识库', value: '/knowledge-base' },
-      { label: '文档管理', value: '/knowledge' },
+      { label: '知识库', value: '/knowledge' },
+      { label: '文档管理', value: '/document' },
       { label: '知识图谱', value: '/graph' },
     ],
   },

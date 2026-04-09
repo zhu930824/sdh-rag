@@ -39,11 +39,11 @@ export function createTag(data: Partial<Tag>): Promise<ApiResponse<null>> {
 }
 
 export function updateTag(id: number, data: Partial<Tag>): Promise<ApiResponse<null>> {
-  return request.put(`/api/tag/${id}`, data)
+  return request.post(`/api/tag/update/${id}`, data)
 }
 
 export function deleteTag(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/tag/${id}`)
+  return request.post(`/api/tag/delete/${id}`)
 }
 
 export function addDocumentTag(documentId: number, tagId: number, source: string = 'manual'): Promise<ApiResponse<null>> {
@@ -51,7 +51,7 @@ export function addDocumentTag(documentId: number, tagId: number, source: string
 }
 
 export function removeDocumentTag(documentId: number, tagId: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/tag/document/${documentId}/${tagId}`)
+  return request.post(`/api/tag/document/${documentId}/${tagId}/remove`)
 }
 
 export function getDocumentTags(documentId: number): Promise<ApiResponse<Tag[]>> {

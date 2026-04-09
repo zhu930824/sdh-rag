@@ -96,12 +96,12 @@ export function logout(): Promise<ApiResponse<null>> {
 
 // 更新个人信息
 export function updateProfile(data: UpdateProfileRequest): Promise<ApiResponse<null>> {
-  return request.put('/api/user/profile', data)
+  return request.post('/api/user/profile', data)
 }
 
 // 修改密码
 export function changePassword(data: ChangePasswordRequest): Promise<ApiResponse<null>> {
-  return request.put('/api/user/password', data)
+  return request.post('/api/user/password', data)
 }
 
 // 上传头像
@@ -117,7 +117,7 @@ export function uploadAvatar(file: File): Promise<ApiResponse<{ avatar: string }
 
 // 更新用户偏好设置
 export function updatePreference(data: UserPreferenceRequest): Promise<ApiResponse<null>> {
-  return request.put('/api/user/preference', data)
+  return request.post('/api/user/preference', data)
 }
 
 // 获取用户统计数据

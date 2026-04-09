@@ -108,7 +108,7 @@ public class VoiceRecordController {
         return Result.success(voiceRecordService.getUserSuccessCount(userId));
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {

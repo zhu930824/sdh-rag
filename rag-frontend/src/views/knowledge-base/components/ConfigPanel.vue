@@ -31,12 +31,20 @@
           </a-form-item>
 
           <a-form-item label="嵌入模型" name="embeddingModel">
-            <a-select v-model:value="form.embeddingModel" style="width: 300px">
-              <a-select-option value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</a-select-option>
-              <a-select-option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</a-select-option>
-              <a-select-option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</a-select-option>
-              <a-select-option value="dashscope/text-embedding-v2">text-embedding-v2 (通义千问)</a-select-option>
-              <a-select-option value="bge-small-zh">bge-small-zh (本地)</a-select-option>
+            <a-select
+              v-model:value="form.embeddingModel"
+              style="width: 300px"
+              placeholder="请选择嵌入模型"
+              :loading="loadingModels"
+              allow-clear
+            >
+              <a-select-option
+                v-for="model in embeddingModels"
+                :key="model.id"
+                :value="model.modelId"
+              >
+                {{ model.name }} ({{ model.modelId }})
+              </a-select-option>
             </a-select>
           </a-form-item>
         </a-form>
@@ -50,10 +58,20 @@
           :wrapper-col="{ span: 14 }"
         >
           <a-form-item label="重排序模型" name="rankModel">
-            <a-select v-model:value="form.rankModel" style="width: 300px" allow-clear placeholder="不启用重排序">
-              <a-select-option value="bge-reranker-v2-m3">bge-reranker-v2-m3</a-select-option>
-              <a-select-option value="cohere-rerank">Cohere Rerank</a-select-option>
-              <a-select-option value="dashscope/rerank">通义千问 Rerank</a-select-option>
+            <a-select
+              v-model:value="form.rankModel"
+              style="width: 300px"
+              allow-clear
+              placeholder="不启用重排序"
+              :loading="loadingModels"
+            >
+              <a-select-option
+                v-for="model in rerankerModels"
+                :key="model.id"
+                :value="model.modelId"
+              >
+                {{ model.name }} ({{ model.modelId }})
+              </a-select-option>
             </a-select>
           </a-form-item>
 
@@ -141,8 +159,10 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch, ref } from 'vue'
+import { reactive, watch, ref, onMounted, computed } from 'vue'
 import type { KnowledgeBase } from '@/api/knowledgeBase'
+import { getActiveModels } from '@/api/model'
+import type { ModelConfig } from '@/types'
 
 const props = defineProps<{
   knowledgeBase: KnowledgeBase | null
@@ -165,11 +185,23 @@ const emit = defineEmits<{
 
 const saving = ref(false)
 const activeKeys = ref(['chunk', 'retrieval'])
+const allModels = ref<ModelConfig[]>([])
+const loadingModels = ref(false)
+
+// 嵌入模型列表
+const embeddingModels = computed(() => {
+  return allModels.value.filter(m => m.modelType === 'embedding' && m.status === 1)
+})
+
+// 重排模型列表
+const rerankerModels = computed(() => {
+  return allModels.value.filter(m => m.modelType === 'reranker' && m.status === 1)
+})
 
 const form = reactive({
   chunkSize: 500,
   chunkOverlap: 50,
-  embeddingModel: 'text-embedding-ada-002',
+  embeddingModel: '',
   rankModel: '',
   enableRewrite: false,
   similarityThreshold: 0.7,
@@ -179,11 +211,26 @@ const form = reactive({
   vectorWeight: 0.7,
 })
 
+// 加载模型列表
+async function loadModels() {
+  loadingModels.value = true
+  try {
+    const res = await getActiveModels()
+    if (res.code === 200) {
+      allModels.value = res.data || []
+    }
+  } catch (error) {
+    console.error('加载模型列表失败', error)
+  } finally {
+    loadingModels.value = false
+  }
+}
+
 watch(() => props.knowledgeBase, (kb) => {
   if (kb) {
     form.chunkSize = kb.chunkSize || 500
     form.chunkOverlap = kb.chunkOverlap || 50
-    form.embeddingModel = kb.embeddingModel || 'text-embedding-ada-002'
+    form.embeddingModel = kb.embeddingModel || ''
     form.rankModel = kb.rankModel || ''
     form.enableRewrite = kb.enableRewrite || false
     form.similarityThreshold = kb.similarityThreshold || 0.7
@@ -213,7 +260,7 @@ function handleReset() {
   if (props.knowledgeBase) {
     form.chunkSize = props.knowledgeBase.chunkSize || 500
     form.chunkOverlap = props.knowledgeBase.chunkOverlap || 50
-    form.embeddingModel = props.knowledgeBase.embeddingModel || 'text-embedding-ada-002'
+    form.embeddingModel = props.knowledgeBase.embeddingModel || ''
     form.rankModel = props.knowledgeBase.rankModel || ''
     form.enableRewrite = props.knowledgeBase.enableRewrite || false
     form.similarityThreshold = props.knowledgeBase.similarityThreshold || 0.7
@@ -223,6 +270,10 @@ function handleReset() {
     form.vectorWeight = props.knowledgeBase.vectorWeight || 0.7
   }
 }
+
+onMounted(() => {
+  loadModels()
+})
 </script>
 
 <style scoped lang="scss">

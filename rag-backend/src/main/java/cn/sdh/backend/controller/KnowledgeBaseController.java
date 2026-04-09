@@ -3,6 +3,7 @@ package cn.sdh.backend.controller;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.*;
+import cn.sdh.backend.dto.KnowledgeBaseListVO;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
@@ -54,6 +55,9 @@ public class KnowledgeBaseController {
         knowledgeBase.setName(request.getName());
         knowledgeBase.setDescription(request.getDescription());
         knowledgeBase.setUserId(userId);
+        knowledgeBase.setIcon(request.getIcon());
+        knowledgeBase.setColor(request.getColor());
+        knowledgeBase.setIsPublic(request.getIsPublic());
 
         knowledgeBaseService.createKnowledgeBase(knowledgeBase);
         return Result.success("创建成功", null);
@@ -63,9 +67,9 @@ public class KnowledgeBaseController {
      * 获取知识库列表（分页）
      */
     @GetMapping("/list")
-    public Result<Page<KnowledgeBase>> getKnowledgeBaseList(
+    public Result<Page<KnowledgeBaseListVO>> getKnowledgeBaseList(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "8") int pageSize,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer status) {
         Long userId = UserContext.getCurrentUserId();
@@ -73,7 +77,7 @@ public class KnowledgeBaseController {
             return Result.unauthorized();
         }
 
-        Page<KnowledgeBase> result = knowledgeBaseService.getKnowledgeBasePage(userId, page, size, keyword, status);
+        Page<KnowledgeBaseListVO> result = knowledgeBaseService.getKnowledgeBasePageWithStats(userId, page, pageSize, keyword, status);
         return Result.success(result);
     }
 
@@ -89,7 +93,7 @@ public class KnowledgeBaseController {
     /**
      * 更新知识库
      */
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> updateKnowledgeBase(@PathVariable Long id, @RequestBody KnowledgeBaseRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -115,7 +119,7 @@ public class KnowledgeBaseController {
     /**
      * 删除知识库
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> deleteKnowledgeBase(@PathVariable Long id) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -136,6 +140,19 @@ public class KnowledgeBaseController {
             @RequestParam(defaultValue = "10") int size) {
 
         Page<KnowledgeDocument> result = knowledgeBaseService.getDocumentsByKnowledgeId(id, page, size);
+        return Result.success(result);
+    }
+
+    /**
+     * 获取知识库下的文档详情列表（包含处理状态和配置信息）
+     */
+    @GetMapping("/{id}/documents/detail")
+    public Result<Page<KnowledgeDocumentVO>> getDocumentDetails(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        Page<KnowledgeDocumentVO> result = knowledgeBaseService.getDocumentDetailsByKnowledgeId(id, page, size);
         return Result.success(result);
     }
 
@@ -205,7 +222,7 @@ public class KnowledgeBaseController {
     /**
      * 更新文档关联配置
      */
-    @PutMapping("/{id}/documents/{documentId}/config")
+    @PostMapping("/{id}/documents/{documentId}/config")
     public Result<Void> updateDocumentConfig(
             @PathVariable Long id,
             @PathVariable Long documentId,
@@ -233,7 +250,7 @@ public class KnowledgeBaseController {
     /**
      * 移除文档与知识库的关联
      */
-    @DeleteMapping("/{id}/documents/{documentId}")
+    @PostMapping("/{id}/documents/{documentId}/unlink")
     public Result<Void> unlinkDocument(@PathVariable Long id, @PathVariable Long documentId) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -326,7 +343,7 @@ public class KnowledgeBaseController {
     /**
      * 更新知识库配置
      */
-    @PutMapping("/{id}/config")
+    @PostMapping("/{id}/config")
     public Result<Void> updateConfig(@PathVariable Long id, @RequestBody KnowledgeBaseConfigRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -390,7 +407,7 @@ public class KnowledgeBaseController {
     /**
      * 移除知识库标签
      */
-    @DeleteMapping("/{id}/tags/{tagId}")
+    @PostMapping("/{id}/tags/{tagId}/remove")
     public Result<Void> removeTag(@PathVariable Long id, @PathVariable Long tagId) {
         knowledgeBaseTagService.removeTagFromKnowledgeBase(id, tagId);
         return Result.success("移除成功", null);

@@ -138,7 +138,7 @@ export function getSessionMessages(sessionId: string): Promise<ApiResponse<ChatM
 
 // 删除会话
 export function deleteSession(sessionId: string): Promise<ApiResponse<null>> {
-  return request.delete(`/api/chat/session/${sessionId}`)
+  return request.post(`/api/chat/session/delete/${sessionId}`)
 }
 
 // 创建新会话
@@ -148,5 +148,5 @@ export function createSession(): Promise<ApiResponse<ChatSession>> {
 
 // 更新会话标题
 export function updateSessionTitle(sessionId: string, title: string): Promise<ApiResponse<null>> {
-  return request.put(`/api/chat/session/${sessionId}/title`, { title })
+  return request.post(`/api/chat/session/${sessionId}/title`, { title })
 }

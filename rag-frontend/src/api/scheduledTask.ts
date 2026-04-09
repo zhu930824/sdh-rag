@@ -30,11 +30,11 @@ export function createScheduledTask(data: Partial<ScheduledTask>): Promise<ApiRe
 }
 
 export function updateScheduledTask(id: number, data: Partial<ScheduledTask>): Promise<ApiResponse<null>> {
-  return request.put(`/api/scheduled-task/${id}`, data)
+  return request.post(`/api/scheduled-task/update/${id}`, data)
 }
 
 export function toggleTaskStatus(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/scheduled-task/${id}/toggle`)
+  return request.post(`/api/scheduled-task/toggle/${id}`)
 }
 
 export function executeTask(id: number): Promise<ApiResponse<null>> {
@@ -42,5 +42,5 @@ export function executeTask(id: number): Promise<ApiResponse<null>> {
 }
 
 export function deleteScheduledTask(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/scheduled-task/${id}`)
+  return request.post(`/api/scheduled-task/delete/${id}`)
 }

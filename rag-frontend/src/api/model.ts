@@ -38,17 +38,21 @@ export function createModel(data: ModelConfigRequest): Promise<ApiResponse<null>
 }
 
 export function updateModel(id: number, data: ModelConfigRequest): Promise<ApiResponse<null>> {
-  return request.put(`/api/model/${id}`, data)
+  return request.post(`/api/model/update/${id}`, data)
 }
 
 export function deleteModel(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/model/${id}`)
+  return request.post(`/api/model/delete/${id}`)
 }
 
 export function setModelDefault(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/model/${id}/default`)
+  return request.post(`/api/model/default/${id}`)
 }
 
 export function getActiveModels(): Promise<ApiResponse<ModelConfig[]>> {
   return request.get('/api/model/active')
+}
+
+export function getActiveChatModels(): Promise<ApiResponse<ModelConfig[]>> {
+  return request.get('/api/model/active/chat')
 }

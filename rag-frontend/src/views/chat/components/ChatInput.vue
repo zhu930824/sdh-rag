@@ -97,9 +97,8 @@ import {
   ArrowUpOutlined,
   PauseOutlined,
 } from '@ant-design/icons-vue'
-import { getCategoryList } from '@/api/document'
-import { getActiveModels } from '@/api/model'
-import type { DocumentCategory } from '@/api/document'
+import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
+import { getActiveChatModels } from '@/api/model'
 import type { ModelConfig } from '@/types'
 
 const props = withDefaults(
@@ -132,7 +131,7 @@ const textareaRef = ref()
 const inputText = ref('')
 const selectedKnowledgeId = ref<number | null>(props.knowledgeId)
 const selectedModelId = ref<number | null>(props.modelId)
-const knowledgeList = ref<DocumentCategory[]>([])
+const knowledgeList = ref<KnowledgeBase[]>([])
 const modelList = ref<ModelConfig[]>([])
 const knowledgeLoading = ref(false)
 const modelLoading = ref(false)
@@ -144,8 +143,8 @@ const canSend = computed(() => {
 async function fetchKnowledgeList(): Promise<void> {
   knowledgeLoading.value = true
   try {
-    const res = await getCategoryList()
-    knowledgeList.value = res.data || []
+    const res = await getKnowledgeBaseList({ page: 1, pageSize: 100, status: 1 })
+    knowledgeList.value = res.data?.records || []
   } catch (error) {
     console.error('获取知识库列表失败:', error)
   } finally {
@@ -156,7 +155,7 @@ async function fetchKnowledgeList(): Promise<void> {
 async function fetchModelList(): Promise<void> {
   modelLoading.value = true
   try {
-    const res = await getActiveModels()
+    const res = await getActiveChatModels()
     modelList.value = res.data || []
     // 默认选择第一个模型
     if (modelList.value.length > 0 && !selectedModelId.value) {

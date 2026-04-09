@@ -13,12 +13,12 @@
         <span>首页</span>
       </a-menu-item>
 
-      <a-menu-item key="/knowledge-base">
+      <a-menu-item key="/knowledge">
         <template #icon><FolderOutlined /></template>
         <span>知识库</span>
       </a-menu-item>
 
-      <a-menu-item key="/knowledge">
+      <a-menu-item key="/document">
         <template #icon><FileTextOutlined /></template>
         <span>文档管理</span>
       </a-menu-item>

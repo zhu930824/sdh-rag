@@ -1,5 +1,6 @@
 package cn.sdh.backend.service.impl;
 
+import cn.sdh.backend.service.EmbeddingModelFactory;
 import cn.sdh.backend.service.EmbeddingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -13,28 +14,64 @@ import java.util.List;
 
 /**
  * 向量嵌入服务实现
+ * 支持根据知识库配置动态选择嵌入模型
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmbeddingServiceImpl implements EmbeddingService {
 
-    private final EmbeddingModel embeddingModel;
+    private final EmbeddingModelFactory embeddingModelFactory;
     private final ObjectMapper objectMapper;
 
     @Override
     public float[] getEmbedding(String text) {
+        return getEmbeddingByModel(text, null);
+    }
+
+    @Override
+    public float[] getEmbedding(String text, Long knowledgeId) {
         if (text == null || text.isEmpty()) {
             return new float[0];
         }
 
         try {
+            EmbeddingModel embeddingModel = embeddingModelFactory.getEmbeddingModelByKnowledgeId(knowledgeId);
+            if (embeddingModel == null) {
+                log.error("无法获取嵌入模型: knowledgeId={}", knowledgeId);
+                return new float[0];
+            }
+
             EmbeddingResponse response = embeddingModel.embedForResponse(List.of(text));
             if (response != null && !response.getResults().isEmpty()) {
                 return response.getResults().get(0).getOutput();
             }
         } catch (Exception e) {
-            log.error("获取文本向量失败: {}", e.getMessage(), e);
+            log.error("获取文本向量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
+        }
+
+        return new float[0];
+    }
+
+    @Override
+    public float[] getEmbeddingByModel(String text, String embeddingModelName) {
+        if (text == null || text.isEmpty()) {
+            return new float[0];
+        }
+
+        try {
+            EmbeddingModel embeddingModel = embeddingModelFactory.getEmbeddingModel(embeddingModelName);
+            if (embeddingModel == null) {
+                log.error("无法获取嵌入模型: modelName={}", embeddingModelName);
+                return new float[0];
+            }
+
+            EmbeddingResponse response = embeddingModel.embedForResponse(List.of(text));
+            if (response != null && !response.getResults().isEmpty()) {
+                return response.getResults().get(0).getOutput();
+            }
+        } catch (Exception e) {
+            log.error("获取文本向量失败: modelName={}, error={}", embeddingModelName, e.getMessage(), e);
         }
 
         return new float[0];
@@ -42,6 +79,11 @@ public class EmbeddingServiceImpl implements EmbeddingService {
 
     @Override
     public List<float[]> batchGetEmbedding(List<String> texts) {
+        return batchGetEmbedding(texts, null);
+    }
+
+    @Override
+    public List<float[]> batchGetEmbedding(List<String> texts, Long knowledgeId) {
         List<float[]> results = new ArrayList<>();
 
         if (texts == null || texts.isEmpty()) {
@@ -49,6 +91,18 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         }
 
         try {
+            EmbeddingModel embeddingModel;
+            if (knowledgeId != null) {
+                embeddingModel = embeddingModelFactory.getEmbeddingModelByKnowledgeId(knowledgeId);
+            } else {
+                embeddingModel = embeddingModelFactory.getEmbeddingModel(null);
+            }
+
+            if (embeddingModel == null) {
+                log.error("无法获取嵌入模型: knowledgeId={}", knowledgeId);
+                return results;
+            }
+
             EmbeddingResponse response = embeddingModel.embedForResponse(texts);
             if (response != null) {
                 response.getResults().forEach(embedding -> {
@@ -56,7 +110,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
                 });
             }
         } catch (Exception e) {
-            log.error("批量获取文本向量失败: {}", e.getMessage(), e);
+            log.error("批量获取文本向量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
         }
 
         return results;

@@ -111,7 +111,7 @@ public class UserController {
     /**
      * 更新个人信息
      */
-    @PutMapping("/profile")
+    @PostMapping("/profile")
     public Result<Void> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -125,7 +125,7 @@ public class UserController {
     /**
      * 修改密码
      */
-    @PutMapping("/password")
+    @PostMapping("/password")
     public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -185,7 +185,7 @@ public class UserController {
     /**
      * 更新用户偏好设置
      */
-    @PutMapping("/preference")
+    @PostMapping("/preference")
     public Result<Void> updatePreference(@RequestBody UserPreferenceRequest request) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {

@@ -65,6 +65,13 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
     public List<ModelConfig> getActiveList() {
         return list(new LambdaQueryWrapper<ModelConfig>()
                 .eq(ModelConfig::getStatus, 1)
+                .orderByDesc(ModelConfig::getSort));
+    }
+
+    @Override
+    public List<ModelConfig> getActiveChatModels() {
+        return list(new LambdaQueryWrapper<ModelConfig>()
+                .eq(ModelConfig::getStatus, 1)
                 .eq(ModelConfig::getModelType, "chat")
                 .orderByDesc(ModelConfig::getSort));
     }

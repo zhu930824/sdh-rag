@@ -49,11 +49,11 @@
           </div>
           <div class="visual-card visual-card-float">
             <ThunderboltOutlined />
-            <span>响应时间 <strong>0.3s</strong></span>
+            <span>响应时间 <strong>{{ avgResponseTime }}s</strong></span>
           </div>
           <div class="visual-card visual-card-float-2">
             <SafetyCertificateOutlined />
-            <span>准确率 <strong>98.5%</strong></span>
+            <span>准确率 <strong>{{ accuracyRate }}%</strong></span>
           </div>
         </div>
       </div>
@@ -142,8 +142,8 @@
             class="activity-item"
             :style="{ animationDelay: `${index * 0.05}s` }"
           >
-            <div class="activity-icon" :style="{ background: activity.color }">
-              <component :is="activity.icon" />
+            <div class="activity-icon" :style="{ background: getActivityColor(activity.type) }">
+              <MessageOutlined />
             </div>
             <div class="activity-content">
               <div class="activity-title">{{ activity.title }}</div>
@@ -303,8 +303,9 @@ import {
   SafetyCertificateOutlined,
   DatabaseOutlined,
   NotificationOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
-import { getDashboardStats } from '@/api/dashboard'
+import { getDashboardStats, getRecentActivities, type DashboardStats, type ActivityRecord } from '@/api/dashboard'
 import { getActiveAnnouncements, type Announcement } from '@/api/announcement'
 
 const router = useRouter()
@@ -356,11 +357,15 @@ function getGreeting(): string {
 }
 
 const statsLoading = ref(false)
-const dashboardStats = reactive({
+const dashboardStats = reactive<Partial<DashboardStats>>({
   knowledgeCount: 0,
   documentCount: 0,
   chatCount: 0,
   userCount: 0,
+  todayChatCount: 0,
+  avgResponseTime: 0.3,
+  accuracyRate: 98.5,
+  hourlyStats: [],
 })
 
 const animatedStats = reactive({
@@ -368,6 +373,8 @@ const animatedStats = reactive({
 })
 
 const chartData = ref([40, 65, 45, 80, 55, 70, 60, 85, 50, 75, 65, 90])
+const avgResponseTime = ref('0.3')
+const accuracyRate = ref('98.5')
 
 const statsData = computed(() => [
   {
@@ -376,7 +383,7 @@ const statsData = computed(() => [
     icon: FolderOutlined,
     color: '#6366F1',
     gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-    trend: 12,
+    trend: 0, // 知识库暂无同比数据
     sparkline: 'M0,25 L10,20 L20,22 L30,15 L40,18 L50,10 L60,12 L70,8 L80,5 L90,7 L100,3',
   },
   {
@@ -385,7 +392,7 @@ const statsData = computed(() => [
     icon: FileTextOutlined,
     color: '#10B981',
     gradient: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
-    trend: 8,
+    trend: dashboardStats.documentTrend || 0,
     sparkline: 'M0,20 L10,18 L20,22 L30,15 L40,17 L50,12 L60,14 L70,10 L80,8 L90,12 L100,5',
   },
   {
@@ -394,7 +401,7 @@ const statsData = computed(() => [
     icon: MessageOutlined,
     color: '#F59E0B',
     gradient: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
-    trend: -5,
+    trend: dashboardStats.chatTrend || 0,
     sparkline: 'M0,15 L10,18 L20,12 L30,20 L40,15 L50,18 L60,12 L70,15 L80,10 L90,14 L100,8',
   },
   {
@@ -403,7 +410,7 @@ const statsData = computed(() => [
     icon: UserOutlined,
     color: '#EC4899',
     gradient: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
-    trend: 15,
+    trend: dashboardStats.userTrend || 0,
     sparkline: 'M0,22 L10,20 L20,18 L30,15 L40,17 L50,12 L60,10 L70,8 L80,6 L90,8 L100,4',
   },
 ])
@@ -441,26 +448,35 @@ const features = [
 
 const announcements = ref<Announcement[]>([])
 
-const recentActivities = ref([
-  { id: 1, title: '上传了文档《产品需求规格说明书.pdf》', time: '5分钟前', type: '文档', icon: FileTextOutlined, color: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', status: 'success', statusText: '完成' },
-  { id: 2, title: '创建知识库「技术文档」', time: '30分钟前', type: '知识库', icon: FolderOutlined, color: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', status: 'success', statusText: '完成' },
-  { id: 3, title: 'AI问答：如何优化向量检索性能？', time: '1小时前', type: '问答', icon: MessageOutlined, color: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', status: 'success', statusText: '完成' },
-  { id: 4, title: '更新知识图谱节点关系', time: '2小时前', type: '图谱', icon: ApartmentOutlined, color: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', status: 'processing', statusText: '处理中' },
-  { id: 5, title: '批量导入文档 15 个', time: '昨天', type: '文档', icon: FileTextOutlined, color: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', status: 'success', statusText: '完成' },
-])
+const recentActivities = ref<ActivityRecord[]>([])
 
 async function loadStats() {
   statsLoading.value = true
   try {
-    const { data } = await getDashboardStats()
-    if (data.data) {
-      dashboardStats.knowledgeCount = data.data.knowledgeCount || 0
-      dashboardStats.documentCount = data.data.documentCount || 0
-      dashboardStats.chatCount = data.data.chatCount || 0
-      dashboardStats.userCount = data.data.userCount || 0
+    const res = await getDashboardStats()
+    const data = res.data
+    if (data) {
+      dashboardStats.knowledgeCount = data.knowledgeCount || 0
+      dashboardStats.documentCount = data.documentCount || 0
+      dashboardStats.chatCount = data.chatCount || 0
+      dashboardStats.userCount = data.userCount || 0
+      dashboardStats.todayChatCount = data.todayChatCount || 0
+      dashboardStats.avgResponseTime = data.avgResponseTime || 0.3
+      dashboardStats.accuracyRate = data.accuracyRate || 98.5
+      dashboardStats.hourlyStats = data.hourlyStats || []
 
-      // Animate chat count
-      animatedStats.chatCount = data.data.chatCount || 0
+      // Animate today chat count
+      animatedStats.chatCount = data.todayChatCount || 0
+
+      // Update chart data from hourly stats
+      if (data.hourlyStats && data.hourlyStats.length > 0) {
+        const maxCount = Math.max(...data.hourlyStats.map((h: any) => h.count), 1)
+        chartData.value = data.hourlyStats.map((h: any) => (h.count / maxCount) * 100)
+      }
+
+      // Update response time and accuracy
+      avgResponseTime.value = (data.avgResponseTime || 0.3).toFixed(1)
+      accuracyRate.value = (data.accuracyRate || 98.5).toFixed(1)
     }
   } catch (error) {
     console.error('加载统计数据失败:', error)
@@ -469,11 +485,22 @@ async function loadStats() {
   }
 }
 
+async function loadRecentActivities() {
+  try {
+    const res = await getRecentActivities()
+    if (res.data) {
+      recentActivities.value = res.data
+    }
+  } catch (error) {
+    console.error('加载最近活动失败:', error)
+  }
+}
+
 async function loadAnnouncements() {
   try {
-    const { data } = await getActiveAnnouncements()
-    if (data.data) {
-      announcements.value = data.data.slice(0, 5)
+    const res = await getActiveAnnouncements()
+    if (res.data) {
+      announcements.value = res.data.slice(0, 5)
     }
   } catch (error) {
     console.error('加载公告失败:', error)
@@ -490,6 +517,16 @@ function getAnnouncementTypeText(type: string): string {
   return map[type] || '公告'
 }
 
+function getActivityColor(type: string): string {
+  const map: Record<string, string> = {
+    '问答': 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+    '文档': 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
+    '知识库': 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
+    '图谱': 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
+  }
+  return map[type] || 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)'
+}
+
 function showAnnouncementDetail(announcement: Announcement) {
   // 可以跳转到公告详情或弹窗显示
   console.log('查看公告:', announcement)
@@ -498,6 +535,7 @@ function showAnnouncementDetail(announcement: Announcement) {
 onMounted(() => {
   loadStats()
   loadAnnouncements()
+  loadRecentActivities()
 })
 </script>
 
@@ -515,14 +553,14 @@ onMounted(() => {
 // ============================================
 .hero-section {
   position: relative;
-  background: linear-gradient(135deg, #6366F1 0%, #818CF8 50%, #A5B4FC 100%);
+  background: linear-gradient(135deg, #059669 0%, #10B981 50%, #34D399 100%);
   border-radius: var(--radius-2xl);
   padding: 40px 48px;
   overflow: hidden;
   min-height: 280px;
 
   html.dark & {
-    background: linear-gradient(135deg, #312E81 0%, #3730A3 50%, #4338CA 100%);
+    background: linear-gradient(135deg, #064E3B 0%, #065F46 50%, #047857 100%);
   }
 }
 
@@ -540,7 +578,7 @@ onMounted(() => {
     &.hero-orb-1 {
       width: 300px;
       height: 300px;
-      background: #A5B4FC;
+      background: #6EE7B7;
       top: -100px;
       right: 10%;
       animation: float 8s ease-in-out infinite;
@@ -549,7 +587,7 @@ onMounted(() => {
     &.hero-orb-2 {
       width: 200px;
       height: 200px;
-      background: #C7D2FE;
+      background: #A7F3D0;
       bottom: -50px;
       left: 20%;
       animation: float 6s ease-in-out infinite reverse;
@@ -558,7 +596,7 @@ onMounted(() => {
     &.hero-orb-3 {
       width: 150px;
       height: 150px;
-      background: #E0E7FF;
+      background: #D1FAE5;
       top: 30%;
       right: 30%;
       animation: float 10s ease-in-out infinite;
@@ -617,7 +655,7 @@ onMounted(() => {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #FFFFFF 0%, #E0E7FF 50%, #C7D2FE 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, #D1FAE5 50%, #A7F3D0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -646,11 +684,11 @@ onMounted(() => {
   &.ant-btn-primary {
     background: #fff;
     border: none;
-    color: #6366F1;
+    color: #059669;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
 
     &:hover {
-      background: #F5F3FF;
+      background: #ECFDF5;
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
     }
@@ -704,7 +742,7 @@ onMounted(() => {
 
     .anticon {
       font-size: 18px;
-      color: #10B981;
+      color: #6EE7B7;
     }
 
     strong {
@@ -787,7 +825,7 @@ onMounted(() => {
 
 .chart-bar {
   flex: 1;
-  background: linear-gradient(180deg, rgba(129, 140, 248, 0.8) 0%, rgba(165, 180, 252, 0.3) 100%);
+  background: linear-gradient(180deg, rgba(110, 231, 183, 0.8) 0%, rgba(167, 243, 208, 0.3) 100%);
   border-radius: 2px 2px 0 0;
   min-height: 4px;
   transition: height 0.5s ease;

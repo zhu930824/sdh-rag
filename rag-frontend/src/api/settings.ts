@@ -33,9 +33,9 @@ export function getSettingByKey(key: string): Promise<ApiResponse<Record<string,
 }
 
 export function updateAllSettings(settings: Record<string, Record<string, unknown>>): Promise<ApiResponse<null>> {
-  return request.put('/api/settings', settings)
+  return request.post('/api/settings/update', settings)
 }
 
 export function updateSettingByKey(key: string, value: Record<string, unknown>): Promise<ApiResponse<null>> {
-  return request.put(`/api/settings/${key}`, value)
+  return request.post(`/api/settings/update/${key}`, value)
 }

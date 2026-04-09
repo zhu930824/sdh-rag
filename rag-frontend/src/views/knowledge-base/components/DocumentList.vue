@@ -154,11 +154,20 @@
         </template>
 
         <a-form-item label="嵌入模型">
-          <a-select v-model:value="configForm.embeddingModel" style="width: 200px" allow-clear>
-            <a-select-option value="text-embedding-ada-002">text-embedding-ada-002</a-select-option>
-            <a-select-option value="text-embedding-3-small">text-embedding-3-small</a-select-option>
-            <a-select-option value="text-embedding-3-large">text-embedding-3-large</a-select-option>
-            <a-select-option value="dashscope/text-embedding-v2">通义千问 embedding</a-select-option>
+          <a-select
+            v-model:value="configForm.embeddingModel"
+            style="width: 200px"
+            allow-clear
+            placeholder="请选择嵌入模型"
+            :loading="loadingModels"
+          >
+            <a-select-option
+              v-for="model in embeddingModels"
+              :key="model.id"
+              :value="model.modelId"
+            >
+              {{ model.name }}
+            </a-select-option>
           </a-select>
         </a-form-item>
       </a-form>
@@ -173,13 +182,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   getKnowledgeBaseDocuments,
   updateDocumentLinkConfig,
   type DocumentLinkConfig,
+  type KnowledgeDocumentVO,
 } from '@/api/knowledgeBase'
+import { getActiveModels } from '@/api/model'
+import type { ModelConfig } from '@/types'
 
 const props = defineProps<{
   knowledgeBaseId: number
@@ -192,9 +204,16 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
-const documents = ref<any[]>([])
+const documents = ref<KnowledgeDocumentVO[]>([])
 const configModalVisible = ref(false)
-const currentDocument = ref<any>(null)
+const currentDocument = ref<KnowledgeDocumentVO | null>(null)
+const allModels = ref<ModelConfig[]>([])
+const loadingModels = ref(false)
+
+// 嵌入模型列表
+const embeddingModels = computed(() => {
+  return allModels.value.filter(m => m.modelType === 'embedding' && m.status === 1)
+})
 
 const pagination = reactive({
   current: 1,
@@ -287,7 +306,7 @@ function formatModelName(model: string): string {
   return model.substring(0, 12) + '...'
 }
 
-function showConfigModal(record: any) {
+function showConfigModal(record: KnowledgeDocumentVO) {
   currentDocument.value = record
   configForm.chunkMode = record.chunkMode || 'default'
   configForm.splitType = record.splitType || 'length'
@@ -348,7 +367,26 @@ function handleReprocess(documentId: number) {
   emit('reprocess', documentId)
 }
 
+// 加载模型列表
+async function loadModels() {
+  loadingModels.value = true
+  try {
+    const res = await getActiveModels()
+    if (res.code === 200) {
+      allModels.value = res.data || []
+    }
+  } catch (error) {
+    console.error('加载模型列表失败', error)
+  } finally {
+    loadingModels.value = false
+  }
+}
+
 watch(() => props.knowledgeBaseId, loadDocuments, { immediate: true })
+
+onMounted(() => {
+  loadModels()
+})
 
 defineExpose({
   loadDocuments,

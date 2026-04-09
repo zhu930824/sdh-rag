@@ -51,7 +51,7 @@ public class SensitiveWordController {
         return Result.success();
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody SensitiveWordRequest request) {
         SensitiveWord existing = sensitiveWordService.getById(id);
         if (existing == null) {
@@ -65,7 +65,7 @@ public class SensitiveWordController {
         return Result.success();
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         SensitiveWord word = sensitiveWordService.getById(id);
         if (word == null) {
@@ -75,7 +75,7 @@ public class SensitiveWordController {
         return Result.success();
     }
 
-    @DeleteMapping("/batch")
+    @PostMapping("/batch-delete")
     public Result<Void> deleteBatch(@RequestBody List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return Result.error("请选择要删除的敏感词");
@@ -84,7 +84,7 @@ public class SensitiveWordController {
         return Result.success();
     }
 
-    @PutMapping("/{id}/status")
+    @PostMapping("/status/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         SensitiveWord word = sensitiveWordService.getById(id);
         if (word == null) {

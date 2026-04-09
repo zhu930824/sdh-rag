@@ -246,7 +246,7 @@ async function loadAllTags() {
 }
 
 function handleBack() {
-  router.push('/knowledge-base')
+  router.push('/knowledge')
 }
 
 function handleEdit() {
@@ -296,6 +296,8 @@ async function handleLinkDocuments() {
     }
     message.success('关联成功')
     showLinkDocumentModal.value = false
+    // 重置弹窗状态
+    linkDocumentRef.value?.reset()
     selectedDocumentIds.value = []
     loadDetail()
     documentListRef.value?.loadDocuments()
@@ -309,6 +311,7 @@ async function handleUnlinkDocument(documentId: number) {
     await unlinkDocumentFromKnowledgeBase(knowledgeBaseId.value, documentId)
     message.success('移除成功')
     loadDetail()
+    documentListRef.value?.loadDocuments()
   } catch (error) {
     message.error('移除失败')
   }

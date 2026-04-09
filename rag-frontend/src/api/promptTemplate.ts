@@ -46,11 +46,11 @@ export function createPromptTemplate(data: Partial<PromptTemplate>): Promise<Api
 }
 
 export function updatePromptTemplate(id: number, data: Partial<PromptTemplate>): Promise<ApiResponse<null>> {
-  return request.put(`/api/prompt-template/${id}`, data)
+  return request.post(`/api/prompt-template/update/${id}`, data)
 }
 
 export function deletePromptTemplate(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/prompt-template/${id}`)
+  return request.post(`/api/prompt-template/delete/${id}`)
 }
 
 export function renderPromptTemplate(code: string, variables: Record<string, string>): Promise<ApiResponse<{ content: string }>> {

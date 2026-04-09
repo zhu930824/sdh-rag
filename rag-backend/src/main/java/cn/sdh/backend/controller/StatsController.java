@@ -25,18 +25,18 @@ public class StatsController {
     @GetMapping("/overview")
     public Result<Map<String, Object>> overview() {
         Map<String, Object> result = new HashMap<>();
-        
+
         result.put("totalDocuments", documentMapper.selectCount(null));
         result.put("totalUsers", userMapper.selectCount(null));
         result.put("totalChats", chatHistoryMapper.selectCount(null));
-        
+
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         Long todayChats = chatHistoryMapper.selectCount(
             new LambdaQueryWrapper<ChatHistory>()
                 .ge(ChatHistory::getCreateTime, todayStart)
         );
         result.put("todayChats", todayChats);
-        
+
         return Result.success(result);
     }
 
@@ -44,31 +44,31 @@ public class StatsController {
     public Result<List<Map<String, Object>>> chatTrend(
             @RequestParam String startDate,
             @RequestParam String endDate) {
-        
+
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end = LocalDate.parse(endDate);
-        
+
         List<Map<String, Object>> trend = new ArrayList<>();
-        
+
         LocalDate current = start;
         while (!current.isAfter(end)) {
             Map<String, Object> dayData = new HashMap<>();
             dayData.put("date", current.toString());
-            
+
             LocalDateTime dayStart = current.atStartOfDay();
             LocalDateTime dayEnd = current.plusDays(1).atStartOfDay();
-            
+
             Long count = chatHistoryMapper.selectCount(
                 new LambdaQueryWrapper<ChatHistory>()
                     .ge(ChatHistory::getCreateTime, dayStart)
                     .lt(ChatHistory::getCreateTime, dayEnd)
             );
             dayData.put("count", count);
-            
+
             trend.add(dayData);
             current = current.plusDays(1);
         }
-        
+
         return Result.success(trend);
     }
 
@@ -76,15 +76,15 @@ public class StatsController {
     public Result<Map<String, Object>> apiCostStats(
             @RequestParam String startDate,
             @RequestParam String endDate) {
-        
+
         Map<String, Object> result = new HashMap<>();
-        
+
         result.put("totalTokens", 1000000);
         result.put("totalCost", 123.45);
-        
+
         List<Map<String, Object>> modelStats = new ArrayList<>();
         result.put("modelStats", modelStats);
-        
+
         return Result.success(result);
     }
 }

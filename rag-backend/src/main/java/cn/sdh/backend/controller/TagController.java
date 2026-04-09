@@ -49,7 +49,7 @@ public class TagController {
         return Result.success();
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody Tag tag) {
         Tag existing = tagService.getById(id);
         if (existing == null) {
@@ -60,7 +60,7 @@ public class TagController {
         return Result.success();
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         tagService.removeById(id);
         return Result.success();
@@ -75,7 +75,7 @@ public class TagController {
         return Result.success();
     }
 
-    @DeleteMapping("/document/{documentId}/{tagId}")
+    @PostMapping("/document/{documentId}/{tagId}/remove")
     public Result<Void> removeDocumentTag(@PathVariable Long documentId, @PathVariable Long tagId) {
         tagService.removeDocumentTag(documentId, tagId);
         return Result.success();

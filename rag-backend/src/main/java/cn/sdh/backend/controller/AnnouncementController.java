@@ -67,38 +67,38 @@ public class AnnouncementController {
         return Result.success();
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody Announcement announcement) {
         Announcement existing = announcementService.getById(id);
         if (existing == null) {
             return Result.notFound("公告不存在");
         }
-        
+
         announcement.setId(id);
         announcement.setUpdateTime(LocalDateTime.now());
         announcementService.updateById(announcement);
         return Result.success();
     }
 
-    @PutMapping("/{id}/publish")
+    @PostMapping("/publish/{id}")
     public Result<Void> publish(@PathVariable Long id) {
         Announcement announcement = announcementService.getById(id);
         if (announcement == null) {
             return Result.notFound("公告不存在");
         }
-        
+
         Long userId = UserContext.getCurrentUserId();
         announcementService.publish(id, userId);
         return Result.success();
     }
 
-    @PutMapping("/{id}/offline")
+    @PostMapping("/offline/{id}")
     public Result<Void> offline(@PathVariable Long id) {
         announcementService.offline(id);
         return Result.success();
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         announcementService.removeById(id);
         return Result.success();

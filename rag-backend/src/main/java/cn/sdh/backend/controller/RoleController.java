@@ -58,7 +58,7 @@ public class RoleController {
         }
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody RoleRequest request) {
         try {
             roleService.updateRole(id, request);
@@ -68,7 +68,7 @@ public class RoleController {
         }
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         try {
             roleService.deleteRole(id);
@@ -102,7 +102,7 @@ public class RoleController {
         return Result.success("批量删除完成", data);
     }
 
-    @PutMapping("/{id}/status")
+    @PostMapping("/status/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         try {
             roleService.toggleStatus(id);

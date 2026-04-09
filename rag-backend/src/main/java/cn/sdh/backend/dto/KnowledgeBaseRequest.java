@@ -11,4 +11,10 @@ public class KnowledgeBaseRequest {
     private String name;
 
     private String description;
+
+    private String icon;
+
+    private String color;
+
+    private Boolean isPublic;
 }

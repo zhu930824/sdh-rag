@@ -146,7 +146,7 @@
           v-model:current="pagination.current"
           v-model:page-size="pagination.pageSize"
           :total="pagination.total"
-          :page-size-options="['12', '24', '48', '96']"
+          :page-size-options="['8', '16', '24', '32']"
           show-size-changer
           show-quick-jumper
           :show-total="(total: number) => `共 ${total} 条`"
@@ -287,7 +287,7 @@ const currentKb = ref<KnowledgeBase | null>(null)
 
 const pagination = reactive({
   current: 1,
-  pageSize: 12,
+  pageSize: 8,
   total: 0,
 })
 
@@ -443,13 +443,13 @@ async function handleDelete(kb: KnowledgeBase) {
 }
 
 function handleViewDetail(kb: KnowledgeBase) {
-  router.push(`/knowledge-base/${kb.id}`)
+  router.push(`/knowledge/${kb.id}`)
 }
 
 function handleViewDocuments(kb: KnowledgeBase | null) {
   if (!kb) return
   router.push({
-    path: '/knowledge-base',
+    path: '/knowledge',
     query: { knowledgeBaseId: kb.id },
   })
 }

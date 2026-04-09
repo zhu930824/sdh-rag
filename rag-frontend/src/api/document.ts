@@ -65,12 +65,12 @@ export function createCategory(data: CategoryRequest): Promise<ApiResponse<void>
 
 // 更新分类
 export function updateCategory(id: number, data: CategoryRequest): Promise<ApiResponse<void>> {
-  return request.put(`/api/document/category/${id}`, data)
+  return request.post(`/api/document/category/update/${id}`, data)
 }
 
 // 删除分类
 export function deleteCategory(id: number): Promise<ApiResponse<void>> {
-  return request.delete(`/api/document/category/${id}`)
+  return request.post(`/api/document/category/delete/${id}`)
 }
 
 // ==================== 文档相关 API ====================
@@ -107,7 +107,7 @@ export function searchDocuments(params: {
 
 // 删除文档
 export function deleteDocument(id: number): Promise<ApiResponse<void>> {
-  return request.delete(`/api/document/${id}`)
+  return request.post(`/api/document/delete/${id}`)
 }
 
 // 获取文档详情

@@ -18,6 +18,7 @@ export interface KnowledgeBase {
   vectorTopK: number
   keywordWeight: number
   vectorWeight: number
+  // 统计数据
   documentCount: number
   chunkCount: number
   status: number
@@ -142,17 +143,17 @@ export function createKnowledgeBase(data: KnowledgeBaseFormData) {
 
 // 更新知识库
 export function updateKnowledgeBase(id: number, data: KnowledgeBaseFormData) {
-  return request.put<KnowledgeBase>(`/api/knowledge-base/${id}`, data)
+  return request.post<KnowledgeBase>(`/api/knowledge-base/update/${id}`, data)
 }
 
 // 更新知识库配置
 export function updateKnowledgeBaseConfig(id: number, data: KnowledgeBaseConfigRequest) {
-  return request.put(`/api/knowledge-base/${id}/config`, data)
+  return request.post(`/api/knowledge-base/${id}/config`, data)
 }
 
 // 删除知识库
 export function deleteKnowledgeBase(id: number) {
-  return request.delete(`/api/knowledge-base/${id}`)
+  return request.post(`/api/knowledge-base/delete/${id}`)
 }
 
 // 获取知识库统计
@@ -167,7 +168,42 @@ export function getKnowledgeBaseStats() {
 
 // 获取知识库文档列表
 export function getKnowledgeBaseDocuments(id: number, params: { page: number; pageSize: number }) {
-  return request.get<{ records: any[]; total: number }>(`/api/knowledge-base/${id}/documents`, { params })
+  return request.get<ApiResponse<PageResult<KnowledgeDocumentVO>>>(`/api/knowledge-base/${id}/documents/detail`, { params })
+}
+
+// 通用响应类型
+export interface ApiResponse<T> {
+  code: number
+  message?: string
+  data: T
+}
+
+// 分页结果
+export interface PageResult<T> {
+  records: T[]
+  total: number
+}
+
+// 知识库文档详情 VO（包含处理状态和配置信息）
+export interface KnowledgeDocumentVO {
+  id: number
+  title: string
+  fileType: string
+  fileSize: number
+  processStatus: number
+  chunkMode: string
+  splitType: string
+  chunkSize: number
+  chunkOverlap: number
+  pagesPerChunk: number
+  headingLevels: string
+  regexPattern: string
+  embeddingModel: string
+  smartConfig: string
+  chunkCount: number
+  processTime: string
+  errorMessage: string
+  createTime: string
 }
 
 // 关联文档到知识库
@@ -177,7 +213,7 @@ export function linkDocumentsToKnowledgeBase(knowledgeBaseId: number, data: Link
 
 // 更新文档关联配置
 export function updateDocumentLinkConfig(knowledgeBaseId: number, documentId: number, config: DocumentLinkConfig) {
-  return request.put(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}/config`, config)
+  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}/config`, config)
 }
 
 // 获取文档关联详情
@@ -207,7 +243,7 @@ export interface KnowledgeDocumentRelation {
 
 // 移除文档关联
 export function unlinkDocumentFromKnowledgeBase(knowledgeBaseId: number, documentId: number) {
-  return request.delete(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}`)
+  return request.post(`/api/knowledge-base/${knowledgeBaseId}/documents/${documentId}/unlink`)
 }
 
 // 重新处理文档
@@ -237,7 +273,7 @@ export function addKnowledgeBaseTag(knowledgeBaseId: number, tagId: number) {
 
 // 移除知识库标签
 export function removeKnowledgeBaseTag(knowledgeBaseId: number, tagId: number) {
-  return request.delete(`/api/knowledge-base/${knowledgeBaseId}/tags/${tagId}`)
+  return request.post(`/api/knowledge-base/${knowledgeBaseId}/tags/${tagId}/remove`)
 }
 
 // 获取知识库标签列表

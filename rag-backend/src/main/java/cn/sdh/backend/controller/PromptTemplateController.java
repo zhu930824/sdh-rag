@@ -77,7 +77,7 @@ public class PromptTemplateController {
         }
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody PromptTemplate template) {
         template.setId(id);
         try {
@@ -88,7 +88,7 @@ public class PromptTemplateController {
         }
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         try {
             promptTemplateService.deleteTemplate(id);

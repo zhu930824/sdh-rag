@@ -51,5 +51,5 @@ export function getVoiceStats(): Promise<ApiResponse<number>> {
 }
 
 export function deleteVoiceRecord(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/voice/${id}`)
+  return request.post(`/api/voice/delete/${id}`)
 }

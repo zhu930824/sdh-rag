@@ -77,26 +77,26 @@ public class ChatSessionController {
         return Result.success(session);
     }
 
-    @PutMapping("/{sessionId}/title")
+    @PostMapping("/title/{sessionId}")
     public Result<Void> updateTitle(@PathVariable String sessionId, @RequestBody Map<String, String> request) {
         String title = request.get("title");
         chatSessionService.updateSessionTitle(sessionId, title);
         return Result.success();
     }
 
-    @PutMapping("/{sessionId}/star")
+    @PostMapping("/star/{sessionId}")
     public Result<Void> toggleStar(@PathVariable String sessionId) {
         chatSessionService.toggleStar(sessionId);
         return Result.success();
     }
 
-    @PutMapping("/{sessionId}/archive")
+    @PostMapping("/archive/{sessionId}")
     public Result<Void> toggleArchive(@PathVariable String sessionId) {
         chatSessionService.toggleArchive(sessionId);
         return Result.success();
     }
 
-    @DeleteMapping("/{sessionId}")
+    @PostMapping("/delete/{sessionId}")
     public Result<Void> delete(@PathVariable String sessionId) {
         chatSessionService.deleteSession(sessionId);
         return Result.success();
@@ -139,7 +139,7 @@ public class ChatSessionController {
         }
     }
 
-    @DeleteMapping("/share/{shareId}")
+    @PostMapping("/share/delete/{shareId}")
     public Result<Void> closeShare(@PathVariable Long shareId) {
         chatSessionService.closeShare(shareId);
         return Result.success();

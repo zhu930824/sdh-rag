@@ -11,7 +11,7 @@ import java.util.List;
 public interface VectorStoreService {
 
     /**
-     * 添加向量
+     * 添加向量（使用知识库配置的嵌入模型）
      * @param chunk 分块信息
      * @param knowledgeId 知识库ID
      * @return 向量ID
@@ -19,12 +19,30 @@ public interface VectorStoreService {
     String addVector(KnowledgeChunk chunk, Long knowledgeId);
 
     /**
-     * 批量添加向量
+     * 添加向量（指定嵌入模型名称）
+     * @param chunk 分块信息
+     * @param knowledgeId 知识库ID
+     * @param embeddingModelName 嵌入模型名称
+     * @return 向量ID
+     */
+    String addVector(KnowledgeChunk chunk, Long knowledgeId, String embeddingModelName);
+
+    /**
+     * 批量添加向量（使用知识库配置的嵌入模型）
      * @param chunks 分块列表
      * @param knowledgeId 知识库ID
      * @return 向量ID列表
      */
     List<String> batchAddVectors(List<KnowledgeChunk> chunks, Long knowledgeId);
+
+    /**
+     * 批量添加向量（指定嵌入模型名称）
+     * @param chunks 分块列表
+     * @param knowledgeId 知识库ID
+     * @param embeddingModelName 嵌入模型名称
+     * @return 向量ID列表
+     */
+    List<String> batchAddVectors(List<KnowledgeChunk> chunks, Long knowledgeId, String embeddingModelName);
 
     /**
      * 更新向量的知识库关联
@@ -59,7 +77,7 @@ public interface VectorStoreService {
     void deleteVectorsByKnowledgeId(Long knowledgeId);
 
     /**
-     * 相似度搜索
+     * 相似度搜索（使用知识库配置的嵌入模型）
      * @param query 查询文本
      * @param knowledgeId 知识库ID
      * @param topK 返回数量
@@ -68,8 +86,82 @@ public interface VectorStoreService {
     List<Document> similaritySearch(String query, Long knowledgeId, int topK);
 
     /**
+     * 相似度搜索（指定嵌入模型名称）
+     * @param query 查询文本
+     * @param knowledgeId 知识库ID
+     * @param topK 返回数量
+     * @param embeddingModelName 嵌入模型名称
+     * @return 相似文档列表
+     */
+    List<Document> similaritySearch(String query, Long knowledgeId, int topK, String embeddingModelName);
+
+    /**
      * 按文档ID删除所有向量
      * @param documentId 文档ID
      */
     void deleteVectorsByDocumentId(Long documentId);
+
+    /**
+     * 按文档ID和知识库ID删除向量
+     * @param documentId 文档ID
+     * @param knowledgeId 知识库ID
+     */
+    void deleteVectorsByDocumentIdAndKnowledgeId(Long documentId, Long knowledgeId);
+
+    // ==================== 分块查询方法（从ES查询） ====================
+
+    /**
+     * 统计知识库的分块数量
+     * @param knowledgeId 知识库ID
+     * @return 分块数量
+     */
+    long countChunksByKnowledgeId(Long knowledgeId);
+
+    /**
+     * 统计文档的分块数量
+     * @param documentId 文档ID
+     * @param knowledgeId 知识库ID
+     * @return 分块数量
+     */
+    long countChunksByDocumentId(Long documentId, Long knowledgeId);
+
+    /**
+     * 获取知识库的分块列表（分页）
+     * @param knowledgeId 知识库ID
+     * @param page 页码（从0开始）
+     * @param size 每页大小
+     * @return 分块列表
+     */
+    List<Document> getChunksByKnowledgeId(Long knowledgeId, int page, int size);
+
+    /**
+     * 获取文档的分块列表（分页）
+     * @param documentId 文档ID
+     * @param knowledgeId 知识库ID
+     * @param page 页码（从0开始）
+     * @param size 每页大小
+     * @return 分块列表
+     */
+    List<Document> getChunksByDocumentId(Long documentId, Long knowledgeId, int page, int size);
+
+    /**
+     * 根据分块ID获取分块详情
+     * @param vectorId 向量ID
+     * @return 分块文档
+     */
+    Document getChunkById(String vectorId);
+
+    /**
+     * 获取知识库的索引大小（字节数）
+     * @param knowledgeId 知识库ID
+     * @return 索引大小
+     */
+    long getIndexSizeByKnowledgeId(Long knowledgeId);
+
+    /**
+     * 获取知识库最后更新时间
+     * @param knowledgeId 知识库ID
+     * @return 时间戳（毫秒）
+     */
+    long getLastUpdateTimeByKnowledgeId(Long knowledgeId);
 }

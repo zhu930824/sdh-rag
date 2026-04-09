@@ -27,13 +27,13 @@ public class SystemSettingsController {
         return Result.success(setting);
     }
 
-    @PutMapping
+    @PostMapping("/update")
     public Result<Void> updateAll(@RequestBody Map<String, Map<String, Object>> settings) {
         settingsService.updateAll(settings);
         return Result.success();
     }
 
-    @PutMapping("/{key}")
+    @PostMapping("/update/{key}")
     public Result<Void> updateByKey(@PathVariable String key, @RequestBody Map<String, Object> value) {
         settingsService.updateByKey(key, value);
         return Result.success();

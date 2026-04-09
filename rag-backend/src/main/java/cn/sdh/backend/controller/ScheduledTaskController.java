@@ -44,7 +44,7 @@ public class ScheduledTaskController {
         }
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody ScheduledTask task) {
         task.setId(id);
         try {
@@ -55,7 +55,7 @@ public class ScheduledTaskController {
         }
     }
 
-    @PutMapping("/{id}/toggle")
+    @PostMapping("/toggle/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         try {
             scheduledTaskService.toggleStatus(id);
@@ -75,7 +75,7 @@ public class ScheduledTaskController {
         }
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         try {
             scheduledTaskService.deleteTask(id);

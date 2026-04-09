@@ -43,7 +43,7 @@ public class QaFeedbackController {
         return Result.success(feedbackService.createFeedback(feedback));
     }
 
-    @PutMapping("/{id}/handle")
+    @PostMapping("/handle/{id}")
     public Result<Void> handle(@PathVariable Long id, @RequestParam Integer status) {
         Long handlerId = UserContext.getCurrentUserId();
         if (handlerId == null) {

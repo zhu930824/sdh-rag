@@ -22,4 +22,6 @@ public interface ModelConfigService {
     ModelConfig getDefault();
 
     List<ModelConfig> getActiveList();
+
+    List<ModelConfig> getActiveChatModels();
 }

@@ -31,15 +31,15 @@ export function createWebhook(data: Partial<WebhookConfig>): Promise<ApiResponse
 }
 
 export function updateWebhook(id: number, data: Partial<WebhookConfig>): Promise<ApiResponse<null>> {
-  return request.put(`/api/webhook/${id}`, data)
+  return request.post(`/api/webhook/update/${id}`, data)
 }
 
 export function toggleWebhookStatus(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/webhook/${id}/toggle`)
+  return request.post(`/api/webhook/toggle/${id}`)
 }
 
 export function deleteWebhook(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/webhook/${id}`)
+  return request.post(`/api/webhook/delete/${id}`)
 }
 
 export function testWebhook(id: number): Promise<ApiResponse<null>> {

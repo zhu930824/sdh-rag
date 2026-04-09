@@ -134,8 +134,8 @@ const menuConfig: MenuItem[] = [
     label: '知识管理',
     icon: FolderOutlined,
     children: [
-      { key: '/knowledge-base', label: '知识库', icon: DatabaseOutlined, permission: '/knowledge-base' },
-      { key: '/document', label: '文档管理', icon: FileTextOutlined, permission: '/knowledge' },
+      { key: '/knowledge', label: '知识库', icon: DatabaseOutlined, permission: '/knowledge' },
+      { key: '/document', label: '文档管理', icon: FileTextOutlined, permission: '/document' },
       { key: '/graph', label: '知识图谱', icon: ApartmentOutlined, permission: '/graph' },
     ],
   },
@@ -229,7 +229,7 @@ function filterMenu(items: MenuItem[]): MenuItem[] {
 const filteredMenu = computed(() => filterMenu(menuConfig))
 
 const subMenuMap: Record<string, string[]> = {
-  'knowledge': ['/knowledge-base', '/document', '/graph'],
+  'knowledge': ['/knowledge', '/document', '/graph'],
   'system': ['/user', '/role', '/log', '/sensitive', '/announcement', '/settings']
 }
 

@@ -25,6 +25,9 @@ spring:
       api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
     dashscope:
       api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
+      embedding:
+        options:
+          model: text-embedding-v3
     vectorstore:
       elasticsearch:
         initialize-schema: true
@@ -83,3 +86,10 @@ logging:
           chat:
             client:
               advisor: debug
+
+knowledge:
+  default:
+    chunk-size: 500
+    chunk-overlap: 50
+    embeddingModel: text-embedding-v3
+    rankModel: qwen3-rerank

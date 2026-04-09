@@ -27,13 +27,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '首页', icon: 'Odometer', requiresAuth: true, permission: '/dashboard' } as RouteMeta,
       },
       {
-        path: 'knowledge-base',
+        path: 'knowledge',
         name: 'KnowledgeBase',
         component: () => import('@/views/knowledge-base/index.vue'),
-        meta: { title: '知识库', icon: 'Folder', requiresAuth: true, permission: '/knowledge-base' } as RouteMeta,
+        meta: { title: '知识库', icon: 'Folder', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
       },
       {
-        path: 'knowledge-base/:id',
+        path: 'knowledge/:id',
         name: 'KnowledgeBaseDetail',
         component: () => import('@/views/knowledge-base/detail.vue'),
         meta: { title: '知识库详情', icon: 'Folder', requiresAuth: true, hidden: true } as RouteMeta,

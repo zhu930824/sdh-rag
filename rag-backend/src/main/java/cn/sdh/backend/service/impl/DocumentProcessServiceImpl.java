@@ -2,16 +2,16 @@ package cn.sdh.backend.service.impl;
 
 import cn.hutool.json.JSONUtil;
 import cn.sdh.backend.dto.DocumentLinkConfig;
+import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.entity.KnowledgeDocumentRelation;
-import cn.sdh.backend.mapper.KnowledgeChunkMapper;
+import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentRelationMapper;
 import cn.sdh.backend.service.DocumentProcessService;
 import cn.sdh.backend.service.MinioService;
 import cn.sdh.backend.service.VectorStoreService;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -26,12 +26,13 @@ import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * 文档处理服务实现
  * 采用独立存储方案：每个知识库独立存储自己的切分版本
+ * 分块数据直接存储到 Elasticsearch，不再存储到 MySQL
+ * 支持根据知识库配置动态选择嵌入模型
  */
 @Slf4j
 @Service
@@ -40,7 +41,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeDocumentRelationMapper relationMapper;
-    private final KnowledgeChunkMapper chunkMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final MinioService minioService;
     private final VectorStoreService vectorStoreService;
 
@@ -132,39 +133,41 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
             log.info("文档分块完成: documentId={}, chunkMode={}, chunkCount={}", documentId, chunkMode, chunkTexts.size());
 
-            // 删除该文档在该知识库下的旧分块
-            chunkMapper.deleteByDocumentIdAndKnowledgeId(documentId, knowledgeId);
+            // 删除该文档在该知识库下的旧向量（直接从 ES 删除）
+            vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
 
-            // 创建分块并存储向量
-            List<KnowledgeChunk> chunks = new ArrayList<>();
+            // 获取知识库配置中的嵌入模型
+            String embeddingModelName = getEmbeddingModelName(knowledgeId, config);
+            log.info("使用嵌入模型: documentId={}, knowledgeId={}, embeddingModel={}",
+                    documentId, knowledgeId, embeddingModelName);
+
+            // 创建分块并直接存储到 ES
+            int successCount = 0;
             for (int i = 0; i < chunkTexts.size(); i++) {
                 KnowledgeChunk chunk = new KnowledgeChunk();
                 chunk.setDocumentId(documentId);
                 chunk.setKnowledgeId(knowledgeId);
                 chunk.setChunkIndex(i);
+                chunk.setChunkId((long) i);
                 chunk.setContent(chunkTexts.get(i));
                 chunk.setChunkSize(chunkTexts.get(i).length());
                 chunk.setCreateTime(LocalDateTime.now());
                 chunk.setUpdateTime(LocalDateTime.now());
-                chunkMapper.insert(chunk);
 
-                // 存储向量
-                String vectorId = vectorStoreService.addVector(chunk, knowledgeId);
+                // 直接存储向量到 ES（不再存储到 MySQL）
+                String vectorId = vectorStoreService.addVector(chunk, knowledgeId, embeddingModelName);
                 if (vectorId != null) {
-                    chunk.setVectorId(vectorId);
-                    chunkMapper.updateById(chunk);
+                    successCount++;
                 }
-
-                chunks.add(chunk);
             }
 
             // 更新关联记录
             relation.setProcessStatus(2);
-            relation.setChunkCount(chunks.size());
+            relation.setChunkCount(successCount);
             relation.setProcessTime(LocalDateTime.now());
             relationMapper.updateById(relation);
 
-            log.info("文档处理完成: documentId={}, knowledgeId={}, chunkCount={}", documentId, knowledgeId, chunks.size());
+            log.info("文档处理完成: documentId={}, knowledgeId={}, chunkCount={}", documentId, knowledgeId, successCount);
 
         } catch (Exception e) {
             log.error("文档处理失败: documentId={}, knowledgeId={}, error={}", documentId, knowledgeId, e.getMessage(), e);
@@ -201,14 +204,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             return;
         }
 
-        // 删除旧分块和向量
-        List<KnowledgeChunk> oldChunks = chunkMapper.selectByDocumentIdAndKnowledgeId(documentId, knowledgeId);
-        for (KnowledgeChunk chunk : oldChunks) {
-            if (chunk.getVectorId() != null) {
-                vectorStoreService.deleteVector(chunk.getVectorId());
-            }
-        }
-        chunkMapper.deleteByDocumentIdAndKnowledgeId(documentId, knowledgeId);
+        // 删除旧向量（直接从 ES 删除）
+        vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
 
         // 重置状态
         relation.setProcessStatus(0);
@@ -239,18 +236,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     public void unlinkDocumentFromKnowledge(Long documentId, Long knowledgeId) {
         log.info("取消文档关联: documentId={}, knowledgeId={}", documentId, knowledgeId);
 
-        // 获取该文档在该知识库下的所有分块
-        List<KnowledgeChunk> chunks = chunkMapper.selectByDocumentIdAndKnowledgeId(documentId, knowledgeId);
-
-        // 删除向量
-        for (KnowledgeChunk chunk : chunks) {
-            if (chunk.getVectorId() != null) {
-                vectorStoreService.deleteVector(chunk.getVectorId());
-            }
-        }
-
-        // 删除分块记录
-        chunkMapper.deleteByDocumentIdAndKnowledgeId(documentId, knowledgeId);
+        // 直接从 ES 删除该文档在该知识库下的所有向量
+        vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
 
         // 删除关联记录
         relationMapper.deleteByKnowledgeIdAndDocumentId(knowledgeId, documentId);
@@ -565,5 +552,30 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             log.warn("正则切分失败，使用原文: {}", e.getMessage());
             return List.of(content);
         }
+    }
+
+    /**
+     * 获取嵌入模型名称
+     * 优先级：文档关联配置 > 知识库配置 > 默认值
+     */
+    private String getEmbeddingModelName(Long knowledgeId, DocumentLinkConfig config) {
+        // 1. 检查文档关联配置中的嵌入模型
+        if (config != null && config.getEmbeddingModel() != null && !config.getEmbeddingModel().isEmpty()) {
+            return config.getEmbeddingModel();
+        }
+
+        // 2. 检查知识库配置中的嵌入模型
+        try {
+            KnowledgeBase knowledgeBase = knowledgeBaseMapper.selectById(knowledgeId);
+            if (knowledgeBase != null && knowledgeBase.getEmbeddingModel() != null
+                    && !knowledgeBase.getEmbeddingModel().isEmpty()) {
+                return knowledgeBase.getEmbeddingModel();
+            }
+        } catch (Exception e) {
+            log.warn("获取知识库嵌入模型配置失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
+        }
+
+        // 3. 返回默认值（null表示使用系统默认配置）
+        return null;
     }
 }

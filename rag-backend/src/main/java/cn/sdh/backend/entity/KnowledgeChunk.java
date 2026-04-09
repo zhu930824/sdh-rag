@@ -39,6 +39,10 @@ public class KnowledgeChunk implements Serializable {
     @TableField("chunk_index")
     private Integer chunkIndex;
 
+
+    @TableField("chunk_id")
+    private Long chunkId;
+
     /**
      * 分块内容
      */

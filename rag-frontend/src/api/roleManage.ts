@@ -68,14 +68,14 @@ export function createRole(data: RoleFormData): Promise<ApiResponse<null>> {
  * 更新角色
  */
 export function updateRole(id: number, data: Partial<RoleFormData>): Promise<ApiResponse<null>> {
-  return request.put(`/api/role/${id}`, data)
+  return request.post(`/api/role/update/${id}`, data)
 }
 
 /**
  * 删除角色
  */
 export function deleteRole(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/role/${id}`)
+  return request.post(`/api/role/delete/${id}`)
 }
 
 /**
@@ -89,7 +89,7 @@ export function batchDeleteRoles(ids: number[]): Promise<ApiResponse<{ success: 
  * 切换角色状态
  */
 export function toggleRoleStatus(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/role/${id}/status`)
+  return request.post(`/api/role/status/${id}`)
 }
 
 export default {

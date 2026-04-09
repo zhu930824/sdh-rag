@@ -64,14 +64,14 @@ export function createUser(data: UserFormData): Promise<ApiResponse<null>> {
  * 更新用户
  */
 export function updateUser(id: number, data: Partial<UserFormData>): Promise<ApiResponse<null>> {
-  return request.put(`/api/user/${id}`, data)
+  return request.post(`/api/user/update/${id}`, data)
 }
 
 /**
  * 删除用户
  */
 export function deleteUser(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/user/${id}`)
+  return request.post(`/api/user/delete/${id}`)
 }
 
 /**
@@ -92,7 +92,7 @@ export function resetUserPassword(id: number): Promise<ApiResponse<{ password: s
  * 切换用户状态
  */
 export function toggleUserStatus(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/user/${id}/status`)
+  return request.post(`/api/user/status/${id}`)
 }
 
 export default {

@@ -188,7 +188,7 @@ public class DocumentController {
     /**
      * 删除文档
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> deleteDocument(@PathVariable Long id) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -236,7 +236,7 @@ public class DocumentController {
     /**
      * 更新分类
      */
-    @PutMapping("/category/{id}")
+    @PostMapping("/category/update/{id}")
     public Result<Void> updateCategory(@PathVariable Long id, @RequestBody CategoryRequest request) {
         DocumentCategory category = new DocumentCategory();
         category.setId(id);
@@ -255,7 +255,7 @@ public class DocumentController {
     /**
      * 删除分类
      */
-    @DeleteMapping("/category/{id}")
+    @PostMapping("/category/delete/{id}")
     public Result<Void> deleteCategory(@PathVariable Long id) {
         boolean success = knowledgeService.deleteCategory(id);
         if (!success) {

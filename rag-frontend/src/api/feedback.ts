@@ -34,7 +34,7 @@ export function createFeedback(data: Partial<QaFeedback>): Promise<ApiResponse<Q
 }
 
 export function handleFeedback(id: number, status: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/feedback/${id}/handle`, null, { params: { status } })
+  return request.post(`/api/feedback/handle/${id}`, null, { params: { status } })
 }
 
 export function getFeedbackStats(chatHistoryId: number): Promise<ApiResponse<FeedbackStats>> {

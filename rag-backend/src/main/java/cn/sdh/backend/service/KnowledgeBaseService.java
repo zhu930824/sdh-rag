@@ -1,7 +1,9 @@
 package cn.sdh.backend.service;
 
 import cn.sdh.backend.dto.DocumentLinkConfig;
+import cn.sdh.backend.dto.KnowledgeBaseListVO;
 import cn.sdh.backend.dto.KnowledgeChunkVO;
+import cn.sdh.backend.dto.KnowledgeDocumentVO;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
@@ -40,6 +42,17 @@ public interface KnowledgeBaseService {
      * @return 分页结果
      */
     Page<KnowledgeBase> getKnowledgeBasePage(Long userId, int page, int size, String keyword, Integer status);
+
+    /**
+     * 分页获取知识库列表（包含文档和分块统计）
+     * @param userId 用户ID
+     * @param page 页码
+     * @param size 每页大小
+     * @param keyword 关键词
+     * @param status 状态
+     * @return 分页结果
+     */
+    Page<KnowledgeBaseListVO> getKnowledgeBasePageWithStats(Long userId, int page, int size, String keyword, Integer status);
 
     /**
      * 获取知识库详情
@@ -89,6 +102,15 @@ public interface KnowledgeBaseService {
      * @return 分页结果
      */
     Page<KnowledgeDocument> getDocumentsByKnowledgeId(Long knowledgeId, int page, int size);
+
+    /**
+     * 获取知识库下的文档详情列表（包含处理状态和配置信息）
+     * @param knowledgeId 知识库ID
+     * @param page 页码
+     * @param size 每页大小
+     * @return 分页结果
+     */
+    Page<KnowledgeDocumentVO> getDocumentDetailsByKnowledgeId(Long knowledgeId, int page, int size);
 
     /**
      * 关联已有文档到知识库

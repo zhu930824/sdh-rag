@@ -36,19 +36,19 @@ export function createSensitive(data: SensitiveWordFormData): Promise<ApiRespons
 }
 
 export function updateSensitive(id: number, data: SensitiveWordFormData): Promise<ApiResponse<null>> {
-  return request.put(`/api/sensitive/${id}`, data)
+  return request.post(`/api/sensitive/update/${id}`, data)
 }
 
 export function deleteSensitive(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/sensitive/${id}`)
+  return request.post(`/api/sensitive/delete/${id}`)
 }
 
 export function batchDeleteSensitive(ids: number[]): Promise<ApiResponse<null>> {
-  return request.delete('/api/sensitive/batch', { data: { ids } })
+  return request.post('/api/sensitive/batch-delete', ids)
 }
 
 export function toggleSensitiveStatus(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/sensitive/${id}/status`)
+  return request.post(`/api/sensitive/status/${id}`)
 }
 
 export function checkSensitiveWord(text: string): Promise<ApiResponse<string[]>> {

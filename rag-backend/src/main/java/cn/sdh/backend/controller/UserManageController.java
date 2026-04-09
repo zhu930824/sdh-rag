@@ -49,13 +49,13 @@ public class UserManageController {
         return Result.success("创建用户成功", null);
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UserManageRequest request) {
         userService.updateUser(id, request);
         return Result.success("更新用户成功", null);
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         userService.deleteUser(id);
         return Result.success("删除用户成功", null);
@@ -79,7 +79,7 @@ public class UserManageController {
         return Result.success("密码重置成功", data);
     }
 
-    @PutMapping("/{id}/status")
+    @PostMapping("/status/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         userService.toggleStatus(id);
         return Result.success("状态切换成功", null);

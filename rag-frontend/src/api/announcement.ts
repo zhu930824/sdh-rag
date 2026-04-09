@@ -46,15 +46,15 @@ export function createAnnouncement(data: Partial<Announcement>): Promise<ApiResp
 }
 
 export function updateAnnouncement(id: number, data: Partial<Announcement>): Promise<ApiResponse<null>> {
-  return request.put(`/api/announcement/${id}`, data)
+  return request.post(`/api/announcement/update/${id}`, data)
 }
 
 export function publishAnnouncement(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/announcement/${id}/publish`)
+  return request.post(`/api/announcement/publish/${id}`)
 }
 
 export function deleteAnnouncement(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/announcement/${id}`)
+  return request.post(`/api/announcement/delete/${id}`)
 }
 
 export function markAnnouncementRead(id: number): Promise<ApiResponse<null>> {
@@ -62,5 +62,5 @@ export function markAnnouncementRead(id: number): Promise<ApiResponse<null>> {
 }
 
 export function offlineAnnouncement(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/announcement/${id}/offline`)
+  return request.post(`/api/announcement/offline/${id}`)
 }

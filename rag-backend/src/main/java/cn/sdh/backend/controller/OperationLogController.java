@@ -39,7 +39,7 @@ public class OperationLogController {
         return Result.success(log);
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         boolean success = operationLogService.removeById(id);
         if (success) {
@@ -71,7 +71,7 @@ public class OperationLogController {
         return Result.success("批量删除完成", data);
     }
 
-    @DeleteMapping("/clear")
+    @PostMapping("/clear")
     public Result<Void> clearLogs() {
         operationLogService.clearAll();
         return Result.success("清空日志成功", null);

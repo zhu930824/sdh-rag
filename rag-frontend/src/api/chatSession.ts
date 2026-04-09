@@ -49,19 +49,19 @@ export function createChatSession(data: { title?: string; modelId?: number; prom
 }
 
 export function updateSessionTitle(sessionId: string, title: string): Promise<ApiResponse<null>> {
-  return request.put(`/api/chat-session/${sessionId}/title`, { title })
+  return request.post(`/api/chat-session/title/${sessionId}`, { title })
 }
 
 export function toggleSessionStar(sessionId: string): Promise<ApiResponse<null>> {
-  return request.put(`/api/chat-session/${sessionId}/star`)
+  return request.post(`/api/chat-session/star/${sessionId}`)
 }
 
 export function toggleSessionArchive(sessionId: string): Promise<ApiResponse<null>> {
-  return request.put(`/api/chat-session/${sessionId}/archive`)
+  return request.post(`/api/chat-session/archive/${sessionId}`)
 }
 
 export function deleteChatSession(sessionId: string): Promise<ApiResponse<null>> {
-  return request.delete(`/api/chat-session/${sessionId}`)
+  return request.post(`/api/chat-session/delete/${sessionId}`)
 }
 
 export function createSessionShare(sessionId: string, password?: string, expireHours?: number): Promise<ApiResponse<SessionShare>> {
@@ -77,7 +77,7 @@ export function getSharedSession(shareCode: string, password?: string): Promise<
 }
 
 export function closeSessionShare(shareId: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/chat-session/share/${shareId}`)
+  return request.post(`/api/chat-session/share/delete/${shareId}`)
 }
 
 export function exportChatSession(sessionId: string, format: string = 'markdown'): Promise<Blob> {

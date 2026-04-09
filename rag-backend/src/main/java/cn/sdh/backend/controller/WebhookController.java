@@ -50,7 +50,7 @@ public class WebhookController {
         }
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody WebhookConfig webhook) {
         webhook.setId(id);
         try {
@@ -61,7 +61,7 @@ public class WebhookController {
         }
     }
 
-    @PutMapping("/{id}/toggle")
+    @PostMapping("/toggle/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         try {
             webhookService.toggleStatus(id);
@@ -71,7 +71,7 @@ public class WebhookController {
         }
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         webhookService.deleteWebhook(id);
         return Result.success();

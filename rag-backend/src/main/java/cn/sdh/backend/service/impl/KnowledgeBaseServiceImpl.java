@@ -2,7 +2,9 @@ package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.dto.DocumentLinkConfig;
+import cn.sdh.backend.dto.KnowledgeBaseListVO;
 import cn.sdh.backend.dto.KnowledgeChunkVO;
+import cn.sdh.backend.dto.KnowledgeDocumentVO;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.entity.KnowledgeDocument;
@@ -21,6 +23,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,6 +41,18 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
+    @Value(value = "${knowledge.default.chunk-size}")
+    private Integer DEFAULT_CHUNK_SIZE;
+
+    @Value(value = "${knowledge.default.chunk-overlap}")
+    private Integer DEFAULT_CHUNK_OVERLAP;
+
+    @Value(value = "${knowledge.default.embeddingModel}")
+    private String DEFAULT_EMBEDDING_MODEL;
+
+    @Value(value = "${knowledge.default.rankModel}")
+    private String DEFAULT_RANK_MODEL;
+
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeDocumentRelationMapper relationMapper;
@@ -50,15 +65,20 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean createKnowledgeBase(KnowledgeBase knowledgeBase) {
+        defaultKnowledgeConfig(knowledgeBase);
+        return knowledgeBaseMapper.insert(knowledgeBase) > 0;
+    }
+
+    private void defaultKnowledgeConfig(KnowledgeBase knowledgeBase) {
         // 设置默认值
         if (knowledgeBase.getChunkSize() == null) {
-            knowledgeBase.setChunkSize(500);
+            knowledgeBase.setChunkSize(DEFAULT_CHUNK_SIZE);
         }
         if (knowledgeBase.getChunkOverlap() == null) {
-            knowledgeBase.setChunkOverlap(50);
+            knowledgeBase.setChunkOverlap(DEFAULT_CHUNK_OVERLAP);
         }
         if (knowledgeBase.getEmbeddingModel() == null) {
-            knowledgeBase.setEmbeddingModel("text-embedding-ada-002");
+            knowledgeBase.setEmbeddingModel(DEFAULT_EMBEDDING_MODEL);
         }
         if (knowledgeBase.getStatus() == null) {
             knowledgeBase.setStatus(1);
@@ -67,6 +87,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             knowledgeBase.setIsPublic(false);
         }
         // 设置检索配置默认值
+        if (knowledgeBase.getRankModel() == null){
+            knowledgeBase.setRankModel(DEFAULT_RANK_MODEL);
+        }
+
         if (knowledgeBase.getSimilarityThreshold() == null) {
             knowledgeBase.setSimilarityThreshold(0.7);
         }
@@ -88,8 +112,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         knowledgeBase.setCreateTime(LocalDateTime.now());
         knowledgeBase.setUpdateTime(LocalDateTime.now());
-
-        return knowledgeBaseMapper.insert(knowledgeBase) > 0;
     }
 
     @Override
@@ -118,6 +140,48 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         wrapper.orderByDesc(KnowledgeBase::getCreateTime);
 
         return knowledgeBaseMapper.selectPage(pageParam, wrapper);
+    }
+
+    @Override
+    public Page<KnowledgeBaseListVO> getKnowledgeBasePageWithStats(Long userId, int page, int size, String keyword, Integer status) {
+        // 先获取知识库分页
+        Page<KnowledgeBase> kbPage = getKnowledgeBasePage(userId, page, size, keyword, status);
+
+        // 转换为 VO
+        Page<KnowledgeBaseListVO> voPage = new Page<>(page, size);
+        voPage.setTotal(kbPage.getTotal());
+        voPage.setPages(kbPage.getPages());
+
+        if (kbPage.getRecords().isEmpty()) {
+            voPage.setRecords(List.of());
+            return voPage;
+        }
+
+        // 批量查询文档数和分块数
+        List<KnowledgeBaseListVO> voList = kbPage.getRecords().stream()
+                .map(kb -> {
+                    KnowledgeBaseListVO vo = KnowledgeBaseListVO.fromEntity(kb);
+
+                    // 获取关联的文档ID列表
+                    List<Long> docIds = relationMapper.selectDocumentIdsByKnowledgeId(kb.getId());
+                    vo.setDocumentCount(docIds.size());
+
+                    // 统计分块数
+                    int totalChunks = 0;
+                    for (Long docId : docIds) {
+                        KnowledgeDocumentRelation relation = relationMapper.selectByKnowledgeIdAndDocumentId(kb.getId(), docId);
+                        if (relation != null && relation.getChunkCount() != null) {
+                            totalChunks += relation.getChunkCount();
+                        }
+                    }
+                    vo.setChunkCount(totalChunks);
+
+                    return vo;
+                })
+                .toList();
+
+        voPage.setRecords(voList);
+        return voPage;
     }
 
     @Override
@@ -238,6 +302,52 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .orderByDesc(KnowledgeDocument::getCreateTime);
 
         return documentMapper.selectPage(pageParam, wrapper);
+    }
+
+    @Override
+    public Page<KnowledgeDocumentVO> getDocumentDetailsByKnowledgeId(Long knowledgeId, int page, int size) {
+        // 获取关联记录列表
+        LambdaQueryWrapper<KnowledgeDocumentRelation> relationWrapper = new LambdaQueryWrapper<>();
+        relationWrapper.eq(KnowledgeDocumentRelation::getKnowledgeId, knowledgeId)
+                .orderByDesc(KnowledgeDocumentRelation::getCreateTime);
+
+        Page<KnowledgeDocumentRelation> relationPage = new Page<>(page, size);
+        relationMapper.selectPage(relationPage, relationWrapper);
+
+        // 转换为 VO
+        Page<KnowledgeDocumentVO> voPage = new Page<>(page, size);
+        voPage.setTotal(relationPage.getTotal());
+        voPage.setPages(relationPage.getPages());
+
+        if (relationPage.getRecords().isEmpty()) {
+            voPage.setRecords(List.of());
+            return voPage;
+        }
+
+        // 批量获取文档信息
+        List<Long> documentIds = relationPage.getRecords().stream()
+                .map(KnowledgeDocumentRelation::getDocumentId)
+                .distinct()
+                .toList();
+
+        Map<Long, KnowledgeDocument> documentMap = new HashMap<>();
+        if (!documentIds.isEmpty()) {
+            List<KnowledgeDocument> documents = documentMapper.selectBatchIds(documentIds);
+            for (KnowledgeDocument doc : documents) {
+                documentMap.put(doc.getId(), doc);
+            }
+        }
+
+        // 转换记录
+        List<KnowledgeDocumentVO> voList = relationPage.getRecords().stream()
+                .map(relation -> {
+                    KnowledgeDocument doc = documentMap.get(relation.getDocumentId());
+                    return KnowledgeDocumentVO.fromEntity(doc, relation);
+                })
+                .toList();
+
+        voPage.setRecords(voList);
+        return voPage;
     }
 
     @Override
@@ -541,27 +651,30 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     @Override
     public Page<KnowledgeChunkVO> getChunksByKnowledgeId(Long knowledgeId, int page, int size) {
-        Page<KnowledgeChunk> pageParam = new Page<>(page, size);
-        LambdaQueryWrapper<KnowledgeChunk> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(KnowledgeChunk::getKnowledgeId, knowledgeId)
-                .orderByAsc(KnowledgeChunk::getDocumentId)
-                .orderByAsc(KnowledgeChunk::getChunkIndex);
-
-        Page<KnowledgeChunk> chunkPage = chunkMapper.selectPage(pageParam, wrapper);
+        // 从 ES 查询分块数据
+        List<org.springframework.ai.document.Document> esDocs = vectorStoreService.getChunksByKnowledgeId(knowledgeId, page - 1, size);
+        long total = vectorStoreService.countChunksByKnowledgeId(knowledgeId);
 
         // 转换为 VO
         Page<KnowledgeChunkVO> voPage = new Page<>(page, size);
-        voPage.setTotal(chunkPage.getTotal());
-        voPage.setPages(chunkPage.getPages());
+        voPage.setTotal(total);
+        voPage.setPages((total + size - 1) / size);
 
-        if (chunkPage.getRecords().isEmpty()) {
+        if (esDocs.isEmpty()) {
             voPage.setRecords(List.of());
             return voPage;
         }
 
         // 批量获取文档信息
-        List<Long> documentIds = chunkPage.getRecords().stream()
-                .map(KnowledgeChunk::getDocumentId)
+        List<Long> documentIds = esDocs.stream()
+                .map(doc -> {
+                    Object docId = doc.getMetadata().get("document_id");
+                    if (docId instanceof Number) {
+                        return ((Number) docId).longValue();
+                    }
+                    return null;
+                })
+                .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList();
 
@@ -574,12 +687,40 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
 
         // 转换记录
-        List<KnowledgeChunkVO> voList = chunkPage.getRecords().stream()
-                .map(chunk -> {
-                    KnowledgeDocument doc = documentMap.get(chunk.getDocumentId());
-                    return KnowledgeChunkVO.fromEntity(chunk, doc);
-                })
-                .toList();
+        List<KnowledgeChunkVO> voList = new java.util.ArrayList<>();
+        for (org.springframework.ai.document.Document esDoc : esDocs) {
+            KnowledgeChunkVO vo = new KnowledgeChunkVO();
+
+            // 从 ES metadata 获取信息
+            Object chunkId = esDoc.getMetadata().get("chunk_id");
+            Object docId = esDoc.getMetadata().get("document_id");
+            Object vectorId = esDoc.getMetadata().get("id");
+            Object createTime = esDoc.getMetadata().get("create_time");
+            Object chunkIndex = esDoc.getMetadata().get("chunk_index");
+
+            // 设置 ID（使用 vectorId 或生成临时 ID）
+            if (chunkId instanceof Number) {
+                vo.setId(((Number) chunkId).longValue());
+            }
+
+            if (docId instanceof Number) {
+                vo.setDocumentId(((Number) docId).longValue());
+                KnowledgeDocument doc = documentMap.get(vo.getDocumentId());
+                vo.setDocumentTitle(doc != null ? doc.getTitle() : "未知文档");
+            }
+
+            vo.setKnowledgeId(knowledgeId);
+            // 使用 ES 中存储的 chunk_index
+            if (chunkIndex instanceof Number) {
+                vo.setChunkIndex(((Number) chunkIndex).intValue());
+            }
+            vo.setContent(esDoc.getText());
+            vo.setChunkSize(esDoc.getText() != null ? esDoc.getText().length() : 0);
+            vo.setVectorId(vectorId != null ? vectorId.toString() : null);
+            vo.setCreateTime(createTime != null ? createTime.toString() : null);
+
+            voList.add(vo);
+        }
 
         voPage.setRecords(voList);
         return voPage;

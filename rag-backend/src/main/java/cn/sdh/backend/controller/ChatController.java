@@ -209,7 +209,7 @@ public class ChatController {
     /**
      * 更新会话标题
      */
-    @PutMapping("/session/{sessionId}/title")
+    @PostMapping("/session/{sessionId}/title")
     public Result<Void> updateSessionTitle(
             @PathVariable String sessionId,
             @RequestBody Map<String, String> request) {
@@ -226,7 +226,7 @@ public class ChatController {
     /**
      * 删除对话
      */
-    @DeleteMapping("/session/{sessionId}")
+    @PostMapping("/session/delete/{sessionId}")
     public Result<Void> deleteSession(@PathVariable String sessionId) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {

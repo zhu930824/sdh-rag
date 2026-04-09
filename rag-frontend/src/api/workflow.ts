@@ -123,17 +123,17 @@ export function createWorkflow(data: WorkflowFormData): Promise<ApiResponse<Work
 
 // 更新工作流
 export function updateWorkflow(id: number, data: WorkflowFormData): Promise<ApiResponse<Workflow>> {
-  return request.put(`/api/workflow/${id}`, data)
+  return request.post(`/api/workflow/update/${id}`, data)
 }
 
 // 删除工作流
 export function deleteWorkflow(id: number): Promise<ApiResponse<null>> {
-  return request.delete(`/api/workflow/${id}`)
+  return request.post(`/api/workflow/delete/${id}`)
 }
 
 // 切换工作流状态
 export function toggleWorkflowStatus(id: number): Promise<ApiResponse<null>> {
-  return request.put(`/api/workflow/${id}/status`)
+  return request.post(`/api/workflow/status/${id}`)
 }
 
 // 执行工作流
