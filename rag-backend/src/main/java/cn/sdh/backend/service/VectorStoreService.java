@@ -164,4 +164,27 @@ public interface VectorStoreService {
      * @return 时间戳（毫秒）
      */
     long getLastUpdateTimeByKnowledgeId(Long knowledgeId);
+
+    /**
+     * 关键字搜索（BM25）
+     * @param query 查询关键字
+     * @param knowledgeId 知识库ID
+     * @param topK 返回数量
+     * @return 匹配的文档列表
+     */
+    List<Document> keywordSearch(String query, Long knowledgeId, int topK);
+
+    /**
+     * 混合检索（向量 + 关键字）
+     * @param query 查询文本
+     * @param knowledgeId 知识库ID
+     * @param vectorTopK 向量检索数量
+     * @param keywordTopK 关键字检索数量
+     * @param vectorWeight 向量权重
+     * @param keywordWeight 关键字权重
+     * @param embeddingModelName 嵌入模型名称
+     * @return 混合检索结果
+     */
+    List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK, int keywordTopK,
+                                double vectorWeight, double keywordWeight, String embeddingModelName);
 }

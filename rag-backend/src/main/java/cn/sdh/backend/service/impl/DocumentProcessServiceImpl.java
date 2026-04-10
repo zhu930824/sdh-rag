@@ -385,7 +385,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     }
 
     /**
-     * 分割内容（固定大小切分）
+     * 分割内容（固定大小切分，按字符）
      */
     private List<String> splitContent(String content, int chunkSize, int chunkOverlap) {
         if (content == null || content.isEmpty()) {
@@ -396,25 +396,91 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         if (chunkSize <= 0) chunkSize = 500;
         if (chunkOverlap < 0) chunkOverlap = 50;
 
-        TokenTextSplitter splitter = new TokenTextSplitter(
-                chunkSize,
-                chunkOverlap,
-                5,
-                10000,
-                true
-        );
-
-        Document doc = new Document(content);
-        List<Document> documents = splitter.apply(List.of(doc));
+        log.info("切分参数: chunkSize={}, chunkOverlap={}", chunkSize, chunkOverlap);
 
         List<String> chunks = new ArrayList<>();
-        for (Document d : documents) {
-            String text = d.getText();
-            if (text != null && !text.trim().isEmpty()) {
-                chunks.add(text.trim());
+        int start = 0;
+        int contentLength = content.length();
+
+        while (start < contentLength) {
+            int end = Math.min(start + chunkSize, contentLength);
+
+            // 尝试在句子边界处切分
+            int breakPoint = findBreakPoint(content, start, end);
+            if (breakPoint > start) {
+                end = breakPoint;
+            }
+
+            String chunk = content.substring(start, end).trim();
+            if (!chunk.isEmpty()) {
+                chunks.add(chunk);
+            }
+
+            // 计算下一个起始位置（考虑重叠）
+            start = end - chunkOverlap;
+            if (start < 0) start = 0;
+
+            // 避免无限循环
+            if (start >= contentLength - chunkOverlap) {
+                // 如果剩余内容不足一个重叠窗口，处理剩余部分
+                if (end < contentLength) {
+                    String lastChunk = content.substring(end).trim();
+                    if (!lastChunk.isEmpty()) {
+                        chunks.add(lastChunk);
+                    }
+                }
+                break;
             }
         }
+
+        // 打印前几个chunk的重叠情况
+        if (chunks.size() > 1) {
+            String first = chunks.get(0);
+            String second = chunks.get(1);
+            log.info("Chunk 0 最后 60 字符: [{}]", first.length() > 60 ? first.substring(first.length() - 60) : first);
+            log.info("Chunk 1 前 60 字符: [{}]", second.length() > 60 ? second.substring(0, 60) : second);
+        }
+
         return chunks;
+    }
+
+    /**
+     * 查找最佳切分点（优先在句子边界切分）
+     */
+    private int findBreakPoint(String content, int start, int preferredEnd) {
+        if (preferredEnd >= content.length()) {
+            return content.length();
+        }
+
+        // 在 preferredEnd 附近查找句子结束符
+        int searchStart = Math.max(start, preferredEnd - 100);
+        int searchEnd = Math.min(content.length(), preferredEnd + 50);
+
+        String searchArea = content.substring(searchStart, searchEnd);
+
+        // 查找句子结束符的位置（句号、问号、感叹号、换行等）
+        int bestBreak = -1;
+        String breakChars = "。！？；,;?!\n";
+
+        for (int i = 0; i < breakChars.length(); i++) {
+            char c = breakChars.charAt(i);
+            int idx = searchArea.lastIndexOf(c);
+            if (idx > 0 && (bestBreak == -1 || idx > bestBreak)) {
+                bestBreak = idx;
+            }
+        }
+
+        if (bestBreak > 0) {
+            return searchStart + bestBreak + 1;
+        }
+
+        // 如果没有找到句子边界，查找空格或逗号
+        int spaceIdx = searchArea.lastIndexOf(' ');
+        if (spaceIdx > 0) {
+            return searchStart + spaceIdx + 1;
+        }
+
+        return preferredEnd;
     }
 
     /**

@@ -1,24 +1,27 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.ChatHistory;
+import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
-import cn.sdh.backend.service.AiChatService;
-import cn.sdh.backend.service.ChatService;
-import cn.sdh.backend.service.ModelConfigService;
-import cn.sdh.backend.service.SensitiveWordService;
+import cn.sdh.backend.service.*;
+import cn.sdh.backend.service.RagSearchService.ChatMessage;
+import cn.sdh.backend.service.RagSearchService.RagSearchResult;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /**
  * 聊天服务实现
@@ -38,6 +41,12 @@ public class ChatServiceImpl implements ChatService {
 
     @Autowired
     private SensitiveWordService sensitiveWordService;
+
+    @Autowired
+    private KnowledgeBaseService knowledgeBaseService;
+
+    @Autowired
+    private RagSearchService ragSearchService;
 
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
@@ -64,8 +73,16 @@ public class ChatServiceImpl implements ChatService {
             useModelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;
         }
 
+        // RAG召回：如果指定了知识库，从知识库召回相关内容
+        String context = "";
+        if (knowledgeId != null) {
+            // 获取多轮对话历史（用于查询改写）
+            List<ChatMessage> chatHistory = getRecentChatHistory(sessionId, userId);
+            context = retrieveContext(question, knowledgeId, chatHistory);
+        }
+
         // 构建系统提示词
-        String systemPrompt = buildSystemPrompt(knowledgeId);
+        String systemPrompt = buildSystemPrompt(knowledgeId, context);
 
         // 保存用户问题
         Long historyId = saveUserQuestion(question, currentSessionId, userId, knowledgeId);
@@ -108,14 +125,102 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
+     * 从知识库召回相关上下文（使用优化的RAG检索）
+     */
+    private String retrieveContext(String question, Long knowledgeId, List<ChatMessage> chatHistory) {
+        try {
+            KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
+            if (knowledgeBase == null) {
+                log.warn("知识库不存在: {}", knowledgeId);
+                return "";
+            }
+
+            log.info("RAG检索开始: knowledgeId={}, embeddingModel={}, rankModel={}, enableRewrite={}",
+                    knowledgeId, knowledgeBase.getEmbeddingModel(), knowledgeBase.getRankModel(),
+                    knowledgeBase.getEnableRewrite());
+
+            // 使用优化的 RAG 检索服务
+            RagSearchResult searchResult = ragSearchService.search(question, knowledgeBase, chatHistory);
+
+            List<Document> documents = searchResult.getDocuments();
+            if (documents == null || documents.isEmpty()) {
+                log.info("知识库 {} 未召回相关内容", knowledgeId);
+                return "";
+            }
+
+            // 拼接召回内容
+            String context = documents.stream()
+                    .map(doc -> {
+                        String content = doc.getText();
+                        return content;
+                    })
+                    .filter(text -> text != null && !text.trim().isEmpty())
+                    .collect(Collectors.joining("\n\n---\n\n"));
+
+            log.info("RAG检索完成: knowledgeId={}, 召回文档数={}, 总长度={}, 改写查询={}",
+                    knowledgeId, documents.size(), context.length(), searchResult.getRewrittenQuery());
+
+            return context;
+
+        } catch (Exception e) {
+            log.error("RAG检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
+            return "";
+        }
+    }
+
+    /**
+     * 获取最近的对话历史（用于多轮对话改写）
+     */
+    private List<ChatMessage> getRecentChatHistory(String sessionId, Long userId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            // 获取最近 5 轮对话
+            Page<ChatHistory> historyPage = getHistory(sessionId, 1, 5, userId);
+            List<ChatHistory> records = historyPage.getRecords();
+
+            if (records.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // 按时间正序排列（从旧到新）
+            return records.stream()
+                    .sorted((a, b) -> a.getCreateTime().compareTo(b.getCreateTime()))
+                    .flatMap(h -> {
+                        List<ChatMessage> msgs = new java.util.ArrayList<>();
+                        if (h.getQuestion() != null) {
+                            msgs.add(new ChatMessage("user", h.getQuestion()));
+                        }
+                        if (h.getAnswer() != null) {
+                            msgs.add(new ChatMessage("assistant", h.getAnswer()));
+                        }
+                        return msgs.stream();
+                    })
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.warn("获取对话历史失败: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * 构建系统提示词
      */
-    private String buildSystemPrompt(Long knowledgeId) {
+    private String buildSystemPrompt(Long knowledgeId, String context) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是一个智能助手，请根据用户的问题给出准确、有帮助的回答。");
 
-        if (knowledgeId != null) {
-            prompt.append(" 当前对话关联知识库ID: ").append(knowledgeId).append("。");
+        if (knowledgeId != null && context != null && !context.isEmpty()) {
+            prompt.append("\n\n以下是从知识库中检索到的相关参考资料，请优先基于这些资料回答用户问题：\n\n");
+            prompt.append("【参考资料】\n");
+            prompt.append(context);
+            prompt.append("\n\n【回答要求】\n");
+            prompt.append("1. 请基于参考资料回答问题，如果参考资料中没有相关信息，请如实告知\n");
+            prompt.append("2. 回答要准确、简洁、有条理\n");
+            prompt.append("3. 如果需要，可以适当引用参考资料中的内容\n");
         }
 
         prompt.append("\n请用中文回答，保持回答简洁明了。");

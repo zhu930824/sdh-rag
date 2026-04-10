@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 向量存储服务实现
@@ -141,7 +142,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId)));
+                            .value(knowledgeId.toString())));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -175,30 +176,19 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return Collections.emptyList();
             }
 
-            // 构建KNN查询
-            Query knnQuery = Query.of(q -> q
-                    .knn(k -> k
-                            .field("embedding")
-                            .queryVector(toFloatList(queryEmbedding))
-                            .k(topK * 2)
-                            .numCandidates(topK * 10)));
+            // 使用 knn 搜索 (Elasticsearch 8.x 的推荐方式)
+            List<Float> queryVector = toFloatList(queryEmbedding);
 
-            // 构建知识库过滤
-            Query filterQuery = Query.of(q -> q
-                    .term(t -> t
-                            .field("knowledge_id")
-                            .value(knowledgeId)));
-
-            // 组合查询
-            Query combinedQuery = Query.of(q -> q
-                    .bool(b -> b
-                            .must(knnQuery)
-                            .filter(filterQuery)));
-
-            // 执行搜索
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
-                    .query(combinedQuery)
+                    .knn(knn -> knn
+                            .field("embedding")
+                            .queryVector(queryVector)
+                            .k(topK)
+                            .numCandidates(topK * 10)
+                            .filter(f -> f.term(t -> t
+                                    .field("knowledge_id")
+                                    .value(knowledgeId.toString()))))
                     .size(topK), Map.class);
 
             // 转换结果
@@ -234,7 +224,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("document_id")
-                            .value(documentId)));
+                            .value(documentId.toString())));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -258,8 +248,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             // 构建查询条件：同时匹配 document_id 和 knowledge_id
             Query query = Query.of(q -> q
                     .bool(b -> b
-                            .must(m -> m.term(t -> t.field("document_id").value(documentId)))
-                            .must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId)))));
+                            .must(m -> m.term(t -> t.field("document_id").value(documentId.toString())))
+                            .must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId.toString())))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -313,7 +303,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId)));
+                            .value(knowledgeId.toString())));
 
             CountResponse response = elasticsearchClient.count(c -> c
                     .index(indexName)
@@ -331,9 +321,9 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         try {
             Query query = Query.of(q -> q
                     .bool(b -> {
-                        b.must(m -> m.term(t -> t.field("document_id").value(documentId)));
+                        b.must(m -> m.term(t -> t.field("document_id").value(documentId.toString())));
                         if (knowledgeId != null) {
-                            b.must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId)));
+                            b.must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId.toString())));
                         }
                         return b;
                     }));
@@ -355,7 +345,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId)));
+                            .value(knowledgeId.toString())));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -377,9 +367,9 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         try {
             Query query = Query.of(q -> q
                     .bool(b -> {
-                        b.must(m -> m.term(t -> t.field("document_id").value(documentId)));
+                        b.must(m -> m.term(t -> t.field("document_id").value(documentId.toString())));
                         if (knowledgeId != null) {
-                            b.must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId)));
+                            b.must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId.toString())));
                         }
                         return b;
                     }));
@@ -446,7 +436,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId)));
+                            .value(knowledgeId.toString())));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -469,6 +459,92 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             log.warn("获取最后更新时间失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
         }
         return 0;
+    }
+
+    @Override
+    public List<Document> keywordSearch(String query, Long knowledgeId, int topK) {
+        try {
+            // 使用 ES 的 match 查询进行关键字搜索（BM25）
+            Query keywordQuery = Query.of(q -> q
+                    .bool(b -> b
+                            .must(m -> m.match(mt -> mt
+                                    .field("content")
+                                    .query(query)))
+                            .filter(f -> f.term(t -> t
+                                    .field("knowledge_id")
+                                    .value(knowledgeId.toString())))));
+
+            SearchResponse<Map> response = elasticsearchClient.search(s -> s
+                    .index(indexName)
+                    .query(keywordQuery)
+                    .size(topK)
+                    .sort(sort -> sort.score(sc -> sc.order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))),
+                    Map.class);
+
+            List<Document> documents = convertHitsToDocuments(response.hits().hits());
+            log.info("关键字搜索完成: knowledgeId={}, query={}, topK={}, results={}",
+                    knowledgeId, query, topK, documents.size());
+            return documents;
+        } catch (Exception e) {
+            log.error("关键字搜索失败: knowledgeId={}, query={}, error={}", knowledgeId, query, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    @Override
+    public List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK, int keywordTopK,
+                                       double vectorWeight, double keywordWeight, String embeddingModelName) {
+        try {
+            // 1. 向量检索
+            List<Document> vectorResults = similaritySearch(query, knowledgeId, vectorTopK, embeddingModelName);
+
+            // 2. 关键字检索
+            List<Document> keywordResults = keywordSearch(query, knowledgeId, keywordTopK);
+
+            // 3. 合并结果（RRF - Reciprocal Rank Fusion）
+            Map<String, Document> docMap = new HashMap<>();
+            Map<String, Double> scoreMap = new HashMap<>();
+
+            // 向量结果打分
+            for (int i = 0; i < vectorResults.size(); i++) {
+                Document doc = vectorResults.get(i);
+                String docId = (String) doc.getMetadata().get("id");
+                if (docId == null) docId = String.valueOf(doc.hashCode());
+
+                docMap.putIfAbsent(docId, doc);
+                double rrfScore = vectorWeight / (60 + i + 1); // RRF 公式，k=60
+                scoreMap.merge(docId, rrfScore, Double::sum);
+            }
+
+            // 关键字结果打分
+            for (int i = 0; i < keywordResults.size(); i++) {
+                Document doc = keywordResults.get(i);
+                String docId = (String) doc.getMetadata().get("id");
+                if (docId == null) docId = String.valueOf(doc.hashCode());
+
+                docMap.putIfAbsent(docId, doc);
+                double rrfScore = keywordWeight / (60 + i + 1);
+                scoreMap.merge(docId, rrfScore, Double::sum);
+            }
+
+            // 按分数排序
+            List<Document> mergedResults = scoreMap.entrySet().stream()
+                    .sorted((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()))
+                    .map(e -> {
+                        Document doc = docMap.get(e.getKey());
+                        doc.getMetadata().put("hybrid_score", e.getValue());
+                        return doc;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+
+            log.info("混合检索完成: knowledgeId={}, vectorResults={}, keywordResults={}, mergedResults={}",
+                    knowledgeId, vectorResults.size(), keywordResults.size(), mergedResults.size());
+
+            return mergedResults;
+        } catch (Exception e) {
+            log.error("混合检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
+            return Collections.emptyList();
+        }
     }
 
     /**
