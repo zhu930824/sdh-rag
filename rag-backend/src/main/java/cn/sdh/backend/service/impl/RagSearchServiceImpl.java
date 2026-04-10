@@ -22,7 +22,8 @@ public class RagSearchServiceImpl implements RagSearchService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final VectorStoreService vectorStoreService;
     private final RerankService rerankService;
-    private final AiChatService aiChatService;
+    private final ChatService chatService;
+
 
     @Override
     public RagSearchResult search(String query, Long knowledgeId, List<ChatMessage> chatHistory) {
@@ -170,7 +171,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             prompt.append("\n\n改写后的查询：");
 
             // 调用 LLM 进行改写
-            String rewritten = aiChatService.chat(prompt.toString(), modelId != null ? modelId.toString() : null);
+            String rewritten = chatService.chat(null,prompt.toString(), modelId != null ? modelId.toString() : null);
 
             if (rewritten != null && !rewritten.trim().isEmpty()) {
                 return rewritten.trim();

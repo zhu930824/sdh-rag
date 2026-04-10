@@ -5,6 +5,8 @@ import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.UserMapper;
+import cn.sdh.backend.rag.TokenUsageAdvisor;
+import cn.sdh.backend.service.TokenUsageService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +23,8 @@ public class StatsController {
     private final KnowledgeDocumentMapper documentMapper;
     private final ChatHistoryMapper chatHistoryMapper;
     private final UserMapper userMapper;
+    private final TokenUsageAdvisor tokenUsageAdvisor;
+    private final TokenUsageService tokenUsageService;
 
     @GetMapping("/overview")
     public Result<Map<String, Object>> overview() {
@@ -86,5 +90,77 @@ public class StatsController {
         result.put("modelStats", modelStats);
 
         return Result.success(result);
+    }
+
+    /**
+     * 获取 Token 使用统计（内存快速查询）
+     */
+    @GetMapping("/token-usage")
+    public Result<Map<String, Object>> tokenUsage() {
+        Map<String, Long> stats = tokenUsageAdvisor.getStatistics();
+        return Result.success(new HashMap<>(stats));
+    }
+
+    /**
+     * 重置 Token 内存统计
+     */
+    @PostMapping("/token-usage/reset")
+    public Result<Void> resetTokenUsage() {
+        tokenUsageAdvisor.resetStatistics();
+        return Result.success();
+    }
+
+    /**
+     * 获取数据库中的全局 Token 统计
+     */
+    @GetMapping("/token-usage/global")
+    public Result<Map<String, Object>> globalTokenUsage() {
+        Map<String, Object> stats = tokenUsageService.getGlobalStats();
+        return Result.success(stats);
+    }
+
+    /**
+     * 获取用户的 Token 统计
+     */
+    @GetMapping("/token-usage/user/{userId}")
+    public Result<Map<String, Object>> userTokenUsage(@PathVariable Long userId) {
+        Map<String, Object> stats = tokenUsageService.getUserTotalStats(userId);
+        return Result.success(stats);
+    }
+
+    /**
+     * 按日期统计 Token 使用
+     */
+    @GetMapping("/token-usage/by-date")
+    public Result<List<Map<String, Object>>> tokenUsageByDate(
+            @RequestParam Long userId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+
+        LocalDate start = LocalDate.parse(startDate);
+        LocalDate end = LocalDate.parse(endDate);
+        LocalDateTime startTime = start.atStartOfDay();
+        LocalDateTime endTime = end.plusDays(1).atStartOfDay();
+
+        List<Map<String, Object>> stats = tokenUsageService.statsByDate(userId, startTime, endTime);
+        return Result.success(stats);
+    }
+
+    /**
+     * 按模型统计 Token 使用
+     */
+    @GetMapping("/token-usage/by-model")
+    public Result<List<Map<String, Object>>> tokenUsageByModel(
+            @RequestParam Long userId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+
+        LocalDate start = LocalDate.parse(startDate);
+        LocalDate end = LocalDate.parse(endDate);
+        LocalDateTime startTime = start.atStartOfDay();
+        LocalDateTime endTime = end.plusDays(1).atStartOfDay();
+
+        List<Map<String, Object>> stats = tokenUsageService.statsByModel(userId, startTime, endTime);
+        return Result.success(stats);
     }
 }

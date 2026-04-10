@@ -2,7 +2,7 @@ package cn.sdh.backend.rag;
 
 import cn.sdh.backend.config.RagConfig;
 import cn.sdh.backend.entity.KnowledgeBase;
-import cn.sdh.backend.service.AiChatService;
+import cn.sdh.backend.service.ChatService;
 import cn.sdh.backend.service.RerankService;
 import cn.sdh.backend.service.VectorStoreService;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +25,8 @@ public class RagAdvisorFactory {
 
     private final VectorStoreService vectorStoreService;
     private final RerankService rerankService;
-    private final AiChatService aiChatService;
     private final RagConfig ragConfig;
+    private final ChatService chatService;
 
     /**
      * 创建 RAG Advisor
@@ -43,7 +43,7 @@ public class RagAdvisorFactory {
         // 构建各个组件
         HybridDocumentRetriever documentRetriever = new HybridDocumentRetriever(vectorStoreService, knowledgeBase);
         RerankDocumentPostProcessor postProcessor = new RerankDocumentPostProcessor(rerankService, knowledgeBase);
-        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(aiChatService, ragConfig);
+        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(chatService, ragConfig);
 
         // 构建 QueryAugmenter（将检索到的文档注入 Prompt）
         ContextualQueryAugmenter queryAugmenter = ContextualQueryAugmenter.builder()
@@ -72,7 +72,7 @@ public class RagAdvisorFactory {
         log.info("创建简单 RAG Advisor: knowledgeId={}", knowledgeBase.getId());
 
         HybridDocumentRetriever documentRetriever = new HybridDocumentRetriever(vectorStoreService, knowledgeBase);
-        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(aiChatService, ragConfig);
+        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(chatService, ragConfig);
 
         ContextualQueryAugmenter queryAugmenter = ContextualQueryAugmenter.builder()
                 .promptTemplate(createPromptTemplate(ragConfig.getRagSystemPrompt()))

@@ -5,9 +5,11 @@ import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
+import cn.sdh.backend.rag.LoggingAdvisor;
 import cn.sdh.backend.rag.RagAdvisorFactory;
 import cn.sdh.backend.rag.SensitiveWordAdvisor;
 import cn.sdh.backend.rag.SensitiveWordAdvisor.SensitiveWordException;
+import cn.sdh.backend.rag.TokenUsageAdvisor;
 import cn.sdh.backend.service.*;
 import cn.sdh.backend.service.RagSearchService.ChatMessage;
 import cn.sdh.backend.service.RagSearchService.RagSearchResult;
@@ -19,17 +21,24 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -42,7 +51,6 @@ import java.util.stream.Collectors;
 public class ChatServiceImpl implements ChatService {
 
     private final ChatHistoryMapper chatHistoryMapper;
-    private final AiChatService aiChatService;
     private final ModelConfigService modelConfigService;
     private final SensitiveWordService sensitiveWordService;
     private final KnowledgeBaseService knowledgeBaseService;
@@ -51,6 +59,7 @@ public class ChatServiceImpl implements ChatService {
     private final RagAdvisorFactory ragAdvisorFactory;
     private final ChatMemory chatMemory;
     private final ChatModelFactory chatModelFactory;
+    private final TokenUsageAdvisor tokenUsageAdvisor;
 
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
@@ -111,6 +120,18 @@ public class ChatServiceImpl implements ChatService {
                 .build();
         requestSpec = requestSpec.advisors(spec -> spec.advisors(memoryAdvisor));
 
+        // 添加 Token 使用量统计 Advisor
+        requestSpec = requestSpec.advisors(spec -> spec.advisors(tokenUsageAdvisor));
+
+        // 添加日志观测 Advisor（最后执行，记录完整流程）
+        LoggingAdvisor loggingAdvisor = LoggingAdvisor.builder()
+                .order(10000)  // 最低优先级，确保记录完整流程
+                .logRequestBody(true)
+                .logResponseBody(false)  // 响应内容通常较长，默认不记录
+                .maxContentLength(300)
+                .build();
+        requestSpec = requestSpec.advisors(spec -> spec.advisors(loggingAdvisor));
+
         // 流式调用
         return requestSpec.stream()
                 .chatResponse()
@@ -160,13 +181,16 @@ public class ChatServiceImpl implements ChatService {
                 ? sessionId
                 : UUID.randomUUID().toString();
 
-        // 获取模型配置：优先使用用户指定的模型，否则使用默认模型
-        String useModelId;
-        if (modelId != null) {
-            useModelId = String.valueOf(modelId);
-        } else {
-            ModelConfig defaultModel = modelConfigService.getDefault();
-            useModelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;
+        // 生成请求ID并记录开始时间
+        String requestId = Long.toHexString(System.currentTimeMillis()) + "-" +
+                Integer.toHexString((int) (Math.random() * 0xFFFF));
+        Instant startTime = Instant.now();
+
+        // 获取聊天模型
+        ChatModel chatModel = getChatModel(modelId);
+        if (chatModel == null) {
+            log.error("无法获取聊天模型，modelId: {}", modelId);
+            return Flux.just("{\"type\":\"error\",\"message\":\"模型配置错误，请检查模型设置\"}");
         }
 
         // RAG召回：如果指定了知识库，从知识库召回相关内容
@@ -180,44 +204,65 @@ public class ChatServiceImpl implements ChatService {
         // 构建系统提示词
         String systemPrompt = buildSystemPrompt(knowledgeId, context);
 
+        // 记录请求信息
+        log.info("[{}] 聊天请求开始(手动RAG) - 用户问题: {}", requestId,
+                question.length() > 200 ? question.substring(0, 200) + "..." : question);
+
         // 保存用户问题
         Long historyId = saveUserQuestion(question, currentSessionId, userId, knowledgeId);
 
-        // 用于收集AI回复
+        // 用于收集AI回复和统计
         AtomicReference<StringBuilder> answerBuilder = new AtomicReference<>(new StringBuilder());
+        AtomicInteger chunkCount = new AtomicInteger(0);
 
-        // 调用AI服务
-        return aiChatService.streamChat(systemPrompt, question, useModelId)
-                .filter(data -> !data.contains("\"type\":\"done\"")) // 过滤掉原有的done事件
-                .doOnNext(data -> {
-                    // 提取内容并收集
-                    if (data.contains("\"type\":\"content\"")) {
-                        try {
-                            int start = data.indexOf("\"content\":\"") + 11;
-                            int end = data.indexOf("\"", start);
-                            if (start > 10 && end > start) {
-                                String content = data.substring(start, end);
-                                // 反转义
-                                content = content.replace("\\n", "\n")
-                                        .replace("\\\"", "\"")
-                                        .replace("\\\\", "\\");
-                                answerBuilder.get().append(content);
-                            }
-                        } catch (Exception e) {
-                            log.debug("解析内容失败: {}", e.getMessage());
-                        }
-                    }
+        // 构建 Prompt
+        Prompt prompt;
+        if (systemPrompt != null && !systemPrompt.isEmpty()) {
+            prompt = new Prompt(List.of(
+                    new SystemMessage(systemPrompt),
+                    new UserMessage(question)
+            ));
+        } else {
+            prompt = new Prompt(question);
+        }
+
+        // 流式调用 AI
+        return chatModel.stream(prompt)
+                .map(this::extractContent)
+                .filter(content -> content != null && !content.isEmpty())
+                .map(content -> {
+                    answerBuilder.get().append(content);
+                    chunkCount.incrementAndGet();
+                    return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
                 })
-                // 在流结束后追加带 historyId 的 done 事件
                 .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
                 .doOnNext(data -> {
-                    // 流式响应完成，保存AI回复
                     if (data.contains("\"type\":\"done\"")) {
                         String answer = answerBuilder.get().toString();
                         saveAiAnswer(historyId, answer);
-                        log.debug("会话 {} AI响应完成", currentSessionId);
+
+                        // 记录完成日志
+                        Duration duration = Duration.between(startTime, Instant.now());
+                        log.info("[{}] 聊天请求完成(手动RAG) - 耗时: {}ms, chunks: {}, 内容长度: {}",
+                                requestId, duration.toMillis(), chunkCount.get(), answer.length());
                     }
+                })
+                .onErrorResume(e -> {
+                    Duration duration = Duration.between(startTime, Instant.now());
+                    log.error("[{}] 聊天请求失败(手动RAG) - 耗时: {}ms, 错误: {}",
+                            requestId, duration.toMillis(), e.getMessage());
+                    return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
                 });
+    }
+
+    /**
+     * 从响应中提取内容
+     */
+    private String extractContent(ChatResponse response) {
+        if (response == null || response.getResult() == null) {
+            return null;
+        }
+        return response.getResult().getOutput().getText();
     }
 
     /**
@@ -401,10 +446,20 @@ public class ChatServiceImpl implements ChatService {
             return "您的问题包含敏感词，请修改后重试";
         }
 
-        // 同步版本的聊天接口
-        ModelConfig defaultModel = modelConfigService.getDefault();
-        String modelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;
-        return aiChatService.chat(question, modelId);
+        // 获取聊天模型
+        ChatModel chatModel = getChatModel(null);
+        if (chatModel == null) {
+            return "模型配置错误，请检查模型设置";
+        }
+
+        try {
+            Prompt prompt = new Prompt(question);
+            ChatResponse response = chatModel.call(prompt);
+            return extractContent(response);
+        } catch (Exception e) {
+            log.error("AI调用失败", e);
+            return "AI调用失败: " + e.getMessage();
+        }
     }
 
     /**

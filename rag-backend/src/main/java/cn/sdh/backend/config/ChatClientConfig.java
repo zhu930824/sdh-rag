@@ -1,6 +1,8 @@
 package cn.sdh.backend.config;
 
 import cn.sdh.backend.rag.MySQLChatMemoryRepository;
+import cn.sdh.backend.rag.TokenUsageAdvisor;
+import cn.sdh.backend.service.TokenUsageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -34,11 +36,23 @@ public class ChatClientConfig {
 
     /**
      * 配置 ChatClient.Builder Bean
-     * 可以用于创建 ChatClient 实例
      */
     @Bean
     public ChatClient.Builder chatClientBuilder(ChatModel dashscopeChatModel) {
         log.info("初始化 ChatClient.Builder");
         return ChatClient.builder(dashscopeChatModel);
+    }
+
+    /**
+     * 配置 TokenUsageAdvisor Bean
+     * 用于统计和持久化 token 消耗
+     */
+    @Bean
+    public TokenUsageAdvisor tokenUsageAdvisor(TokenUsageService tokenUsageService) {
+        log.info("初始化 TokenUsageAdvisor");
+        return TokenUsageAdvisor.builder()
+                .order(900)
+                .tokenUsageService(tokenUsageService)
+                .build();
     }
 }

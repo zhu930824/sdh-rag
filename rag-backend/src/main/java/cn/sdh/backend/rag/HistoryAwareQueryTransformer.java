@@ -1,7 +1,7 @@
 package cn.sdh.backend.rag;
 
 import cn.sdh.backend.config.RagConfig;
-import cn.sdh.backend.service.AiChatService;
+import cn.sdh.backend.service.ChatService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +20,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HistoryAwareQueryTransformer implements QueryTransformer {
 
-    private final AiChatService aiChatService;
+    private final ChatService chatService;
     private final RagConfig ragConfig;
 
     @Override
@@ -41,7 +41,7 @@ public class HistoryAwareQueryTransformer implements QueryTransformer {
 
         try {
             // 调用 LLM 进行改写
-            String rewrittenQuery = aiChatService.chat(rewritePrompt, null);
+            String rewrittenQuery = chatService.chat(rewritePrompt, null);
 
             if (rewrittenQuery != null && !rewrittenQuery.trim().isEmpty()) {
                 rewrittenQuery = rewrittenQuery.trim();

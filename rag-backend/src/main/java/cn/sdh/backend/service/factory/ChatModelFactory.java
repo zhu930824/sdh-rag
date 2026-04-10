@@ -31,25 +31,75 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         log.info("创建 Chat 模型: name={}, provider={}, modelId={}",
                 config.getName(), provider, config.getModelId());
 
-        String providerLower = provider.toLowerCase();
-        switch (providerLower) {
-            case "openai":
-                return createOpenAiChatModel(config);
-            case "dashscope":
-            case "alibaba":
-            case "qwen":
-                return createDashScopeChatModel(config);
-            case "deepseek":
-                return createDeepSeekChatModel(config);
-            case "moonshot":
-                return createMoonshotChatModel(config);
-            case "silicon":
-            case "siliconflow":
-                return createSiliconChatModel(config);
-            default:
-                log.warn("未知的模型提供者: {}, 使用默认配置", provider);
-                return createDefaultModel(config.getModelId());
+        ModelProvider modelProvider = ModelProvider.fromString(provider);
+
+        if (modelProvider == null) {
+            log.warn("未知的模型提供者: {}, 使用默认配置", provider);
+            return createDefaultModel(config.getModelId());
         }
+
+        return switch (modelProvider) {
+            case OPENAI -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.OPENAI),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case DASHSCOPE -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.DASHSCOPE),
+                    resolveApiKey(config, dashscopeApiKey),
+                    config.getModelId(),
+                    config
+            );
+            case DEEPSEEK -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.DEEPSEEK),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case MOONSHOT -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.MOONSHOT),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case SILICON -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.SILICON),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case ZHIPU -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.ZHIPU),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case BAICHUAN -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.BAICHUAN),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case MINIMAX -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.MINIMAX),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+            case LOCAL -> createOpenAiCompatibleModel(
+                    resolveBaseUrl(config, ModelProvider.LOCAL),
+                    config.getApiKey() != null ? config.getApiKey() : "ollama",
+                    config.getModelId(),
+                    config
+            );
+            case CUSTOM -> createOpenAiCompatibleModel(
+                    config.getBaseUrl(),
+                    config.getApiKey(),
+                    config.getModelId(),
+                    config
+            );
+        };
     }
 
     @Override
@@ -59,7 +109,7 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         // 优先使用 DashScope
         if (dashscopeApiKey != null && !dashscopeApiKey.isEmpty()) {
             return createOpenAiCompatibleModel(
-                    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    ModelProvider.DASHSCOPE.getDefaultBaseUrl(),
                     dashscopeApiKey,
                     modelName != null ? modelName : DEFAULT_MODEL
             );
@@ -68,7 +118,7 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         // 其次使用 OpenAI
         if (openaiApiKey != null && !openaiApiKey.isEmpty()) {
             return createOpenAiCompatibleModel(
-                    "https://api.openai.com",
+                    ModelProvider.OPENAI.getDefaultBaseUrl(),
                     openaiApiKey,
                     modelName != null ? modelName : "gpt-3.5-turbo"
             );
@@ -88,35 +138,24 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         return MODEL_TYPE;
     }
 
-    // ==================== 具体创建方法 ====================
+    // ==================== 工具方法 ====================
 
-    private ChatModel createOpenAiChatModel(ModelConfig config) {
+    /**
+     * 解析 baseUrl，优先使用配置中的，否则使用默认值
+     */
+    private String resolveBaseUrl(ModelConfig config, ModelProvider provider) {
         String baseUrl = config.getBaseUrl();
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = "https://api.openai.com";
+        if (baseUrl != null && !baseUrl.isEmpty()) {
+            return baseUrl;
         }
-        return createOpenAiCompatibleModel(baseUrl, config.getApiKey(), config.getModelId(), config);
+        return provider.getDefaultBaseUrl();
     }
 
-    private ChatModel createDashScopeChatModel(ModelConfig config) {
-        String baseUrl = config.getBaseUrl();
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-        }
-        String apiKey = config.getApiKey() != null ? config.getApiKey() : dashscopeApiKey;
-        return createOpenAiCompatibleModel(baseUrl, apiKey, config.getModelId(), config);
-    }
-
-    private ChatModel createDeepSeekChatModel(ModelConfig config) {
-        return createOpenAiCompatibleModel("https://api.deepseek.com", config.getApiKey(), config.getModelId(), config);
-    }
-
-    private ChatModel createMoonshotChatModel(ModelConfig config) {
-        return createOpenAiCompatibleModel("https://api.moonshot.cn/v1", config.getApiKey(), config.getModelId(), config);
-    }
-
-    private ChatModel createSiliconChatModel(ModelConfig config) {
-        return createOpenAiCompatibleModel("https://api.siliconflow.cn/v1", config.getApiKey(), config.getModelId(), config);
+    /**
+     * 解析 apiKey，优先使用配置中的，否则使用默认值
+     */
+    private String resolveApiKey(ModelConfig config, String defaultApiKey) {
+        return config.getApiKey() != null ? config.getApiKey() : defaultApiKey;
     }
 
     /**

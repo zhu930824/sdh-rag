@@ -27,6 +27,9 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
     private static final String DEFAULT_MODEL = "text-embedding-v3";
     private static final String MODEL_TYPE = "embedding";
 
+    // DashScope Embedding 专用 baseUrl（与 Chat 不同）
+    private static final String DASHSCOPE_EMBEDDING_URL = "https://dashscope.aliyuncs.com";
+
     public EmbeddingModelFactory(ModelConfigMapper modelConfigMapper) {
         super(modelConfigMapper);
     }
@@ -37,18 +40,31 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
         log.info("创建 Embedding 模型: name={}, provider={}, modelId={}",
                 config.getName(), provider, config.getModelId());
 
-        String providerLower = provider.toLowerCase();
-        switch (providerLower) {
-            case "openai":
-                return createOpenAiEmbeddingModel(config);
-            case "dashscope":
-            case "alibaba":
-            case "qwen":
-                return createDashScopeEmbeddingModel(config);
-            default:
-                log.warn("未知的模型提供者: {}, 使用默认配置", provider);
-                return createDefaultModel(config.getModelId());
+        ModelProvider modelProvider = ModelProvider.fromString(provider);
+
+        if (modelProvider == null) {
+            log.warn("未知的模型提供者: {}, 使用默认配置", provider);
+            return createDefaultModel(config.getModelId());
         }
+
+        return switch (modelProvider) {
+            case OPENAI -> createOpenAiEmbeddingModel(
+                    resolveBaseUrl(config, ModelProvider.OPENAI),
+                    config.getApiKey(),
+                    config.getModelId()
+            );
+            case DASHSCOPE -> createDashScopeEmbeddingModel(
+                    resolveDashScopeBaseUrl(config),
+                    resolveApiKey(config, dashscopeApiKey),
+                    config.getModelId()
+            );
+            case DEEPSEEK, MOONSHOT, SILICON, ZHIPU, BAICHUAN, MINIMAX, LOCAL, CUSTOM ->
+                    createOpenAiEmbeddingModel(
+                            resolveBaseUrl(config, modelProvider),
+                            resolveApiKey(config, null),
+                            config.getModelId()
+                    );
+        };
     }
 
     @Override
@@ -61,7 +77,7 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
         // 优先使用 DashScope
         if (dashscopeApiKey != null && !dashscopeApiKey.isEmpty()) {
             return createDashScopeEmbeddingModel(
-                    "https://dashscope.aliyuncs.com",
+                    DASHSCOPE_EMBEDDING_URL,
                     dashscopeApiKey,
                     modelName != null ? modelName : DEFAULT_MODEL
             );
@@ -70,7 +86,7 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
         // 其次使用 OpenAI
         if (openaiApiKey != null && !openaiApiKey.isEmpty()) {
             return createOpenAiEmbeddingModel(
-                    "https://api.openai.com",
+                    ModelProvider.OPENAI.getDefaultBaseUrl(),
                     openaiApiKey,
                     modelName != null ? modelName : "text-embedding-ada-002"
             );
@@ -91,7 +107,7 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
     }
 
     @Override
-    public M getModel(String modelName) {
+    public EmbeddingModel getModel(String modelName) {
         // 模型名称兼容映射
         if (modelName != null) {
             modelName = normalizeModelName(modelName);
@@ -100,23 +116,6 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
     }
 
     // ==================== 具体创建方法 ====================
-
-    private EmbeddingModel createOpenAiEmbeddingModel(ModelConfig config) {
-        String baseUrl = config.getBaseUrl();
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = "https://api.openai.com";
-        }
-        return createOpenAiEmbeddingModel(baseUrl, config.getApiKey(), config.getModelId());
-    }
-
-    private EmbeddingModel createDashScopeEmbeddingModel(ModelConfig config) {
-        String baseUrl = config.getBaseUrl();
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = "https://dashscope.aliyuncs.com";
-        }
-        String apiKey = config.getApiKey() != null ? config.getApiKey() : dashscopeApiKey;
-        return createDashScopeEmbeddingModel(baseUrl, apiKey, config.getModelId());
-    }
 
     private EmbeddingModel createOpenAiEmbeddingModel(String baseUrl, String apiKey, String modelName) {
         OpenAiApi openAiApi = OpenAiApi.builder()
@@ -153,6 +152,37 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
                 options,
                 RetryUtils.DEFAULT_RETRY_TEMPLATE
         );
+    }
+
+    // ==================== 工具方法 ====================
+
+    /**
+     * 解析 baseUrl，优先使用配置中的，否则使用默认值
+     */
+    private String resolveBaseUrl(ModelConfig config, ModelProvider provider) {
+        String baseUrl = config.getBaseUrl();
+        if (baseUrl != null && !baseUrl.isEmpty()) {
+            return baseUrl;
+        }
+        return provider.getDefaultBaseUrl();
+    }
+
+    /**
+     * DashScope Embedding 使用专用 URL
+     */
+    private String resolveDashScopeBaseUrl(ModelConfig config) {
+        String baseUrl = config.getBaseUrl();
+        if (baseUrl != null && !baseUrl.isEmpty()) {
+            return baseUrl;
+        }
+        return DASHSCOPE_EMBEDDING_URL;
+    }
+
+    /**
+     * 解析 apiKey，优先使用配置中的，否则使用默认值
+     */
+    private String resolveApiKey(ModelConfig config, String defaultApiKey) {
+        return config.getApiKey() != null ? config.getApiKey() : defaultApiKey;
     }
 
     /**

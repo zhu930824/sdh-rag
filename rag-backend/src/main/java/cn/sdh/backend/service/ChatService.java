@@ -53,4 +53,7 @@ public interface ChatService {
      * @return 回答
      */
     String chat(Long userId, String question, String sessionId);
+
+
+    String chat(String question, String sessionId);
 }
