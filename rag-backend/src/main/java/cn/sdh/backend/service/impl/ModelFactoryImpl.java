@@ -92,17 +92,21 @@ public class ModelFactoryImpl implements ModelFactory {
         log.info("创建 Chat 模型: name={}, provider={}, modelId={}",
                 config.getName(), provider, config.getModelId());
 
-        return switch (provider.toLowerCase()) {
-            case "openai" -> createOpenAiChatModel(config);
-            case "dashscope", "alibaba", "qwen" -> createDashScopeChatModel(config);
-            case "deepseek" -> createDeepSeekChatModel(config);
-            case "moonshot" -> createMoonshotChatModel(config);
-            case "silicon", "siliconflow" -> createSiliconChatModel(config);
-            default -> {
-                log.warn("未知的模型提供者: {}, 使用默认配置", provider);
-                yield createDefaultChatModel(config.getModelId());
-            }
-        };
+        String providerLower = provider.toLowerCase();
+        if ("openai".equals(providerLower)) {
+            return createOpenAiChatModel(config);
+        } else if ("dashscope".equals(providerLower) || "alibaba".equals(providerLower) || "qwen".equals(providerLower)) {
+            return createDashScopeChatModel(config);
+        } else if ("deepseek".equals(providerLower)) {
+            return createDeepSeekChatModel(config);
+        } else if ("moonshot".equals(providerLower)) {
+            return createMoonshotChatModel(config);
+        } else if ("silicon".equals(providerLower) || "siliconflow".equals(providerLower)) {
+            return createSiliconChatModel(config);
+        } else {
+            log.warn("未知的模型提供者: {}, 使用默认配置", provider);
+            return createDefaultChatModel(config.getModelId());
+        }
     }
 
     private ChatModel createOpenAiChatModel(ModelConfig config) {
@@ -273,14 +277,15 @@ public class ModelFactoryImpl implements ModelFactory {
         log.info("创建 Embedding 模型: name={}, provider={}, modelId={}",
                 config.getName(), provider, config.getModelId());
 
-        return switch (provider.toLowerCase()) {
-            case "openai" -> createOpenAiEmbeddingModel(config);
-            case "dashscope", "alibaba", "qwen" -> createDashScopeEmbeddingModel(config);
-            default -> {
-                log.warn("未知的模型提供者: {}, 使用默认配置", provider);
-                yield createDefaultEmbeddingModel(config.getModelId());
-            }
-        };
+        String providerLower = provider.toLowerCase();
+        if ("openai".equals(providerLower)) {
+            return createOpenAiEmbeddingModel(config);
+        } else if ("dashscope".equals(providerLower) || "alibaba".equals(providerLower) || "qwen".equals(providerLower)) {
+            return createDashScopeEmbeddingModel(config);
+        } else {
+            log.warn("未知的模型提供者: {}, 使用默认配置", provider);
+            return createDefaultEmbeddingModel(config.getModelId());
+        }
     }
 
     private EmbeddingModel createOpenAiEmbeddingModel(ModelConfig config) {

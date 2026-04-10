@@ -1,17 +1,26 @@
 package cn.sdh.backend.service.impl;
 
+import cn.sdh.backend.config.RagConfig;
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
+import cn.sdh.backend.rag.RagAdvisorFactory;
+import cn.sdh.backend.rag.SensitiveWordAdvisor;
+import cn.sdh.backend.rag.SensitiveWordAdvisor.SensitiveWordException;
 import cn.sdh.backend.service.*;
 import cn.sdh.backend.service.RagSearchService.ChatMessage;
 import cn.sdh.backend.service.RagSearchService.RagSearchResult;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -28,29 +37,115 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
 
-    @Autowired
-    private ChatHistoryMapper chatHistoryMapper;
-
-    @Autowired
-    private AiChatService aiChatService;
-
-    @Autowired
-    private ModelConfigService modelConfigService;
-
-    @Autowired
-    private SensitiveWordService sensitiveWordService;
-
-    @Autowired
-    private KnowledgeBaseService knowledgeBaseService;
-
-    @Autowired
-    private RagSearchService ragSearchService;
+    private final ChatHistoryMapper chatHistoryMapper;
+    private final AiChatService aiChatService;
+    private final ModelConfigService modelConfigService;
+    private final SensitiveWordService sensitiveWordService;
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final RagSearchService ragSearchService;
+    private final RagConfig ragConfig;
+    private final RagAdvisorFactory ragAdvisorFactory;
+    private final ChatMemory chatMemory;
+    private final ModelFactory modelFactory;
 
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
-        log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}", userId, knowledgeId, modelId, sessionId);
+        log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}, 使用Advisor模式: {}",
+                userId, knowledgeId, modelId, sessionId, ragConfig.isUseAdvisor());
+
+        // 根据配置选择使用 Advisor 模式还是手动 RAG 模式
+        if (ragConfig.isUseAdvisor()) {
+            return askWithAdvisor(question, sessionId, userId, knowledgeId, modelId);
+        } else {
+            return askManual(question, sessionId, userId, knowledgeId, modelId);
+        }
+    }
+
+    /**
+     * 使用 Spring AI Advisor 机制的问答
+     */
+    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
+        // 生成或使用现有的会话ID
+        String currentSessionId = (sessionId != null && !sessionId.isEmpty())
+                ? sessionId
+                : UUID.randomUUID().toString();
+
+        // 获取模型配置
+        ChatModel chatModel = getChatModel(modelId);
+
+        // 保存用户问题
+        Long historyId = saveUserQuestion(question, currentSessionId, userId, knowledgeId);
+
+        // 用于收集AI回复
+        AtomicReference<StringBuilder> answerBuilder = new AtomicReference<>(new StringBuilder());
+
+        // 构建 ChatClient
+        ChatClient.Builder clientBuilder = ChatClient.builder(chatModel);
+        ChatClient.ChatClientRequestSpec requestSpec = clientBuilder.build()
+                .prompt()
+                .system(ragConfig.getSystemPrompt())
+                .user(question);
+
+        // 添加敏感词检测 Advisor（最先执行）
+        SensitiveWordAdvisor sensitiveWordAdvisor = SensitiveWordAdvisor.builder(sensitiveWordService)
+                .order(0)  // 最高优先级
+                .build();
+        requestSpec = requestSpec.advisors(spec -> spec.advisors(sensitiveWordAdvisor));
+
+        // 如果指定了知识库，添加 RAG Advisor
+        if (knowledgeId != null) {
+            KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
+            if (knowledgeBase != null) {
+                RetrievalAugmentationAdvisor ragAdvisor = ragAdvisorFactory.createAdvisor(knowledgeBase);
+                requestSpec = requestSpec.advisors(spec -> spec.advisors(ragAdvisor));
+            }
+        }
+
+        // 添加对话记忆 Advisor
+        MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory)
+                .conversationId(currentSessionId)
+                .build();
+        requestSpec = requestSpec.advisors(spec -> spec.advisors(memoryAdvisor));
+
+        // 流式调用
+        return requestSpec.stream()
+                .chatResponse()
+                .map(response -> {
+                    if (response.getResult() != null && response.getResult().getOutput() != null) {
+                        return response.getResult().getOutput().getText();
+                    }
+                    return null;
+                })
+                .filter(content -> content != null && !content.isEmpty())
+                .map(content -> {
+                    answerBuilder.get().append(content);
+                    return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
+                })
+                .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
+                .doOnNext(data -> {
+                    if (data.contains("\"type\":\"done\"")) {
+                        String answer = answerBuilder.get().toString();
+                        saveAiAnswer(historyId, answer);
+                        log.debug("会话 {} AI响应完成", currentSessionId);
+                    }
+                })
+                .onErrorResume(SensitiveWordException.class, e -> {
+                    log.warn("敏感词拦截: {}", e.getSensitiveWords());
+                    return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                })
+                .onErrorResume(e -> {
+                    log.error("AI调用失败", e);
+                    return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                });
+    }
+
+    /**
+     * 使用手动 RAG 流程的问答（原有实现）
+     */
+    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
 
         // 检测敏感词
         List<String> sensitiveWords = sensitiveWordService.findSensitiveWords(question);
@@ -309,5 +404,40 @@ public class ChatServiceImpl implements ChatService {
         ModelConfig defaultModel = modelConfigService.getDefault();
         String modelId = defaultModel != null ? String.valueOf(defaultModel.getId()) : null;
         return aiChatService.chat(question, modelId);
+    }
+
+    /**
+     * 获取聊天模型
+     */
+    private ChatModel getChatModel(Long modelId) {
+        // 优先使用指定的模型ID
+        if (modelId != null) {
+            ChatModel model = modelFactory.getChatModelById(modelId);
+            if (model != null) {
+                return model;
+            }
+        }
+
+        // 获取默认模型配置
+        ModelConfig defaultConfig = modelConfigService.getDefault();
+        if (defaultConfig != null) {
+            return modelFactory.getChatModelById(defaultConfig.getId());
+        }
+
+        // 使用默认模型名称
+        return modelFactory.getChatModel(null);
+    }
+
+    /**
+     * 转义JSON字符串
+     */
+    private String escapeJson(String text) {
+        if (text == null) return "";
+        return text
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }

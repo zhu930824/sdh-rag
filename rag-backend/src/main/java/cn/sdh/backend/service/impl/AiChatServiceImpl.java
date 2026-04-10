@@ -5,6 +5,7 @@ import cn.sdh.backend.service.AiChatService;
 import cn.sdh.backend.service.ModelConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -33,9 +34,10 @@ public class AiChatServiceImpl implements AiChatService {
     @Autowired(required = false)
     private ChatModel dashscopeChatModel;
 
+
     @Override
     public Flux<String> streamChat(String prompt, String modelId) {
-        return streamChat(null, prompt, modelId);
+        return streamChat("", prompt, modelId);
     }
 
     @Override
@@ -214,6 +216,50 @@ public class AiChatServiceImpl implements AiChatService {
             return null;
         }
         return response.getResult().getOutput().getText();
+    }
+
+    /**
+     * 使用 ChatClient 进行流式对话
+     * 新增方法，支持 ChatClient 的 Advisor 机制
+     *
+     * @param chatClient ChatClient 实例
+     * @param systemPrompt 系统提示词
+     * @param userPrompt 用户问题
+     * @return 流式响应（JSON格式）
+     */
+    public Flux<String> streamChat(ChatClient chatClient, String systemPrompt, String userPrompt) {
+        try {
+            return chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .stream()
+                    .chatResponse()
+                    .map(this::extractContent)
+                    .filter(content -> content != null && !content.isEmpty())
+                    .map(content -> "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}")
+                    .concatWith(Flux.just("{\"type\":\"done\"}"))
+                    .onErrorResume(e -> {
+                        log.error("AI调用失败", e);
+                        return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                    });
+        } catch (Exception e) {
+            log.error("创建 ChatClient 调用失败", e);
+            return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+
+    /**
+     * 从 Message 中提取内容
+     */
+    private String extractContentFromMessage(org.springframework.ai.chat.messages.Message message) {
+        if (message == null) {
+            return null;
+        }
+        if (message instanceof AssistantMessage) {
+            return ((AssistantMessage) message).getText();
+        }
+        return message.getText();
     }
 
     /**

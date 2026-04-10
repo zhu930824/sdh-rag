@@ -93,3 +93,9 @@ knowledge:
     chunk-overlap: 50
     embeddingModel: text-embedding-v3
     rankModel: qwen3-rerank
+
+# RAG Advisor 配置
+rag:
+  use-advisor: true  # true: 使用 Spring AI Advisor 机制; false: 使用原有手动 RAG 流程
+  enable-rewrite: true  # 是否启用查询改写
+  memory-window-size: 10  # 对话记忆窗口大小
