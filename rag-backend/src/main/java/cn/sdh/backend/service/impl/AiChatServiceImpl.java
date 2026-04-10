@@ -1,8 +1,8 @@
 package cn.sdh.backend.service.impl;
 
-import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.service.AiChatService;
-import cn.sdh.backend.service.ModelConfigService;
+import cn.sdh.backend.service.factory.ChatModelFactory;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -11,10 +11,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -25,14 +21,10 @@ import java.util.List;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class AiChatServiceImpl implements AiChatService {
 
-    @Autowired
-    private ModelConfigService modelConfigService;
-
-    // 默认使用DashScope（通义千问）
-    @Autowired(required = false)
-    private ChatModel dashscopeChatModel;
+    private final ChatModelFactory chatModelFactory;
 
 
     @Override
@@ -98,114 +90,14 @@ public class AiChatServiceImpl implements AiChatService {
      * 获取聊天模型
      */
     private ChatModel getChatModel(String modelId) {
-        ModelConfig config = null;
-
-        // 如果指定了模型ID，从数据库获取配置
         if (modelId != null && !modelId.isEmpty()) {
             try {
-                config = modelConfigService.getById(Long.parseLong(modelId));
+                return chatModelFactory.getModelById(Long.parseLong(modelId));
             } catch (NumberFormatException e) {
                 log.warn("无效的模型ID: {}", modelId);
             }
         }
-
-        // 如果没有指定，获取默认模型
-        if (config == null) {
-            config = modelConfigService.getDefault();
-        }
-
-        // 如果数据库也没有配置，使用DashScope默认配置
-        if (config == null) {
-            log.info("使用默认DashScope模型");
-            return dashscopeChatModel;
-        }
-
-        // 根据提供商创建对应的ChatModel
-        return createChatModel(config);
-    }
-
-    /**
-     * 根据配置创建ChatModel
-     */
-    private ChatModel createChatModel(ModelConfig config) {
-        String provider = config.getProvider();
-        String apiKey = config.getApiKey();
-        String baseUrl = config.getBaseUrl();
-        String modelName = config.getModelId();
-        Double temperature = config.getTemperature();
-        Integer maxTokens = config.getMaxTokens();
-
-        // 对于本地模型或自定义配置，使用OpenAI兼容接口
-        OpenAiApi openAiApi;
-
-        if (baseUrl != null && !baseUrl.isEmpty()) {
-            openAiApi = OpenAiApi.builder()
-                    .baseUrl(baseUrl)
-                    .apiKey(apiKey != null ? apiKey : "no-key")
-                    .build();
-        } else {
-            // 使用提供商的默认配置
-            switch (provider.toLowerCase()) {
-                case "openai":
-                    openAiApi = OpenAiApi.builder()
-                            .apiKey(apiKey)
-                            .build();
-                    break;
-                case "deepseek":
-                    openAiApi = OpenAiApi.builder()
-                            .baseUrl("https://api.deepseek.com")
-                            .apiKey(apiKey)
-                            .build();
-                    break;
-                case "moonshot":
-                    openAiApi = OpenAiApi.builder()
-                            .baseUrl("https://api.moonshot.cn/v1")
-                            .apiKey(apiKey)
-                            .build();
-                    break;
-                case "silicon":
-                    openAiApi = OpenAiApi.builder()
-                            .baseUrl("https://api.siliconflow.cn/v1")
-                            .apiKey(apiKey)
-                            .build();
-                    break;
-                case "alibaba":
-                case "dashscope":
-                case "qwen":
-                    // 阿里云百炼使用DashScope
-                    return dashscopeChatModel;
-                default:
-                    // 默认使用DashScope
-                    if (dashscopeChatModel != null) {
-                        return dashscopeChatModel;
-                    }
-                    // 如果没有DashScope，尝试使用OpenAI兼容接口
-                    if (apiKey != null) {
-                        openAiApi = OpenAiApi.builder()
-                                .apiKey(apiKey)
-                                .build();
-                    } else {
-                        log.error("无法创建模型，缺少API Key");
-                        return null;
-                    }
-            }
-        }
-
-        // 构建ChatOptions
-        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
-                .model(modelName);
-
-        if (temperature != null) {
-            optionsBuilder.temperature(temperature);
-        }
-        if (maxTokens != null) {
-            optionsBuilder.maxTokens(maxTokens);
-        }
-
-        return OpenAiChatModel.builder()
-                .openAiApi(openAiApi)
-                .defaultOptions(optionsBuilder.build())
-                .build();
+        return chatModelFactory.getModel(null);
     }
 
     /**

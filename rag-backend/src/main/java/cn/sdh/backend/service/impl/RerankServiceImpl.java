@@ -1,7 +1,7 @@
 package cn.sdh.backend.service.impl;
 
-import cn.sdh.backend.service.ModelFactory;
 import cn.sdh.backend.service.RerankService;
+import cn.sdh.backend.service.factory.RerankModelFactory;
 import com.alibaba.cloud.ai.document.DocumentWithScore;
 import com.alibaba.cloud.ai.model.RerankModel;
 import com.alibaba.cloud.ai.model.RerankRequest;
@@ -23,10 +23,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RerankServiceImpl implements RerankService {
 
-    private final ModelFactory modelFactory;
+    private final RerankModelFactory rerankModelFactory;
 
     @Override
-    public List<RerankService.RerankResult> rerank(String query, List<String> documents, int topK, String rerankModel) {
+    public List<RerankResult> rerank(String query, List<String> documents, int topK, String rerankModel) {
         if (documents == null || documents.isEmpty()) {
             return Collections.emptyList();
         }
@@ -38,7 +38,7 @@ public class RerankServiceImpl implements RerankService {
         log.info("重排序请求: model={}, documents={}, topK={}", rerankModel, documents.size(), topK);
 
         // 从工厂获取 Rerank 模型
-        RerankModel model = modelFactory.getRerankModel(rerankModel);
+        RerankModel model = rerankModelFactory.getModel(rerankModel);
         if (model == null) {
             log.warn("无法获取 Rerank 模型: {}", rerankModel);
             return fallbackRerank(documents, topK);
@@ -62,7 +62,7 @@ public class RerankServiceImpl implements RerankService {
             }
 
             // 转换结果
-            List<RerankService.RerankResult> results = response.getResults().stream()
+            List<RerankResult> results = response.getResults().stream()
                     .limit(topK)
                     .map(this::convertToRerankResult)
                     .collect(Collectors.toList());
@@ -79,8 +79,8 @@ public class RerankServiceImpl implements RerankService {
     /**
      * 转换 DocumentWithScore 为 RerankResult
      */
-    private RerankService.RerankResult convertToRerankResult(DocumentWithScore docWithScore) {
-        RerankService.RerankResult result = new RerankService.RerankResult();
+    private RerankResult convertToRerankResult(DocumentWithScore docWithScore) {
+        RerankResult result = new RerankResult();
 
         // 查找原始文档索引
         String content = docWithScore.getOutput().getText();
@@ -96,11 +96,11 @@ public class RerankServiceImpl implements RerankService {
     /**
      * 降级处理
      */
-    private List<RerankService.RerankResult> fallbackRerank(List<String> documents, int topK) {
+    private List<RerankResult> fallbackRerank(List<String> documents, int topK) {
         log.warn("使用降级重排序策略");
         int limit = Math.min(topK, documents.size());
         return documents.subList(0, limit).stream()
-                .map(doc -> new RerankService.RerankResult(0, doc, 0.5))
+                .map(doc -> new RerankResult(0, doc, 0.5))
                 .collect(Collectors.toList());
     }
 }

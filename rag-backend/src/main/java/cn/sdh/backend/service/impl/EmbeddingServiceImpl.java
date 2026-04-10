@@ -1,8 +1,9 @@
 package cn.sdh.backend.service.impl;
 
-import cn.sdh.backend.service.EmbeddingModelFactory;
+import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.service.EmbeddingService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.sdh.backend.service.KnowledgeBaseService;
+import cn.sdh.backend.service.factory.EmbeddingModelFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -22,7 +23,7 @@ import java.util.List;
 public class EmbeddingServiceImpl implements EmbeddingService {
 
     private final EmbeddingModelFactory embeddingModelFactory;
-    private final ObjectMapper objectMapper;
+    private final KnowledgeBaseService knowledgeBaseService;
 
     @Override
     public float[] getEmbedding(String text) {
@@ -36,7 +37,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         }
 
         try {
-            EmbeddingModel embeddingModel = embeddingModelFactory.getEmbeddingModelByKnowledgeId(knowledgeId);
+            EmbeddingModel embeddingModel = getEmbeddingModelByKnowledgeId(knowledgeId);
             if (embeddingModel == null) {
                 log.error("无法获取嵌入模型: knowledgeId={}", knowledgeId);
                 return new float[0];
@@ -60,7 +61,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         }
 
         try {
-            EmbeddingModel embeddingModel = embeddingModelFactory.getEmbeddingModel(embeddingModelName);
+            EmbeddingModel embeddingModel = embeddingModelFactory.getModel(embeddingModelName);
             if (embeddingModel == null) {
                 log.error("无法获取嵌入模型: modelName={}", embeddingModelName);
                 return new float[0];
@@ -93,9 +94,9 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         try {
             EmbeddingModel embeddingModel;
             if (knowledgeId != null) {
-                embeddingModel = embeddingModelFactory.getEmbeddingModelByKnowledgeId(knowledgeId);
+                embeddingModel = getEmbeddingModelByKnowledgeId(knowledgeId);
             } else {
-                embeddingModel = embeddingModelFactory.getEmbeddingModel(null);
+                embeddingModel = embeddingModelFactory.getModel(null);
             }
 
             if (embeddingModel == null) {
@@ -114,6 +115,22 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         }
 
         return results;
+    }
+
+    /**
+     * 根据知识库ID获取嵌入模型
+     */
+    private EmbeddingModel getEmbeddingModelByKnowledgeId(Long knowledgeId) {
+        if (knowledgeId == null) {
+            return embeddingModelFactory.getModel(null);
+        }
+
+        KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
+        if (knowledgeBase != null && knowledgeBase.getEmbeddingModel() != null) {
+            return embeddingModelFactory.getModel(knowledgeBase.getEmbeddingModel());
+        }
+
+        return embeddingModelFactory.getModel(null);
     }
 
     @Override

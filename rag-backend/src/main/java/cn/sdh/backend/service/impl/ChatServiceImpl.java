@@ -11,6 +11,7 @@ import cn.sdh.backend.rag.SensitiveWordAdvisor.SensitiveWordException;
 import cn.sdh.backend.service.*;
 import cn.sdh.backend.service.RagSearchService.ChatMessage;
 import cn.sdh.backend.service.RagSearchService.RagSearchResult;
+import cn.sdh.backend.service.factory.ChatModelFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +50,7 @@ public class ChatServiceImpl implements ChatService {
     private final RagConfig ragConfig;
     private final RagAdvisorFactory ragAdvisorFactory;
     private final ChatMemory chatMemory;
-    private final ModelFactory modelFactory;
+    private final ChatModelFactory chatModelFactory;
 
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
@@ -412,7 +413,7 @@ public class ChatServiceImpl implements ChatService {
     private ChatModel getChatModel(Long modelId) {
         // 优先使用指定的模型ID
         if (modelId != null) {
-            ChatModel model = modelFactory.getChatModelById(modelId);
+            ChatModel model = chatModelFactory.getModelById(modelId);
             if (model != null) {
                 return model;
             }
@@ -421,11 +422,11 @@ public class ChatServiceImpl implements ChatService {
         // 获取默认模型配置
         ModelConfig defaultConfig = modelConfigService.getDefault();
         if (defaultConfig != null) {
-            return modelFactory.getChatModelById(defaultConfig.getId());
+            return chatModelFactory.getModelById(defaultConfig.getId());
         }
 
         // 使用默认模型名称
-        return modelFactory.getChatModel(null);
+        return chatModelFactory.getModel(null);
     }
 
     /**
