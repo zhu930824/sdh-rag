@@ -5,11 +5,11 @@ import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.service.ChatService;
 import cn.sdh.backend.service.RerankService;
 import cn.sdh.backend.service.VectorStoreService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -20,13 +20,23 @@ import java.util.List;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class RagAdvisorFactory {
 
     private final VectorStoreService vectorStoreService;
     private final RerankService rerankService;
     private final RagConfig ragConfig;
     private final ChatService chatService;
+
+    public RagAdvisorFactory(
+            VectorStoreService vectorStoreService,
+            RerankService rerankService,
+            RagConfig ragConfig,
+            @Lazy ChatService chatService) {
+        this.vectorStoreService = vectorStoreService;
+        this.rerankService = rerankService;
+        this.ragConfig = ragConfig;
+        this.chatService = chatService;
+    }
 
     /**
      * 创建 RAG Advisor
@@ -35,15 +45,16 @@ public class RagAdvisorFactory {
      * @return RetrievalAugmentationAdvisor
      */
     public RetrievalAugmentationAdvisor createAdvisor(KnowledgeBase knowledgeBase) {
-        log.info("创建 RAG Advisor: knowledgeId={}, embeddingModel={}, rankModel={}",
+        log.info("创建 RAG Advisor: knowledgeId={}, embeddingModel={}, rankModel={}, enableRewrite={}",
                 knowledgeBase.getId(),
                 knowledgeBase.getEmbeddingModel(),
-                knowledgeBase.getRankModel());
+                knowledgeBase.getRankModel(),
+                knowledgeBase.getEnableRewrite());
 
         // 构建各个组件
         HybridDocumentRetriever documentRetriever = new HybridDocumentRetriever(vectorStoreService, knowledgeBase);
         RerankDocumentPostProcessor postProcessor = new RerankDocumentPostProcessor(rerankService, knowledgeBase);
-        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(chatService, ragConfig);
+        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(chatService, knowledgeBase);
 
         // 构建 QueryAugmenter（将检索到的文档注入 Prompt）
         ContextualQueryAugmenter queryAugmenter = ContextualQueryAugmenter.builder()
@@ -69,10 +80,10 @@ public class RagAdvisorFactory {
      * 创建不带文档后处理的简单 RAG Advisor（无重排序）
      */
     public RetrievalAugmentationAdvisor createSimpleAdvisor(KnowledgeBase knowledgeBase) {
-        log.info("创建简单 RAG Advisor: knowledgeId={}", knowledgeBase.getId());
+        log.info("创建简单 RAG Advisor: knowledgeId={}, enableRewrite={}", knowledgeBase.getId(), knowledgeBase.getEnableRewrite());
 
         HybridDocumentRetriever documentRetriever = new HybridDocumentRetriever(vectorStoreService, knowledgeBase);
-        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(chatService, ragConfig);
+        HistoryAwareQueryTransformer queryTransformer = new HistoryAwareQueryTransformer(chatService, knowledgeBase);
 
         ContextualQueryAugmenter queryAugmenter = ContextualQueryAugmenter.builder()
                 .promptTemplate(createPromptTemplate(ragConfig.getRagSystemPrompt()))

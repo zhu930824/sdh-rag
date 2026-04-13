@@ -2,7 +2,10 @@ server:
   address: 0.0.0.0
   port: 8989
 
+
 spring:
+  application:
+    name: rag-backend
   neo4j:
     uri: bolt://192.168.2.128:7687
     authentication:
@@ -15,12 +18,6 @@ spring:
   profiles:
     active: dev
   ai:
-#    websearch:
-#      api-key:  ${websearch.api-key}
-#      searxng:
-#        url: "http://127.0.0.1:8080/search"
-#        nums: 10
-#        engines: "duckduckgo,google,bing,brave,mojeek,presearch,qwant,startpage,yahoo,arxiv,crossref,google_scholar,internetarchivescholar,semantic_scholar"
     openai:
       api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
     dashscope:
@@ -43,8 +40,17 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
 
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    encoding: UTF-8
+    validate-on-migrate: true
+
   data:
     redis:
+      host: 192.168.2.128
       port: 6379              # Redis 服务器端口，默认为 6379
 #      password:               # Redis 密码，默认为空
       timeout: 5000ms         # 连接超时时间
@@ -97,5 +103,4 @@ knowledge:
 # RAG Advisor 配置
 rag:
   use-advisor: true  # true: 使用 Spring AI Advisor 机制; false: 使用原有手动 RAG 流程
-  enable-rewrite: true  # 是否启用查询改写
   memory-window-size: 10  # 对话记忆窗口大小

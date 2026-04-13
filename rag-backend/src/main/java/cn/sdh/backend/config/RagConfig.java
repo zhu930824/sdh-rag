@@ -21,11 +21,6 @@ public class RagConfig {
     private boolean useAdvisor = true;
 
     /**
-     * Enable query rewrite (multi-turn conversation)
-     */
-    private boolean enableRewrite = true;
-
-    /**
      * Chat memory window size (keep recent N messages)
      */
     private int memoryWindowSize = 10;

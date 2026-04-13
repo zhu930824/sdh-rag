@@ -2,9 +2,9 @@ package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.service.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -16,13 +16,23 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RagSearchServiceImpl implements RagSearchService {
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final VectorStoreService vectorStoreService;
     private final RerankService rerankService;
     private final ChatService chatService;
+
+    public RagSearchServiceImpl(
+            KnowledgeBaseService knowledgeBaseService,
+            VectorStoreService vectorStoreService,
+            RerankService rerankService,
+            @Lazy ChatService chatService) {
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.vectorStoreService = vectorStoreService;
+        this.rerankService = rerankService;
+        this.chatService = chatService;
+    }
 
 
     @Override
@@ -171,7 +181,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             prompt.append("\n\n改写后的查询：");
 
             // 调用 LLM 进行改写
-            String rewritten = chatService.chat(null,prompt.toString(), modelId != null ? modelId.toString() : null);
+            String rewritten = chatService.chat(prompt.toString(), modelId != null ? modelId.toString() : null);
 
             if (rewritten != null && !rewritten.trim().isEmpty()) {
                 return rewritten.trim();

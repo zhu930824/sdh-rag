@@ -19,7 +19,7 @@ public enum ModelProvider {
     ),
     DASHSCOPE(
             "dashscope",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "https://dashscope.aliyuncs.com/compatible-mode",
             Set.of("dashscope", "alibaba", "qwen", "tongyi")
     ),
     DEEPSEEK(

@@ -9,10 +9,10 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.search.Hit;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -26,12 +26,20 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class VectorStoreServiceImpl implements VectorStoreService {
 
     private final ElasticsearchClient elasticsearchClient;
     private final EmbeddingService embeddingService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+
+    public VectorStoreServiceImpl(
+            ElasticsearchClient elasticsearchClient,
+            @Lazy EmbeddingService embeddingService,
+            KnowledgeBaseMapper knowledgeBaseMapper) {
+        this.elasticsearchClient = elasticsearchClient;
+        this.embeddingService = embeddingService;
+        this.knowledgeBaseMapper = knowledgeBaseMapper;
+    }
 
     @Value("${spring.ai.vectorstore.elasticsearch.index-name:sdh-rag-index}")
     private String indexName;

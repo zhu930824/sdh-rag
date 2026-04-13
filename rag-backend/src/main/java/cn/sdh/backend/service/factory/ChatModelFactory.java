@@ -3,6 +3,9 @@ package cn.sdh.backend.service.factory;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ModelConfigMapper;
 import cn.sdh.backend.service.ModelFactory;
+import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -45,7 +48,7 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
                     config.getModelId(),
                     config
             );
-            case DASHSCOPE -> createOpenAiCompatibleModel(
+            case DASHSCOPE -> createDashScopeModel(
                     resolveBaseUrl(config, ModelProvider.DASHSCOPE),
                     resolveApiKey(config, dashscopeApiKey),
                     config.getModelId(),
@@ -100,6 +103,31 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
                     config
             );
         };
+    }
+
+    private ChatModel createDashScopeModel(String baseUrl, String apiKey, String modelName, ModelConfig config) {
+
+        DashScopeApi dashScopeApi = DashScopeApi.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .build();
+
+        DashScopeChatOptions.DashScopeChatOptionsBuilder builder = DashScopeChatOptions.builder().model(modelName);
+
+
+        if (config != null) {
+            if (config.getTemperature() != null) {
+                builder.temperature(config.getTemperature());
+            }
+            if (config.getMaxTokens() != null) {
+                builder.maxToken(config.getMaxTokens());
+            }
+        }
+
+        return DashScopeChatModel.builder()
+                .dashScopeApi(dashScopeApi)
+                .defaultOptions(builder.build())
+                .build();
     }
 
     @Override

@@ -1,6 +1,6 @@
 package cn.sdh.backend.rag;
 
-import cn.sdh.backend.config.RagConfig;
+import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.service.ChatService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -21,13 +21,16 @@ import java.util.List;
 public class HistoryAwareQueryTransformer implements QueryTransformer {
 
     private final ChatService chatService;
-    private final RagConfig ragConfig;
+    private final KnowledgeBase knowledgeBase;
 
     @Override
     public Query transform(Query query) {
+        // 根据知识库设置判断是否启用查询改写
+        boolean enableRewrite = knowledgeBase.getEnableRewrite() != null && knowledgeBase.getEnableRewrite();
+
         // 如果未启用查询改写，或者没有对话历史，直接返回原查询
-        if (!ragConfig.isEnableRewrite() || query.history() == null || query.history().isEmpty()) {
-            log.debug("查询改写未启用或无历史记录，跳过改写");
+        if (!enableRewrite || query.history() == null || query.history().isEmpty()) {
+            log.debug("查询改写未启用或无历史记录，跳过改写 (knowledgeBase.enableRewrite={})", knowledgeBase.getEnableRewrite());
             return query;
         }
 
@@ -40,8 +43,15 @@ public class HistoryAwareQueryTransformer implements QueryTransformer {
         String rewritePrompt = buildRewritePrompt(originalQuery, history);
 
         try {
+            // 从上下文获取 modelId
+            String modelId = null;
+            Object modelIdObj = query.context().get("modelId");
+            if (modelIdObj != null) {
+                modelId = modelIdObj.toString();
+            }
+
             // 调用 LLM 进行改写
-            String rewrittenQuery = chatService.chat(rewritePrompt, null);
+            String rewrittenQuery = chatService.chat(rewritePrompt, modelId);
 
             if (rewrittenQuery != null && !rewrittenQuery.trim().isEmpty()) {
                 rewrittenQuery = rewrittenQuery.trim();

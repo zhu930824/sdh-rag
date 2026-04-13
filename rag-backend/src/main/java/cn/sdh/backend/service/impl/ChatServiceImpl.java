@@ -136,7 +136,8 @@ public class ChatServiceImpl implements ChatService {
         return requestSpec.stream()
                 .chatResponse()
                 .map(response -> {
-                    if (response.getResult() != null && response.getResult().getOutput() != null) {
+                    if (response.getResult() != null) {
+                        response.getResult();
                         return response.getResult().getOutput().getText();
                     }
                     return null;
@@ -459,6 +460,33 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("AI调用失败", e);
             return "AI调用失败: " + e.getMessage();
+        }
+    }
+
+    @Override
+    public String chat(String question, String modelId) {
+        // 获取聊天模型
+        Long modelIdLong = null;
+        if (modelId != null && !modelId.isEmpty()) {
+            try {
+                modelIdLong = Long.valueOf(modelId);
+            } catch (NumberFormatException e) {
+                log.warn("modelId 格式错误: {}", modelId);
+            }
+        }
+        ChatModel chatModel = getChatModel(modelIdLong);
+        if (chatModel == null) {
+            log.error("无法获取聊天模型");
+            return null;
+        }
+
+        try {
+            Prompt prompt = new Prompt(question);
+            ChatResponse response = chatModel.call(prompt);
+            return extractContent(response);
+        } catch (Exception e) {
+            log.error("AI调用失败: {}", e.getMessage(), e);
+            return null;
         }
     }
 

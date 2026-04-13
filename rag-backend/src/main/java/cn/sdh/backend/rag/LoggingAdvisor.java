@@ -17,8 +17,6 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -73,8 +71,10 @@ public class LoggingAdvisor implements BaseAdvisor {
 
     @Override
     public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
-        Instant startTime = request.context().get(START_TIME, Instant.class);
-        String requestId = request.context().get(REQUEST_ID, String.class);
+        Object startTimeObj = request.context().get(START_TIME);
+        Instant startTime = startTimeObj instanceof Instant ? (Instant) startTimeObj : Instant.now();
+        Object requestIdObj = request.context().get(REQUEST_ID);
+        String requestId = requestIdObj != null ? requestIdObj.toString() : generateRequestId();
 
         // 用于收集响应统计
         AtomicLong tokenCount = new AtomicLong(0);

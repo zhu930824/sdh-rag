@@ -55,5 +55,5 @@ public interface ChatService {
     String chat(Long userId, String question, String sessionId);
 
 
-    String chat(String question, String sessionId);
+    String chat(String question, String modelId);
 }
