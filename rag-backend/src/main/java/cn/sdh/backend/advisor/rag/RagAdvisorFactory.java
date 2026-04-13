@@ -1,4 +1,4 @@
-package cn.sdh.backend.rag;
+package cn.sdh.backend.advisor.rag;
 
 import cn.sdh.backend.config.RagConfig;
 import cn.sdh.backend.entity.KnowledgeBase;
@@ -11,8 +11,6 @@ import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
 
 /**
  * RAG Advisor 工厂

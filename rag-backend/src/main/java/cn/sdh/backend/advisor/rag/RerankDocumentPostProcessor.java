@@ -1,4 +1,4 @@
-package cn.sdh.backend.rag;
+package cn.sdh.backend.advisor.rag;
 
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.service.RerankService;

@@ -1,4 +1,4 @@
-package cn.sdh.backend.rag;
+package cn.sdh.backend.advisor.common;
 
 import cn.sdh.backend.entity.TokenUsage;
 import cn.sdh.backend.service.TokenUsageService;
@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * AI 模型调用观测处理器

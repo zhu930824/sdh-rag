@@ -1,4 +1,4 @@
-package cn.sdh.backend.rag;
+package cn.sdh.backend.advisor.common;
 
 import cn.sdh.backend.service.SensitiveWordService;
 import lombok.Getter;

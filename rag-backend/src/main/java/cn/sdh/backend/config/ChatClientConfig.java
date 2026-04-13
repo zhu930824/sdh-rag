@@ -1,7 +1,7 @@
 package cn.sdh.backend.config;
 
-import cn.sdh.backend.rag.MySQLChatMemoryRepository;
-import cn.sdh.backend.rag.TokenUsageAdvisor;
+import cn.sdh.backend.advisor.common.MySQLChatMemoryRepository;
+import cn.sdh.backend.advisor.common.TokenUsageAdvisor;
 import cn.sdh.backend.service.TokenUsageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

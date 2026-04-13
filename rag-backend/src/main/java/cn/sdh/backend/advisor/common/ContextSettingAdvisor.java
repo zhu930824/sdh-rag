@@ -1,4 +1,4 @@
-package cn.sdh.backend.rag;
+package cn.sdh.backend.advisor.common;
 
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;

@@ -1,10 +1,11 @@
-package cn.sdh.backend.rag;
+package cn.sdh.backend.advisor.common;
 
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -29,6 +30,7 @@ public class MySQLChatMemoryRepository implements ChatMemoryRepository {
 
     private final ChatHistoryMapper chatHistoryMapper;
 
+    @NotNull
     @Override
     public List<String> findConversationIds() {
         // 查询所有不同的会话ID
@@ -42,6 +44,7 @@ public class MySQLChatMemoryRepository implements ChatMemoryRepository {
                 .toList();
     }
 
+    @NotNull
     @Override
     public List<Message> findByConversationId(String conversationId) {
         if (conversationId == null || conversationId.isEmpty()) {

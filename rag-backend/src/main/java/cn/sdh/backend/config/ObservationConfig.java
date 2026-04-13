@@ -1,6 +1,6 @@
 package cn.sdh.backend.config;
 
-import cn.sdh.backend.rag.AIModelObservationHandler;
+import cn.sdh.backend.advisor.common.AIModelObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
