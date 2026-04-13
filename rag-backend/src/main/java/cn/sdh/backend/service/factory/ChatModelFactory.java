@@ -3,19 +3,20 @@ package cn.sdh.backend.service.factory;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ModelConfigMapper;
 import cn.sdh.backend.service.ModelFactory;
-import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
+import cn.sdh.backend.service.factory.strategy.ModelCreationStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Chat 模型工厂
  * 负责创建和管理 ChatModel 实例
+ * 使用策略模式支持多种模型提供者
  */
 @Slf4j
 @Component
@@ -24,8 +25,21 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
     private static final String DEFAULT_MODEL = "qwen-turbo";
     private static final String MODEL_TYPE = "chat";
 
-    public ChatModelFactory(ModelConfigMapper modelConfigMapper) {
+    private final Map<ModelProvider, ModelCreationStrategy<ChatModel>> strategyMap;
+
+    public ChatModelFactory(
+            ModelConfigMapper modelConfigMapper,
+            List<ModelCreationStrategy<ChatModel>> strategies) {
         super(modelConfigMapper);
+        // 将策略列表转换为以 ModelProvider 为 key 的 Map
+        this.strategyMap = strategies.stream()
+                .collect(Collectors.toMap(
+                        ModelCreationStrategy::getProvider,
+                        Function.identity()
+                ));
+        log.info("已加载 {} 个 Chat 模型创建策略: {}",
+                strategyMap.size(),
+                strategyMap.keySet().stream().map(Enum::name).collect(Collectors.joining(", ")));
     }
 
     @Override
@@ -41,93 +55,15 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
             return createDefaultModel(config.getModelId());
         }
 
-        return switch (modelProvider) {
-            case OPENAI -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.OPENAI),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case DASHSCOPE -> createDashScopeModel(
-                    resolveBaseUrl(config, ModelProvider.DASHSCOPE),
-                    resolveApiKey(config, dashscopeApiKey),
-                    config.getModelId(),
-                    config
-            );
-            case DEEPSEEK -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.DEEPSEEK),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case MOONSHOT -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.MOONSHOT),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case SILICON -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.SILICON),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case ZHIPU -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.ZHIPU),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case BAICHUAN -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.BAICHUAN),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case MINIMAX -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.MINIMAX),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-            case LOCAL -> createOpenAiCompatibleModel(
-                    resolveBaseUrl(config, ModelProvider.LOCAL),
-                    config.getApiKey() != null ? config.getApiKey() : "ollama",
-                    config.getModelId(),
-                    config
-            );
-            case CUSTOM -> createOpenAiCompatibleModel(
-                    config.getBaseUrl(),
-                    config.getApiKey(),
-                    config.getModelId(),
-                    config
-            );
-        };
-    }
-
-    private ChatModel createDashScopeModel(String baseUrl, String apiKey, String modelName, ModelConfig config) {
-
-        DashScopeApi dashScopeApi = DashScopeApi.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .build();
-
-        DashScopeChatOptions.DashScopeChatOptionsBuilder builder = DashScopeChatOptions.builder().model(modelName);
-
-
-        if (config != null) {
-            if (config.getTemperature() != null) {
-                builder.temperature(config.getTemperature());
-            }
-            if (config.getMaxTokens() != null) {
-                builder.maxToken(config.getMaxTokens());
-            }
+        ModelCreationStrategy<ChatModel> strategy = strategyMap.get(modelProvider);
+        if (strategy == null) {
+            log.warn("未找到模型提供者 {} 的创建策略, 使用默认配置", provider);
+            return createDefaultModel(config.getModelId());
         }
 
-        return DashScopeChatModel.builder()
-                .dashScopeApi(dashScopeApi)
-                .defaultOptions(builder.build())
-                .build();
+        // DashScope 使用配置的 dashscopeApiKey
+        String defaultApiKey = modelProvider == ModelProvider.DASHSCOPE ? dashscopeApiKey : null;
+        return strategy.createModel(config, defaultApiKey);
     }
 
     @Override
@@ -135,20 +71,20 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         log.info("使用默认配置创建 Chat 模型: {}", modelName);
 
         // 优先使用 DashScope
-        if (dashscopeApiKey != null && !dashscopeApiKey.isEmpty()) {
-            return createOpenAiCompatibleModel(
-                    ModelProvider.DASHSCOPE.getDefaultBaseUrl(),
-                    dashscopeApiKey,
-                    modelName != null ? modelName : DEFAULT_MODEL
+        ModelCreationStrategy<ChatModel> dashscopeStrategy = strategyMap.get(ModelProvider.DASHSCOPE);
+        if (dashscopeStrategy != null && dashscopeApiKey != null && !dashscopeApiKey.isEmpty()) {
+            return dashscopeStrategy.createDefaultModel(
+                    modelName != null ? modelName : DEFAULT_MODEL,
+                    dashscopeApiKey
             );
         }
 
         // 其次使用 OpenAI
-        if (openaiApiKey != null && !openaiApiKey.isEmpty()) {
-            return createOpenAiCompatibleModel(
-                    ModelProvider.OPENAI.getDefaultBaseUrl(),
-                    openaiApiKey,
-                    modelName != null ? modelName : "gpt-3.5-turbo"
+        ModelCreationStrategy<ChatModel> openaiStrategy = strategyMap.get(ModelProvider.OPENAI);
+        if (openaiStrategy != null && openaiApiKey != null && !openaiApiKey.isEmpty()) {
+            return openaiStrategy.createDefaultModel(
+                    modelName != null ? modelName : "gpt-3.5-turbo",
+                    openaiApiKey
             );
         }
 
@@ -166,54 +102,10 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         return MODEL_TYPE;
     }
 
-    // ==================== 工具方法 ====================
-
     /**
-     * 解析 baseUrl，优先使用配置中的，否则使用默认值
+     * 获取已注册的策略提供者列表
      */
-    private String resolveBaseUrl(ModelConfig config, ModelProvider provider) {
-        String baseUrl = config.getBaseUrl();
-        if (baseUrl != null && !baseUrl.isEmpty()) {
-            return baseUrl;
-        }
-        return provider.getDefaultBaseUrl();
-    }
-
-    /**
-     * 解析 apiKey，优先使用配置中的，否则使用默认值
-     */
-    private String resolveApiKey(ModelConfig config, String defaultApiKey) {
-        return config.getApiKey() != null ? config.getApiKey() : defaultApiKey;
-    }
-
-    /**
-     * 创建 OpenAI 兼容的 Chat 模型
-     */
-    private ChatModel createOpenAiCompatibleModel(String baseUrl, String apiKey, String modelName) {
-        return createOpenAiCompatibleModel(baseUrl, apiKey, modelName, null);
-    }
-
-    private ChatModel createOpenAiCompatibleModel(String baseUrl, String apiKey, String modelName, ModelConfig config) {
-        OpenAiApi openAiApi = OpenAiApi.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .build();
-
-        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
-                .model(modelName);
-
-        if (config != null) {
-            if (config.getTemperature() != null) {
-                optionsBuilder.temperature(config.getTemperature());
-            }
-            if (config.getMaxTokens() != null) {
-                optionsBuilder.maxTokens(config.getMaxTokens());
-            }
-        }
-
-        return OpenAiChatModel.builder()
-                .openAiApi(openAiApi)
-                .defaultOptions(optionsBuilder.build())
-                .build();
+    public List<ModelProvider> getRegisteredProviders() {
+        return List.copyOf(strategyMap.keySet());
     }
 }

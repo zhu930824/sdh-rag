@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
+import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -38,7 +39,7 @@ public class SensitiveWordAdvisor implements BaseAdvisor {
     }
 
     @Override
-    public ChatClientRequest before(ChatClientRequest request, org.springframework.ai.chat.client.advisor.api.AdvisorChain chain) {
+    public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         // 获取用户输入文本
         String userText = extractUserText(request);
 

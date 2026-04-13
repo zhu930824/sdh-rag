@@ -5,6 +5,8 @@ import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.rag.ContextSettingAdvisor;
 import cn.sdh.backend.rag.LoggingAdvisor;
 import cn.sdh.backend.rag.RagAdvisorFactory;
 import cn.sdh.backend.rag.SensitiveWordAdvisor;
@@ -121,7 +123,18 @@ public class ChatServiceImpl implements ChatService {
         requestSpec = requestSpec.advisors(spec -> spec.advisors(memoryAdvisor));
 
         // 添加 Token 使用量统计 Advisor
-        requestSpec = requestSpec.advisors(spec -> spec.advisors(tokenUsageAdvisor));
+        // 利用 Spring AI 的 Usage 接口获取模型用量信息
+        // 注意：必须在 HTTP 请求线程中获取 userId，因为 advisor 可能在线程池中执行
+        Long currentUserId = UserContext.getCurrentUserId();
+
+        // 使用 ContextSettingAdvisor 传递上下文信息（解决线程切换导致 ThreadLocal 丢失的问题）
+        ContextSettingAdvisor contextAdvisor = ContextSettingAdvisor.create()
+                .set(TokenUsageAdvisor.USER_ID, currentUserId)
+                .set(TokenUsageAdvisor.SESSION_ID, currentSessionId)
+                .set(TokenUsageAdvisor.MODEL_ID, modelId)
+                .set(TokenUsageAdvisor.KNOWLEDGE_ID, knowledgeId);
+
+        requestSpec = requestSpec.advisors(spec -> spec.advisors(contextAdvisor).advisors(tokenUsageAdvisor));
 
         // 添加日志观测 Advisor（最后执行，记录完整流程）
         LoggingAdvisor loggingAdvisor = LoggingAdvisor.builder()

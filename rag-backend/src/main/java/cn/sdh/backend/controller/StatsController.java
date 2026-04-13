@@ -5,7 +5,6 @@ import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.UserMapper;
-import cn.sdh.backend.rag.TokenUsageAdvisor;
 import cn.sdh.backend.service.TokenUsageService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +22,6 @@ public class StatsController {
     private final KnowledgeDocumentMapper documentMapper;
     private final ChatHistoryMapper chatHistoryMapper;
     private final UserMapper userMapper;
-    private final TokenUsageAdvisor tokenUsageAdvisor;
     private final TokenUsageService tokenUsageService;
 
     @GetMapping("/overview")
@@ -92,23 +90,6 @@ public class StatsController {
         return Result.success(result);
     }
 
-    /**
-     * 获取 Token 使用统计（内存快速查询）
-     */
-    @GetMapping("/token-usage")
-    public Result<Map<String, Object>> tokenUsage() {
-        Map<String, Long> stats = tokenUsageAdvisor.getStatistics();
-        return Result.success(new HashMap<>(stats));
-    }
-
-    /**
-     * 重置 Token 内存统计
-     */
-    @PostMapping("/token-usage/reset")
-    public Result<Void> resetTokenUsage() {
-        tokenUsageAdvisor.resetStatistics();
-        return Result.success();
-    }
 
     /**
      * 获取数据库中的全局 Token 统计

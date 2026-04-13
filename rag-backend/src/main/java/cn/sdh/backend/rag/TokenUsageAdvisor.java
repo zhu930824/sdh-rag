@@ -24,11 +24,48 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Token 使用量统计 Advisor
- * 记录每次请求的 token 消耗情况并持久化到数据库
+ *
+ * <p>利用 Spring AI 的 {@link Usage} 接口获取模型用量信息。
+ * Spring AI 通过 Usage 接口的 getNativeUsage() 方法和 DefaultUsage 实现，
+ * 简化了不同 AI 模型跟踪和报告用量指标的流程。</p>
+ *
+ * <h3>⚠️ 重要：线程安全问题</h3>
+ * <p>流式请求会在不同线程执行（Reactor 的 boundedElastic 线程池），
+ * 因此 <strong>不能</strong>依赖 ThreadLocal（如 UserContext）传递 userId。
+ * 必须通过 {@code adviseContext} 显式传递。</p>
+ *
+ * <h3>使用方式</h3>
+ * <pre>
+ * // 在 HTTP 请求线程中（此时 UserContext 可用）
+ * Long userId = UserContext.getCurrentUserId();
+ *
+ * requestSpec = requestSpec.advisors(spec -> {
+ *     spec.advisors(tokenUsageAdvisor);
+ *     // 必须显式传递 userId，因为 advisor 可能在不同线程执行
+ *     spec.adviseContext(TokenUsageAdvisor.USER_ID, userId);
+ *     spec.adviseContext(TokenUsageAdvisor.SESSION_ID, sessionId);
+ *     spec.adviseContext(TokenUsageAdvisor.MODEL_ID, modelId);
+ *     spec.adviseContext(TokenUsageAdvisor.KNOWLEDGE_ID, knowledgeId);
+ * });
+ * </pre>
+ *
+ * <h3>Context 参数</h3>
+ * <ul>
+ *   <li>{@link #USER_ID} - 用户ID（必须传递）</li>
+ *   <li>{@link #SESSION_ID} - 会话ID</li>
+ *   <li>{@link #MODEL_ID} - 模型ID</li>
+ *   <li>{@link #MODEL_NAME} - 模型名称</li>
+ *   <li>{@link #KNOWLEDGE_ID} - 知识库ID</li>
+ * </ul>
+ *
+ * @see Usage
+ * @see org.springframework.ai.chat.metadata.DefaultUsage
  */
 @Slf4j
 @Getter
 public class TokenUsageAdvisor implements BaseAdvisor {
+
+    // ==================== Context Keys ====================
 
     public static final String START_TIME = "tokenUsageStartTime";
     public static final String REQUEST_ID = "tokenUsageRequestId";
@@ -38,35 +75,33 @@ public class TokenUsageAdvisor implements BaseAdvisor {
     public static final String MODEL_NAME = "modelName";
     public static final String KNOWLEDGE_ID = "knowledgeId";
 
+    // ==================== Fields ====================
+
     private final int order;
     private final TokenUsageService tokenUsageService;
-    private final TokenUsageRecorder recorder;
 
-    // 内存统计（用于快速查询）
+    // 内存统计
     private final AtomicLong totalPromptTokens = new AtomicLong(0);
     private final AtomicLong totalCompletionTokens = new AtomicLong(0);
     private final AtomicLong totalRequests = new AtomicLong(0);
 
-    // 临时存储请求上下文（用于 after 方法获取请求信息）
-    private final Map<String, Map<String, Object>> requestContextCache = new ConcurrentHashMap<>();
+    // ==================== Constructor ====================
 
     public TokenUsageAdvisor(TokenUsageService tokenUsageService) {
-        this(900, tokenUsageService, null);
+        this(900, tokenUsageService);
     }
 
-    public TokenUsageAdvisor(int order, TokenUsageService tokenUsageService, TokenUsageRecorder recorder) {
+    public TokenUsageAdvisor(int order, TokenUsageService tokenUsageService) {
         this.order = order;
         this.tokenUsageService = tokenUsageService;
-        this.recorder = recorder;
     }
+
+    // ==================== BaseAdvisor 实现 ====================
 
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         Instant startTime = Instant.now();
         String requestId = generateRequestId();
-
-        // 缓存请求上下文，供 after 方法使用
-        requestContextCache.put(requestId, request.context());
 
         return request.mutate()
                 .context(START_TIME, startTime)
@@ -76,18 +111,8 @@ public class TokenUsageAdvisor implements BaseAdvisor {
 
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
-        // 从响应上下文获取请求ID
-        Map<String, Object> responseContext = response.context();
-        String requestId = getStringFromContext(responseContext, REQUEST_ID);
-
-        // 获取缓存的请求上下文
-        Map<String, Object> requestContext = requestId != null ?
-                requestContextCache.remove(requestId) : null;
-
-        // 使用缓存的请求上下文或响应上下文
-        Map<String, Object> context = requestContext != null ? requestContext : responseContext;
-
-        recordUsageFromResponse(response.chatResponse(), context);
+        Map<String, Object> context = response.context();
+        recordUsage(response.chatResponse(), context);
         return response;
     }
 
@@ -95,36 +120,38 @@ public class TokenUsageAdvisor implements BaseAdvisor {
     public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
         AtomicLong promptTokens = new AtomicLong(0);
         AtomicLong completionTokens = new AtomicLong(0);
-        Map<String, Object> context = request.context();
 
-        return chain.nextStream(request)
+        Instant startTime = Instant.now();
+        String requestId = generateRequestId();
+
+        // 在闭包中捕获 context
+        Map<String, Object> context = new ConcurrentHashMap<>(request.context());
+        context.put(START_TIME, startTime);
+        context.put(REQUEST_ID, requestId);
+
+        ChatClientRequest modifiedRequest = request.mutate()
+                .context(START_TIME, startTime)
+                .context(REQUEST_ID, requestId)
+                .build();
+
+        return chain.nextStream(modifiedRequest)
                 .doOnNext(response -> {
-                    ChatResponse chatResponse = response.chatResponse();
-                    if (chatResponse != null && chatResponse.getMetadata() != null) {
-                        Usage usage = chatResponse.getMetadata().getUsage();
-                        if (usage != null) {
-                            if (usage.getPromptTokens() != null) {
-                                promptTokens.set(usage.getPromptTokens().longValue());
-                            }
-                            if (usage.getCompletionTokens() != null) {
-                                completionTokens.addAndGet(usage.getCompletionTokens().longValue());
-                            }
+                    // 从响应中累积 token 使用量
+                    Usage usage = extractUsage(response.chatResponse());
+                    if (usage != null) {
+                        if (usage.getPromptTokens() != null) {
+                            promptTokens.set(usage.getPromptTokens().longValue());
+                        }
+                        if (usage.getCompletionTokens() != null) {
+                            completionTokens.addAndGet(usage.getCompletionTokens().longValue());
                         }
                     }
                 })
                 .doOnComplete(() -> {
                     long prompt = promptTokens.get();
                     long completion = completionTokens.get();
-                    long total = prompt + completion;
-
-                    if (total > 0) {
-                        recordUsageFromStream(prompt, completion, context);
-                    }
-
-                    // 清理缓存
-                    String requestId = getStringFromContext(context, REQUEST_ID);
-                    if (requestId != null) {
-                        requestContextCache.remove(requestId);
+                    if (prompt > 0 || completion > 0) {
+                        persistUsage(prompt, completion, context, null);
                     }
                 });
     }
@@ -139,45 +166,63 @@ public class TokenUsageAdvisor implements BaseAdvisor {
         return order;
     }
 
-    // ==================== 统计方法 ====================
+    // ==================== Token 使用记录方法 ====================
 
-    private void recordUsageFromResponse(ChatResponse response, Map<String, Object> context) {
+    /**
+     * 记录 token 使用情况
+     */
+    private void recordUsage(ChatResponse response, Map<String, Object> context) {
         if (response == null || response.getMetadata() == null) {
             return;
         }
 
-        Usage usage = response.getMetadata().getUsage();
+        Usage usage = extractUsage(response);
         if (usage == null) {
             return;
         }
 
         long promptTokens = usage.getPromptTokens() != null ? usage.getPromptTokens().longValue() : 0;
         long completionTokens = usage.getCompletionTokens() != null ? usage.getCompletionTokens().longValue() : 0;
-        long total = promptTokens + completionTokens;
-
-        // 获取模型名称
         String modelName = response.getMetadata().getModel();
 
-        // 更新内存统计并持久化
-        persistTokenUsage(promptTokens, completionTokens, total, context, modelName);
+        persistUsage(promptTokens, completionTokens, context, modelName);
     }
 
-    private void recordUsageFromStream(long promptTokens, long completionTokens, Map<String, Object> context) {
+    /**
+     * 从响应中提取 Usage 信息
+     *
+     * <p>Spring AI 的 Usage 接口提供了标准化的用量获取方式：
+     * <ul>
+     *   <li>{@link Usage#getPromptTokens()} - 输入 token 数</li>
+     *   <li>{@link Usage#getCompletionTokens()} - 输出 token 数</li>
+     *   <li>{@link Usage#getTotalTokens()} - 总 token 数</li>
+     *   <li>{@link Usage#getNativeUsage()} - 获取原始模型的用量信息（可能包含更多细节）</li>
+     * </ul>
+     * </p>
+     */
+    private Usage extractUsage(ChatResponse response) {
+        if (response == null || response.getMetadata() == null) {
+            return null;
+        }
+        return response.getMetadata().getUsage();
+    }
+
+    /**
+     * 持久化 token 使用记录
+     *
+     * <p>注意：userId 必须通过 context 传递，不能依赖 ThreadLocal。
+     * 因为流式请求可能在不同线程执行。</p>
+     */
+    private void persistUsage(long promptTokens, long completionTokens,
+                               Map<String, Object> context, String modelName) {
         long total = promptTokens + completionTokens;
-        String modelName = getStringFromContext(context, MODEL_NAME);
 
-        // 更新内存统计并持久化
-        persistTokenUsage(promptTokens, completionTokens, total, context, modelName);
-    }
-
-    private void persistTokenUsage(long promptTokens, long completionTokens, long total,
-                                    Map<String, Object> context, String modelName) {
         // 更新内存统计
         updateMemoryStats(promptTokens, completionTokens);
 
         // 计算耗时
         Long durationMs = null;
-        Object startTime = context != null ? context.get(START_TIME) : null;
+        Object startTime = context.get(START_TIME);
         if (startTime instanceof Instant) {
             durationMs = Duration.between((Instant) startTime, Instant.now()).toMillis();
         }
@@ -188,7 +233,16 @@ public class TokenUsageAdvisor implements BaseAdvisor {
 
         // 持久化到数据库
         if (tokenUsageService != null) {
+            // 从 context 获取 userId（由调用方通过 adviseContext 传递）
+            Long userId = getLongFromContext(context, USER_ID);
+
+            if (userId == null) {
+                log.warn("Token 使用记录缺少 userId，跳过持久化。请确保通过 adviseContext 传递 userId");
+                return;
+            }
+
             TokenUsage usage = new TokenUsage();
+            usage.setUserId(userId);
             usage.setPromptTokens(promptTokens);
             usage.setCompletionTokens(completionTokens);
             usage.setTotalTokens(total);
@@ -196,25 +250,13 @@ public class TokenUsageAdvisor implements BaseAdvisor {
             usage.setStatus("success");
             usage.setCreateTime(LocalDateTime.now());
 
-            if (context != null) {
-                usage.setUserId(getLongFromContext(context, USER_ID));
-                usage.setSessionId(getStringFromContext(context, SESSION_ID));
-                usage.setModelId(getLongFromContext(context, MODEL_ID));
-                usage.setModelName(modelName);
-                usage.setKnowledgeId(getLongFromContext(context, KNOWLEDGE_ID));
-                usage.setRequestId(getStringFromContext(context, REQUEST_ID));
-            }
+            usage.setSessionId(getStringFromContext(context, SESSION_ID));
+            usage.setModelId(getLongFromContext(context, MODEL_ID));
+            usage.setModelName(modelName);
+            usage.setKnowledgeId(getLongFromContext(context, KNOWLEDGE_ID));
+            usage.setRequestId(getStringFromContext(context, REQUEST_ID));
 
             tokenUsageService.saveAsync(usage);
-        }
-
-        // 调用自定义记录器
-        if (recorder != null) {
-            try {
-                recorder.record(promptTokens, completionTokens, total);
-            } catch (Exception e) {
-                log.warn("Token 记录器执行失败: {}", e.getMessage());
-            }
         }
     }
 
@@ -263,15 +305,7 @@ public class TokenUsageAdvisor implements BaseAdvisor {
         totalPromptTokens.set(0);
         totalCompletionTokens.set(0);
         totalRequests.set(0);
-        requestContextCache.clear();
         log.info("Token 内存统计已重置");
-    }
-
-    // ==================== 记录器接口 ====================
-
-    @FunctionalInterface
-    public interface TokenUsageRecorder {
-        void record(long promptTokens, long completionTokens, long totalTokens);
     }
 
     // ==================== Builder ====================
@@ -283,7 +317,6 @@ public class TokenUsageAdvisor implements BaseAdvisor {
     public static class Builder {
         private int order = 900;
         private TokenUsageService tokenUsageService;
-        private TokenUsageRecorder recorder;
 
         public Builder order(int order) {
             this.order = order;
@@ -295,13 +328,8 @@ public class TokenUsageAdvisor implements BaseAdvisor {
             return this;
         }
 
-        public Builder recorder(TokenUsageRecorder recorder) {
-            this.recorder = recorder;
-            return this;
-        }
-
         public TokenUsageAdvisor build() {
-            return new TokenUsageAdvisor(order, tokenUsageService, recorder);
+            return new TokenUsageAdvisor(order, tokenUsageService);
         }
     }
 }

@@ -45,7 +45,10 @@ public class ChatClientConfig {
 
     /**
      * 配置 TokenUsageAdvisor Bean
-     * 用于统计和持久化 token 消耗
+     *
+     * <p>利用 Spring AI 的 Usage 接口统计每次对话的 token 使用量。
+     * Spring AI 通过 Usage 接口的 getNativeUsage() 方法和 DefaultUsage 实现，
+     * 简化了不同 AI 模型跟踪和报告用量指标的流程。</p>
      */
     @Bean
     public TokenUsageAdvisor tokenUsageAdvisor(TokenUsageService tokenUsageService) {
@@ -55,4 +58,5 @@ public class ChatClientConfig {
                 .tokenUsageService(tokenUsageService)
                 .build();
     }
+
 }
