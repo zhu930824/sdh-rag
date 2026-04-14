@@ -89,9 +89,11 @@
               v-for="(item, index) in topWords"
               :key="item.word"
               class="word-item"
-              :style="getWordStyle(item, index)"
+              :style="getWordStyle(item)"
+              @click="handleWordClick(item)"
             >
               {{ item.word }}
+              <span class="word-count">{{ item.count }}</span>
             </span>
           </div>
         </a-card>
@@ -190,17 +192,17 @@
       </template>
       <a-table
         :columns="columns"
-        :data-source="filteredWordList"
+        :data-source="wordList"
         :loading="loading"
         :pagination="pagination"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record, index }">
           <template v-if="column.key === 'rank'">
-            <div class="rank-cell" :class="{ 'top-rank': index < 3 }">
-              <span class="rank-number">{{ index + 1 }}</span>
-              <a-tag v-if="index < 3" :color="getRankColor(index)" size="small">
-                {{ getRankLabel(index) }}
+            <div class="rank-cell" :class="{ 'top-rank': (pagination.current - 1) * pagination.pageSize + index < 3 }">
+              <span class="rank-number">{{ (pagination.current - 1) * pagination.pageSize + index + 1 }}</span>
+              <a-tag v-if="(pagination.current - 1) * pagination.pageSize + index < 3" :color="getRankColor((pagination.current - 1) * pagination.pageSize + index)" size="small">
+                {{ getRankLabel((pagination.current - 1) * pagination.pageSize + index) }}
               </a-tag>
             </div>
           </template>
@@ -220,18 +222,6 @@
               />
               <span class="count-value">{{ record.count }}</span>
             </div>
-          </template>
-          <template v-if="column.key === 'trend'">
-            <span :class="record.trend > 0 ? 'trend-up' : 'trend-down'" class="trend-cell">
-              <ArrowUpOutlined v-if="record.trend > 0" />
-              <ArrowDownOutlined v-else />
-              {{ Math.abs(record.trend) }}%
-            </span>
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-button type="link" size="small" @click="handleViewDetail(record)">
-              查看详情
-            </a-button>
           </template>
         </template>
       </a-table>
@@ -257,7 +247,9 @@ import {
 } from '@ant-design/icons-vue'
 import { getHotwordStats, getHotwordRanking, getHotwordTrend, getHotwordList } from '@/api/hotwords'
 import type { WordRankItem, TrendItem } from '@/api/hotwords'
+import { useUserStore } from '@/stores/user'
 
+const userStore = useUserStore()
 const timeRange = ref('week')
 const customRange = ref<[Dayjs, Dayjs] | null>(null)
 const loading = ref(false)
@@ -317,21 +309,15 @@ const columns = [
   { title: '词汇', key: 'word', width: 200 },
   { title: '查询次数', key: 'count', width: 250, sorter: (a: WordRankItem, b: WordRankItem) => a.count - b.count },
   { title: '占比', dataIndex: 'percent', key: 'percent', width: 100, customRender: ({ text }: { text: number }) => `${text.toFixed(1)}%` },
-  { title: '趋势', key: 'trend', width: 120, sorter: (a: WordRankItem, b: WordRankItem) => (a.trend || 0) - (b.trend || 0) },
-  { title: '操作', key: 'action', width: 100, fixed: 'right' as const },
 ]
 
 const wordList = ref<WordRankItem[]>([])
-
-const filteredWordList = computed(() => {
-  if (!searchKeyword.value) return wordList.value
-  return wordList.value.filter(item => item.word.toLowerCase().includes(searchKeyword.value.toLowerCase()))
-})
+const wordListTotal = ref(0)
 
 const pagination = reactive({
   current: 1,
   pageSize: 10,
-  total: computed(() => filteredWordList.value.length),
+  total: computed(() => wordListTotal.value),
   showSizeChanger: true,
   showQuickJumper: true,
   showTotal: (total: number) => `共 ${total} 条`,
@@ -358,23 +344,26 @@ function getDateRange(): { startDate: string; endDate: string } {
 async function loadData() {
   loading.value = true
   const { startDate, endDate } = getDateRange()
-  
+
   try {
     const [statsRes, rankingRes, listRes] = await Promise.all([
       getHotwordStats(startDate, endDate),
       getHotwordRanking(10, startDate, endDate),
-      getHotwordList({ page: 1, pageSize: 50, startDate, endDate }),
+      getHotwordList({ page: pagination.current, pageSize: pagination.pageSize, startDate, endDate, keyword: searchKeyword.value || undefined }),
     ])
-    
-    if (statsRes.data.data) {
-      statsData[0].value = statsRes.data.data.totalQueries || 0
-      statsData[1].value = statsRes.data.data.uniqueWords || 0
-      statsData[2].value = statsRes.data.data.avgQueries || 0
+
+    if (statsRes.data) {
+      statsData[0].value = statsRes.data.totalQueries || 0
+      statsData[1].value = statsRes.data.uniqueWords || 0
+      statsData[2].value = statsRes.data.avgQueries || 0
+      statsData[3].value = statsRes.data.growthRate || 0
+      statsData[3].trend = statsRes.data.growthRate || 0
     }
-    
-    topWords.value = rankingRes.data.data || []
-    wordList.value = listRes.data.data || []
-    
+
+    topWords.value = rankingRes.data || []
+    wordList.value = listRes.data?.list || []
+    wordListTotal.value = listRes.data?.total || 0
+
     if (topWords.value.length > 0 && !trendWord.value) {
       trendWord.value = topWords.value[0].word
       loadTrendData()
@@ -388,11 +377,11 @@ async function loadData() {
 
 async function loadTrendData() {
   if (!trendWord.value) return
-  
+
   const { startDate, endDate } = getDateRange()
   try {
-    const { data } = await getHotwordTrend(trendWord.value, startDate, endDate)
-    const trendItems = data.data || []
+    const res = await getHotwordTrend(trendWord.value, startDate, endDate)
+    const trendItems = res.data || []
     trendData.value = trendItems.map((item: TrendItem) => item.count)
     trendXAxis.value = trendItems.map((item: TrendItem) => item.date.slice(5))
   } catch (error) {
@@ -416,13 +405,31 @@ function getBarGradient(index: number): string {
   return gradients[index % gradients.length]
 }
 
-function getWordStyle(item: WordRankItem, index: number): Record<string, string> {
-  const baseSize = 14
-  const maxSize = 36
-  const size = baseSize + ((item.percent || 0) / 100) * (maxSize - baseSize)
-  const colors = ['#667eea', '#f5576c', '#4facfe', '#43e97b', '#fa8c16', '#1890ff', '#722ed1']
-  const color = colors[index % colors.length]
-  return { fontSize: `${size}px`, color: color, fontWeight: index < 3 ? '600' : '400' }
+function getWordStyle(item: WordRankItem): Record<string, string> {
+  // 根据词频计算字体大小，count越大字体越大
+  const maxCount = topWords.value.length > 0 ? Math.max(...topWords.value.map(w => w.count)) : 1
+  const minSize = 14
+  const maxSize = 48
+  // 根据count比例计算大小
+  const ratio = item.count / maxCount
+  const size = minSize + ratio * (maxSize - minSize)
+
+  // 根据词频随机颜色
+  const colors = ['#667eea', '#f5576c', '#4facfe', '#43e97b', '#fa8c16', '#1890ff', '#722ed1', '#eb2f96', '#faad14']
+  const colorIndex = Math.floor(ratio * (colors.length - 1))
+  const color = colors[colorIndex]
+
+  return {
+    fontSize: `${size}px`,
+    color: color,
+    fontWeight: ratio > 0.5 ? '600' : '400',
+    padding: `${Math.round(6 + ratio * 10)}px ${Math.round(10 + ratio * 16)}px`,
+  }
+}
+
+function handleWordClick(item: WordRankItem) {
+  trendWord.value = item.word
+  loadTrendData()
 }
 
 function getRankColor(index: number): string {
@@ -456,20 +463,33 @@ function handleRefresh() {
 
 function handleSearch() {
   pagination.current = 1
+  loadData()
 }
 
 function handleExport() {
-  message.success('数据导出成功')
+  const { startDate, endDate } = getDateRange()
+  const params = new URLSearchParams()
+  params.append('startDate', startDate)
+  params.append('endDate', endDate)
+  if (searchKeyword.value) {
+    params.append('keyword', searchKeyword.value)
+  }
+  // 添加 token
+  const token = userStore.token
+  if (token) {
+    params.append('token', token)
+  }
+
+  // 直接打开下载链接
+  const downloadUrl = `/api/hotword/export?${params.toString()}`
+  window.open(downloadUrl, '_blank')
+  message.success('正在导出数据...')
 }
 
 function handleTableChange(pag: any) {
   pagination.current = pag.current
   pagination.pageSize = pag.pageSize
-}
-
-function handleViewDetail(record: WordRankItem) {
-  trendWord.value = record.word
-  loadTrendData()
+  loadData()
 }
 
 onMounted(() => {
@@ -712,23 +732,40 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 20px;
+  gap: 12px;
+  padding: 24px;
   justify-content: center;
   align-items: center;
+  align-content: center;
+  min-height: 300px;
 
   .word-item {
-    display: inline-block;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
     padding: 8px 16px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-lg);
     background: var(--bg-surface-secondary);
     transition: all var(--duration-normal) var(--ease-nature);
-    cursor: default;
+    cursor: pointer;
+    text-align: center;
 
     &:hover {
-      transform: scale(1.1);
+      transform: scale(1.15);
       background: var(--primary-lighter);
-      color: var(--primary-color);
+      box-shadow: var(--shadow-card-hover);
+
+      .word-count {
+        opacity: 1;
+      }
+    }
+
+    .word-count {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+      opacity: 0.6;
+      transition: opacity 0.2s;
     }
   }
 }

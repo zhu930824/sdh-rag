@@ -44,10 +44,13 @@
             <div class="stat-info">
               <div class="stat-value">{{ formatNumber(stat.value) }}</div>
               <div class="stat-label">{{ stat.label }}</div>
-              <div class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
+              <div v-if="stat.trend !== 0" class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
                 <ArrowUpOutlined v-if="stat.trend > 0" />
                 <ArrowDownOutlined v-else />
                 <span>{{ Math.abs(stat.trend) }}%</span>
+              </div>
+              <div v-else class="stat-trend neutral">
+                <span>-</span>
               </div>
             </div>
           </div>
@@ -59,12 +62,6 @@
     <a-row :gutter="20" class="chart-row">
       <a-col :xs="24" :lg="12">
         <a-card title="对话趋势" class="chart-card">
-          <template #extra>
-            <a-select v-model:value="trendType" style="width: 120px" size="small">
-              <a-select-option value="count">对话数</a-select-option>
-              <a-select-option value="user">用户数</a-select-option>
-            </a-select>
-          </template>
           <!-- 趋势图 -->
           <div class="trend-chart">
             <div class="trend-y-axis">
@@ -91,7 +88,7 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
-                  <template v-for="(point, index) in trendPoints" :key="index">
+                  <template v-for="point in trendPoints" :key="`${point.x}-${point.y}`">
                     <circle
                       :cx="point.x"
                       :cy="point.y"
@@ -128,21 +125,15 @@
       </a-col>
       <a-col :xs="24" :lg="12">
         <a-card title="API调用成本" class="chart-card">
-          <template #extra>
-            <a-select v-model:value="costType" style="width: 120px" size="small">
-              <a-select-option value="token">Token</a-select-option>
-              <a-select-option value="cost">费用</a-select-option>
-            </a-select>
-          </template>
           <!-- 成本概览 -->
           <div class="cost-overview">
             <div class="cost-item">
-              <div class="cost-label">总Token数</div>
-              <div class="cost-value">{{ apiCost.totalTokens?.toLocaleString() }}</div>
+              <div class="cost-label">时间范围内Token</div>
+              <div class="cost-value">{{ apiCost.rangeTokens?.toLocaleString() }}</div>
             </div>
             <div class="cost-item">
-              <div class="cost-label">总费用</div>
-              <div class="cost-value highlight">¥{{ apiCost.totalCost?.toFixed(2) }}</div>
+              <div class="cost-label">时间范围内费用</div>
+              <div class="cost-value highlight">¥{{ apiCost.rangeCost?.toFixed(2) }}</div>
             </div>
           </div>
           <!-- 成本分布 -->
@@ -165,8 +156,8 @@
           <!-- 模型统计 -->
           <div v-if="apiCost.modelStats && apiCost.modelStats.length > 0" class="model-stats">
             <div class="model-stat-title">模型调用统计</div>
-            <div v-for="model in apiCost.modelStats" :key="model.name" class="model-stat-item">
-              <span class="model-name">{{ model.name }}</span>
+            <div v-for="model in apiCost.modelStats" :key="model.model" class="model-stat-item">
+              <span class="model-name">{{ model.model }}</span>
               <span class="model-tokens">{{ model.tokens?.toLocaleString() }} tokens</span>
               <span class="model-cost">¥{{ model.cost?.toFixed(2) }}</span>
             </div>
@@ -193,19 +184,34 @@ import { getStatsOverview, getChatTrend, getApiCostStats, type StatsOverview, ty
 import dayjs, { type Dayjs } from 'dayjs'
 
 const timeRange = ref('week')
-const customRange = ref<[Dayjs, Dayjs] | null>(null)
-const trendType = ref('count')
-const costType = ref('token')
+const customRange = ref<[Dayjs, Dayjs]>()
 
 const statsData = reactive([
-  { label: '总文档数', value: 0, gradient: 'linear-gradient(135deg, #059669 0%, #228B22 100%)', trend: 12 },
-  { label: '总用户数', value: 0, gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', trend: 8 },
-  { label: '总对话数', value: 0, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', trend: -5 },
-  { label: '今日对话', value: 0, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', trend: 15 },
+  { label: '总文档数', value: 0, gradient: 'linear-gradient(135deg, #059669 0%, #228B22 100%)', trend: 0 },
+  { label: '总用户数', value: 0, gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', trend: 0 },
+  { label: '总对话数', value: 0, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', trend: 0 },
+  { label: '今日对话', value: 0, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', trend: 0 },
 ])
 
-const overview = reactive<StatsOverview>({ totalDocuments: 0, totalUsers: 0, totalChats: 0, todayChats: 0, totalQuestions: 0, todayQuestions: 0 })
-const apiCost = reactive<ApiCostStats>({ totalTokens: 0, totalCost: 0, todayTokens: 0, todayCost: 0, modelStats: [] })
+const overview = reactive<StatsOverview>({
+  totalDocuments: 0,
+  totalUsers: 0,
+  totalChats: 0,
+  todayChats: 0,
+  documentTrend: 0,
+  userTrend: 0,
+  chatTrend: 0,
+  todayChatsTrend: 0
+})
+const apiCost = reactive<ApiCostStats>({
+  totalTokens: 0,
+  totalCost: 0,
+  rangeTokens: 0,
+  rangeCost: 0,
+  todayTokens: 0,
+  todayCost: 0,
+  modelStats: []
+})
 
 const trendData = ref<number[]>([])
 const trendXAxis = ref<string[]>([])
@@ -289,25 +295,34 @@ async function loadData() {
       getApiCostStats(startDate, endDate),
     ])
 
-    if (overviewRes.data.data) {
-      overview.totalDocuments = overviewRes.data.data.totalDocuments || 0
-      overview.totalUsers = overviewRes.data.data.totalUsers || 0
-      overview.totalChats = overviewRes.data.data.totalChats || 0
-      overview.todayChats = overviewRes.data.data.todayChats || 0
+    if (overviewRes.data) {
+      const data = overviewRes.data
+      overview.totalDocuments = data.totalDocuments || 0
+      overview.totalUsers = data.totalUsers || 0
+      overview.totalChats = data.totalChats || 0
+      overview.todayChats = data.todayChats || 0
+      overview.documentTrend = data.documentTrend || 0
+      overview.userTrend = data.userTrend || 0
+      overview.chatTrend = data.chatTrend || 0
+      overview.todayChatsTrend = data.todayChatsTrend || 0
 
       statsData[0].value = overview.totalDocuments
+      statsData[0].trend = overview.documentTrend
       statsData[1].value = overview.totalUsers
+      statsData[1].trend = overview.userTrend
       statsData[2].value = overview.totalChats
+      statsData[2].trend = overview.chatTrend
       statsData[3].value = overview.todayChats
+      statsData[3].trend = overview.todayChatsTrend
     }
 
-    if (trendRes.data.data) {
-      trendData.value = trendRes.data.data.map((item: any) => item.count)
-      trendXAxis.value = trendRes.data.data.map((item: any) => item.date.slice(5))
+    if (trendRes.data) {
+      trendData.value = trendRes.data.map((item: any) => item.count)
+      trendXAxis.value = trendRes.data.map((item: any) => item.date.slice(5))
     }
 
-    if (costRes.data.data) {
-      Object.assign(apiCost, costRes.data.data)
+    if (costRes.data) {
+      Object.assign(apiCost, costRes.data)
     }
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -448,6 +463,11 @@ onMounted(() => {
     &.down {
       color: var(--danger-color);
       background: var(--danger-light);
+    }
+
+    &.neutral {
+      color: var(--text-tertiary);
+      background: var(--bg-surface-secondary);
     }
   }
 }

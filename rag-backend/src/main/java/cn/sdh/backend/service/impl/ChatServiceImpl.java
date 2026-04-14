@@ -12,6 +12,7 @@ import cn.sdh.backend.advisor.rag.RagAdvisorFactory;
 import cn.sdh.backend.advisor.common.SensitiveWordAdvisor;
 import cn.sdh.backend.advisor.common.SensitiveWordAdvisor.SensitiveWordException;
 import cn.sdh.backend.advisor.common.TokenUsageAdvisor;
+import cn.sdh.backend.advisor.common.HotwordAdvisor;
 import cn.sdh.backend.service.*;
 import cn.sdh.backend.service.RagSearchService.ChatMessage;
 import cn.sdh.backend.service.RagSearchService.RagSearchResult;
@@ -62,6 +63,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatMemory chatMemory;
     private final ChatModelFactory chatModelFactory;
     private final TokenUsageAdvisor tokenUsageAdvisor;
+    private final HotwordAdvisor hotwordAdvisor;
 
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
@@ -132,9 +134,11 @@ public class ChatServiceImpl implements ChatService {
                 .set(TokenUsageAdvisor.USER_ID, currentUserId)
                 .set(TokenUsageAdvisor.SESSION_ID, currentSessionId)
                 .set(TokenUsageAdvisor.MODEL_ID, modelId)
-                .set(TokenUsageAdvisor.KNOWLEDGE_ID, knowledgeId);
+                .set(TokenUsageAdvisor.KNOWLEDGE_ID, knowledgeId)
+                .set(HotwordAdvisor.USER_ID, currentUserId)
+                .set(HotwordAdvisor.SESSION_ID, currentSessionId);
 
-        requestSpec = requestSpec.advisors(spec -> spec.advisors(contextAdvisor).advisors(tokenUsageAdvisor));
+        requestSpec = requestSpec.advisors(spec -> spec.advisors(contextAdvisor).advisors(tokenUsageAdvisor).advisors(hotwordAdvisor));
 
         // 添加日志观测 Advisor（最后执行，记录完整流程）
         LoggingAdvisor loggingAdvisor = LoggingAdvisor.builder()

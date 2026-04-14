@@ -18,7 +18,8 @@
       "Read(//c/Users/1/.m2/repository/org/springframework/ai/spring-ai-model/1.0.0/**)",
       "Bash(javap -public -cp spring-ai-model-1.0.0.jar org.springframework.ai.chat.memory.MessageWindowChatMemory)",
       "Bash(javap -public -cp spring-ai-model-1.0.0.jar org.springframework.ai.chat.memory.InMemoryChatMemoryRepository)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(ccusage monthly:*)"
     ]
   }
 }

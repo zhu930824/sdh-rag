@@ -1,7 +1,9 @@
 package cn.sdh.backend.config;
 
+import cn.sdh.backend.advisor.common.HotwordAdvisor;
 import cn.sdh.backend.advisor.common.MySQLChatMemoryRepository;
 import cn.sdh.backend.advisor.common.TokenUsageAdvisor;
+import cn.sdh.backend.service.HotwordService;
 import cn.sdh.backend.service.TokenUsageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +58,23 @@ public class ChatClientConfig {
         return TokenUsageAdvisor.builder()
                 .order(900)
                 .tokenUsageService(tokenUsageService)
+                .build();
+    }
+
+    /**
+     * 配置 HotwordAdvisor Bean
+     *
+     * <p>使用 IK 分词器从用户问题中提取关键词，并记录到热点词统计中。</p>
+     */
+    @Bean
+    public HotwordAdvisor hotwordAdvisor(HotwordService hotwordService) {
+        log.info("初始化 HotwordAdvisor");
+        return HotwordAdvisor.builder()
+                .order(800)
+                .hotwordService(hotwordService)
+                .maxKeywords(10)
+                .minWordLength(2)
+                .useSmartMode(true)
                 .build();
     }
 

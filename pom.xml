@@ -27,6 +27,7 @@
         <ik-analyzer.version>8.5.0</ik-analyzer.version>
         <mysql-connector.version>8.0.33</mysql-connector.version>
         <druid.version>1.2.20</druid.version>
+        <easyexcel.version>4.0.3</easyexcel.version>
 
     </properties>
 
@@ -132,6 +133,12 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>druid-spring-boot-starter</artifactId>
                 <version>${druid.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>easyexcel</artifactId>
+                <version>${easyexcel.version}</version>
             </dependency>
 
             <!-- Spring AI Modules -->

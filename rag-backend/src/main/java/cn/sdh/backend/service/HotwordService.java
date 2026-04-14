@@ -14,8 +14,8 @@ public interface HotwordService {
 
     List<Map<String, Object>> getTrend(String word, LocalDate startDate, LocalDate endDate);
 
-    List<Map<String, Object>> getList(Integer page, Integer pageSize, String keyword, 
-                                       LocalDate startDate, LocalDate endDate);
+    Map<String, Object> getList(Integer page, Integer pageSize, String keyword,
+                                LocalDate startDate, LocalDate endDate);
 
     void recordWord(String word, Long userId, String sessionId);
 

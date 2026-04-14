@@ -44,6 +44,8 @@ public class JwtInterceptor implements HandlerInterceptor {
             token = request.getParameter(tokenName);
         }
 
+        log.debug("JWT拦截器: uri={}, token={}", request.getRequestURI(), token != null ? "exists" : "null");
+
         if (!StringUtils.hasText(token)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");

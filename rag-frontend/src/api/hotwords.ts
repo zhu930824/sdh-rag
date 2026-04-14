@@ -5,6 +5,7 @@ export interface HotwordStats {
   totalQueries: number
   uniqueWords: number
   avgQueries: number
+  growthRate: number
 }
 
 export interface WordRankItem {
@@ -32,12 +33,19 @@ export function getHotwordTrend(word: string, startDate: string, endDate: string
   return request.get('/api/hotword/trend', { params: { word, startDate, endDate } })
 }
 
+export interface HotwordListResponse {
+  list: WordRankItem[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export function getHotwordList(params: {
   page: number
   pageSize: number
   keyword?: string
   startDate?: string
   endDate?: string
-}): Promise<ApiResponse<WordRankItem[]>> {
+}): Promise<ApiResponse<HotwordListResponse>> {
   return request.get('/api/hotword/list', { params })
 }

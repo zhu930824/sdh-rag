@@ -67,4 +67,30 @@ public interface TokenUsageMapper extends BaseMapper<TokenUsage> {
             "COUNT(*) as totalRequests " +
             "FROM token_usage")
     Map<String, Object> getGlobalStats();
+
+    /**
+     * 按日期范围获取全局统计
+     */
+    @Select("SELECT " +
+            "COALESCE(SUM(prompt_tokens), 0) as totalPromptTokens, " +
+            "COALESCE(SUM(completion_tokens), 0) as totalCompletionTokens, " +
+            "COALESCE(SUM(total_tokens), 0) as totalTokens, " +
+            "COUNT(*) as totalRequests " +
+            "FROM token_usage " +
+            "WHERE create_time BETWEEN #{startTime} AND #{endTime}")
+    Map<String, Object> getGlobalStatsByDateRange(LocalDateTime startTime, LocalDateTime endTime);
+
+    /**
+     * 按日期范围和模型统计
+     */
+    @Select("SELECT model_name as modelName, provider, " +
+            "COALESCE(SUM(prompt_tokens), 0) as promptTokens, " +
+            "COALESCE(SUM(completion_tokens), 0) as completionTokens, " +
+            "COALESCE(SUM(total_tokens), 0) as totalTokens, " +
+            "COUNT(*) as requestCount " +
+            "FROM token_usage " +
+            "WHERE create_time BETWEEN #{startTime} AND #{endTime} " +
+            "GROUP BY model_name, provider " +
+            "ORDER BY totalTokens DESC")
+    List<Map<String, Object>> getGlobalStatsByModel(LocalDateTime startTime, LocalDateTime endTime);
 }
