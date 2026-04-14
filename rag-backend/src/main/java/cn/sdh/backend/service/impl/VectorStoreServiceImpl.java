@@ -6,6 +6,7 @@ import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.service.EmbeddingService;
 import cn.sdh.backend.service.VectorStoreService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -150,7 +151,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId.toString())));
+                            .value(FieldValue.of(knowledgeId))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -196,7 +197,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                             .numCandidates(topK * 10)
                             .filter(f -> f.term(t -> t
                                     .field("knowledge_id")
-                                    .value(knowledgeId.toString()))))
+                                    .value(FieldValue.of(knowledgeId)))))
                     .size(topK), Map.class);
 
             // 转换结果
@@ -232,7 +233,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("document_id")
-                            .value(documentId.toString())));
+                            .value(FieldValue.of(documentId))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -256,8 +257,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             // 构建查询条件：同时匹配 document_id 和 knowledge_id
             Query query = Query.of(q -> q
                     .bool(b -> b
-                            .must(m -> m.term(t -> t.field("document_id").value(documentId.toString())))
-                            .must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId.toString())))));
+                            .must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))))
+                            .must(m -> m.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -311,7 +312,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId.toString())));
+                            .value(FieldValue.of(knowledgeId))));
 
             CountResponse response = elasticsearchClient.count(c -> c
                     .index(indexName)
@@ -329,9 +330,9 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         try {
             Query query = Query.of(q -> q
                     .bool(b -> {
-                        b.must(m -> m.term(t -> t.field("document_id").value(documentId.toString())));
+                        b.must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))));
                         if (knowledgeId != null) {
-                            b.must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId.toString())));
+                            b.must(m -> m.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
                         }
                         return b;
                     }));
@@ -353,14 +354,14 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId.toString())));
+                            .value(FieldValue.of(knowledgeId))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
                     .query(query)
                     .from(page * size)
                     .size(size)
-                    .sort(sort -> sort.field(f -> f.field("chunk_id").order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))),
+                    .sort(sort -> sort.field(f -> f.field("chunk_index").order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))),
                     Map.class);
 
             return convertHitsToDocuments(response.hits().hits());
@@ -375,9 +376,9 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         try {
             Query query = Query.of(q -> q
                     .bool(b -> {
-                        b.must(m -> m.term(t -> t.field("document_id").value(documentId.toString())));
+                        b.must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))));
                         if (knowledgeId != null) {
-                            b.must(m -> m.term(t -> t.field("knowledge_id").value(knowledgeId.toString())));
+                            b.must(m -> m.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
                         }
                         return b;
                     }));
@@ -408,7 +409,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 Map<String, Object> source = response.source();
                 Document doc = new Document((String) source.get("content"));
                 doc.getMetadata().put("id", response.id());
-                doc.getMetadata().put("chunk_id", source.get("chunk_id"));
+                doc.getMetadata().put("chunk_index", source.get("chunk_index"));
                 doc.getMetadata().put("document_id", source.get("document_id"));
                 doc.getMetadata().put("knowledge_id", source.get("knowledge_id"));
                 doc.getMetadata().put("embedding_model", source.get("embedding_model"));
@@ -444,7 +445,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Query query = Query.of(q -> q
                     .term(t -> t
                             .field("knowledge_id")
-                            .value(knowledgeId.toString())));
+                            .value(FieldValue.of(knowledgeId))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -480,7 +481,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                                     .query(query)))
                             .filter(f -> f.term(t -> t
                                     .field("knowledge_id")
-                                    .value(knowledgeId.toString())))));
+                                    .value(FieldValue.of(knowledgeId))))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -565,7 +566,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             if (source != null) {
                 Document doc = new Document((String) source.get("content"));
                 doc.getMetadata().put("id", hit.id());
-                doc.getMetadata().put("chunk_id", source.get("chunk_id"));
+                doc.getMetadata().put("chunk_index", source.get("chunk_index"));
                 doc.getMetadata().put("document_id", source.get("document_id"));
                 doc.getMetadata().put("knowledge_id", source.get("knowledge_id"));
                 doc.getMetadata().put("chunk_index", source.get("chunk_index"));

@@ -7,8 +7,8 @@ import cn.sdh.backend.graph.node.ConceptNode;
 import cn.sdh.backend.graph.node.EntityNode;
 import cn.sdh.backend.graph.node.KeywordNode;
 import cn.sdh.backend.graph.repository.ConceptNodeRepository;
+import cn.sdh.backend.graph.repository.CustomGraphRepository;
 import cn.sdh.backend.graph.repository.EntityNodeRepository;
-import cn.sdh.backend.graph.repository.GraphRepository;
 import cn.sdh.backend.graph.repository.KeywordNodeRepository;
 import cn.sdh.backend.service.GraphService;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GraphServiceImpl implements GraphService {
 
-    private final GraphRepository graphRepository;
+    private final CustomGraphRepository customGraphRepository;
     private final EntityNodeRepository entityNodeRepository;
     private final ConceptNodeRepository conceptNodeRepository;
     private final KeywordNodeRepository keywordNodeRepository;
@@ -37,13 +37,10 @@ public class GraphServiceImpl implements GraphService {
 
         if (centerNodeId != null) {
             // 以指定节点为中心展开
-            nodeIds = graphRepository.expandNodeIds(centerNodeId, depth);
+            nodeIds = customGraphRepository.expandNodeIds(centerNodeId, depth);
         } else {
             // 获取全图概览 - top 100节点
-            List<Map<String, Object>> topNodeResults = graphRepository.getTopNodeIds(100);
-            nodeIds = topNodeResults.stream()
-                    .map(m -> ((Number) m.get("id")).longValue())
-                    .collect(Collectors.toList());
+            nodeIds = customGraphRepository.getTopNodeIds(100);
         }
 
         if (nodeIds == null || nodeIds.isEmpty()) {
@@ -54,10 +51,10 @@ public class GraphServiceImpl implements GraphService {
         nodeIds = nodeIds.stream().filter(Objects::nonNull).collect(Collectors.toList());
 
         // 获取节点详情
-        List<Map<String, Object>> nodesData = graphRepository.getNodesByIds(nodeIds);
+        List<Map<String, Object>> nodesData = customGraphRepository.getNodesByIds(nodeIds);
 
         // 获取关系
-        List<Map<String, Object>> relationshipsData = graphRepository.getRelationshipsBetweenNodes(nodeIds);
+        List<Map<String, Object>> relationshipsData = customGraphRepository.getRelationshipsBetweenNodes(nodeIds);
 
         return buildGraphResponse(nodesData, relationshipsData);
     }
@@ -110,13 +107,13 @@ public class GraphServiceImpl implements GraphService {
 
     @Override
     public GraphDataResponse getNeighbors(Long nodeId) {
-        Map<String, Object> result = graphRepository.findNeighbors(nodeId);
-        return parseGraphResult(result);
+        Map<String, Object> result = customGraphRepository.findNeighbors(nodeId);
+        return parseNeighborsResult(result);
     }
 
     @Override
     public GraphPathResponse getShortestPath(Long startId, Long endId) {
-        Map<String, Object> result = graphRepository.findShortestPath(startId, endId);
+        Map<String, Object> result = customGraphRepository.findShortestPath(startId, endId);
 
         if (result == null || result.isEmpty()) {
             return null;
@@ -157,17 +154,7 @@ public class GraphServiceImpl implements GraphService {
 
     @Override
     public GraphStatsResponse getStats() {
-        Long totalNodes = graphRepository.countNodes();
-        Long totalRelationships = graphRepository.countRelationships();
-        List<Map<String, Object>> nodesByType = graphRepository.countNodesByType();
-        List<Map<String, Object>> relationshipsByType = graphRepository.countRelationshipsByType();
-
-        return GraphStatsResponse.builder()
-                .totalNodes(totalNodes)
-                .totalRelationships(totalRelationships)
-                .nodesByType(nodesByType)
-                .relationshipsByType(relationshipsByType)
-                .build();
+        return customGraphRepository.getStats();
     }
 
     @Override
@@ -257,7 +244,7 @@ public class GraphServiceImpl implements GraphService {
         return GraphDataResponse.builder().nodes(nodes).edges(edges).build();
     }
 
-    private GraphDataResponse parseGraphResult(Map<String, Object> result) {
+    private GraphDataResponse parseNeighborsResult(Map<String, Object> result) {
         List<GraphDataResponse.NodeData> nodes = new ArrayList<>();
         List<GraphDataResponse.EdgeData> edges = new ArrayList<>();
 

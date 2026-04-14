@@ -10,7 +10,7 @@ spring:
     uri: bolt://192.168.2.128:7687
     authentication:
       username: neo4j
-      password: 520824zxk
+      password: password
   servlet:
     multipart:
       max-file-size: 100MB
@@ -22,9 +22,6 @@ spring:
       api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
     dashscope:
       api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
-      embedding:
-        options:
-          model: text-embedding-v3
     vectorstore:
       elasticsearch:
         initialize-schema: true

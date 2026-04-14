@@ -114,4 +114,37 @@ public class GraphController {
         graphBuildService.batchBuild(documentIds);
         return Result.success();
     }
+
+    /**
+     * 从知识库构建图谱
+     */
+    @PostMapping("/build/knowledge/{knowledgeId}")
+    public Result<GraphBuildResponse> buildFromKnowledgeBase(@PathVariable Long knowledgeId) {
+        return Result.success(graphBuildService.buildFromKnowledgeBase(knowledgeId));
+    }
+
+    /**
+     * 重建知识库图谱
+     */
+    @PostMapping("/rebuild/knowledge/{knowledgeId}")
+    public Result<GraphBuildResponse> rebuildFromKnowledgeBase(@PathVariable Long knowledgeId) {
+        return Result.success(graphBuildService.rebuildFromKnowledgeBase(knowledgeId));
+    }
+
+    /**
+     * 删除知识库图谱
+     */
+    @DeleteMapping("/knowledge/{knowledgeId}")
+    public Result<Void> deleteByKnowledgeBase(@PathVariable Long knowledgeId) {
+        graphBuildService.deleteByKnowledgeBase(knowledgeId);
+        return Result.success();
+    }
+
+    /**
+     * 获取知识库图谱构建状态
+     */
+    @GetMapping("/status/knowledge/{knowledgeId}")
+    public Result<GraphBuildResponse.KnowledgeGraphStatus> getKnowledgeGraphStatus(@PathVariable Long knowledgeId) {
+        return Result.success(graphBuildService.getKnowledgeGraphStatus(knowledgeId));
+    }
 }

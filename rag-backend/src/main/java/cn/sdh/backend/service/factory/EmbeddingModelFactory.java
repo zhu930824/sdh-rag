@@ -6,8 +6,8 @@ import cn.sdh.backend.service.ModelFactory;
 import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
 import com.alibaba.cloud.ai.dashscope.embedding.DashScopeEmbeddingModel;
 import com.alibaba.cloud.ai.dashscope.embedding.DashScopeEmbeddingOptions;
-import com.alibaba.cloud.ai.dashscope.spec.DashScopeApiSpec;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
@@ -142,8 +142,7 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
                 .build();
 
         DashScopeEmbeddingOptions options = DashScopeEmbeddingOptions.builder()
-                .model(DashScopeApiSpec.EmbeddingRequest.builder()
-                        .model(modelName).build().model())
+                .model(modelName)
                 .build();
 
         return new DashScopeEmbeddingModel(
@@ -182,7 +181,11 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
      * 解析 apiKey，优先使用配置中的，否则使用默认值
      */
     private String resolveApiKey(ModelConfig config, String defaultApiKey) {
-        return config.getApiKey() != null ? config.getApiKey() : defaultApiKey;
+        if (StringUtils.isNotBlank(config.getApiKey())) {
+            return config.getApiKey();
+        }else {
+            return defaultApiKey;
+        }
     }
 
     /**

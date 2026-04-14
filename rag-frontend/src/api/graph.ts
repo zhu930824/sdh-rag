@@ -108,3 +108,34 @@ export function rebuildGraphFromDocument(documentId: number): Promise<ApiRespons
 export function batchBuildGraph(documentIds: number[]): Promise<ApiResponse<void>> {
   return request.post('/api/graph/build/batch', documentIds)
 }
+
+// 知识库图谱状态
+export interface KnowledgeGraphStatus {
+  knowledgeId: number
+  graphBuilt: boolean
+  nodeCount: number
+  relationshipCount: number
+  lastBuildTime: string
+  builtDocumentCount: number
+  totalDocumentCount: number
+}
+
+// 从知识库构建图谱
+export function buildGraphFromKnowledgeBase(knowledgeId: number): Promise<ApiResponse<GraphBuildResult>> {
+  return request.post(`/api/graph/build/knowledge/${knowledgeId}`)
+}
+
+// 重建知识库图谱
+export function rebuildGraphFromKnowledgeBase(knowledgeId: number): Promise<ApiResponse<GraphBuildResult>> {
+  return request.post(`/api/graph/rebuild/knowledge/${knowledgeId}`)
+}
+
+// 删除知识库图谱
+export function deleteGraphByKnowledgeBase(knowledgeId: number): Promise<ApiResponse<void>> {
+  return request.delete(`/api/graph/knowledge/${knowledgeId}`)
+}
+
+// 获取知识库图谱构建状态
+export function getKnowledgeGraphStatus(knowledgeId: number): Promise<ApiResponse<KnowledgeGraphStatus>> {
+  return request.get(`/api/graph/status/knowledge/${knowledgeId}`)
+}

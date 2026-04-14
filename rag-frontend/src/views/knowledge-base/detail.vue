@@ -96,6 +96,34 @@
             @save="handleSaveConfig"
           />
         </a-tab-pane>
+        <a-tab-pane key="graph" tab="知识图谱">
+          <div class="graph-section">
+            <div class="graph-header">
+              <a-space>
+                <a-button type="primary" @click="handleBuildGraph" :loading="graphBuilding">
+                  <template #icon><ApartmentOutlined /></template>
+                  {{ graphStatus?.graphBuilt ? '重建图谱' : '构建图谱' }}
+                </a-button>
+                <a-button v-if="graphStatus?.graphBuilt" danger @click="handleDeleteGraph">
+                  删除图谱
+                </a-button>
+              </a-space>
+              <div class="graph-stats" v-if="graphStatus">
+                <a-tag color="blue">节点: {{ graphStatus.nodeCount }}</a-tag>
+                <a-tag color="green">关系: {{ graphStatus.relationshipCount }}</a-tag>
+                <a-tag color="purple">已构建文档: {{ graphStatus.builtDocumentCount }}/{{ graphStatus.totalDocumentCount }}</a-tag>
+              </div>
+            </div>
+            <a-alert v-if="!graphStatus?.graphBuilt" type="info" show-icon style="margin-bottom: 16px">
+              <template #message>知识图谱尚未构建。点击"构建图谱"按钮，系统将自动从文档中提取实体、关系、概念和关键词。</template>
+            </a-alert>
+            <div class="graph-preview" v-if="graphStatus?.graphBuilt">
+              <a-button type="link" @click="goToGraphPage">
+                查看完整知识图谱 <RightOutlined />
+              </a-button>
+            </div>
+          </div>
+        </a-tab-pane>
       </a-tabs>
     </a-card>
 
@@ -165,6 +193,8 @@ import {
   EditOutlined,
   LinkOutlined,
   PlusOutlined,
+  ApartmentOutlined,
+  RightOutlined,
 } from '@ant-design/icons-vue'
 import {
   getKnowledgeBaseFullDetail,
@@ -180,6 +210,13 @@ import {
   type Tag,
 } from '@/api/knowledgeBase'
 import { getAllTags } from '@/api/tag'
+import {
+  buildGraphFromKnowledgeBase,
+  rebuildGraphFromKnowledgeBase,
+  deleteGraphByKnowledgeBase,
+  getKnowledgeGraphStatus,
+  type KnowledgeGraphStatus,
+} from '@/api/graph'
 import DocumentList from './components/DocumentList.vue'
 import ChunkList from './components/ChunkList.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
@@ -203,6 +240,9 @@ const showEditModal = ref(false)
 
 const selectedDocumentIds = ref<number[]>([])
 const selectedTagId = ref<number | undefined>(undefined)
+
+const graphStatus = ref<KnowledgeGraphStatus | null>(null)
+const graphBuilding = ref(false)
 
 const editForm = reactive({
   name: '',
@@ -374,9 +414,53 @@ async function handleSaveConfig(config: {
   }
 }
 
+// 知识图谱相关函数
+async function loadGraphStatus() {
+  try {
+    const res = await getKnowledgeGraphStatus(knowledgeBaseId.value)
+    if (res.code === 200) {
+      graphStatus.value = res.data
+    }
+  } catch (error) {
+    console.error('加载图谱状态失败', error)
+  }
+}
+
+async function handleBuildGraph() {
+  graphBuilding.value = true
+  try {
+    const res = graphStatus.value?.graphBuilt
+      ? await rebuildGraphFromKnowledgeBase(knowledgeBaseId.value)
+      : await buildGraphFromKnowledgeBase(knowledgeBaseId.value)
+    if (res.code === 200) {
+      message.success(`图谱构建成功，提取实体 ${res.data.entityCount} 个，关系 ${res.data.relationCount} 个`)
+      loadGraphStatus()
+    }
+  } catch (error) {
+    message.error('图谱构建失败')
+  } finally {
+    graphBuilding.value = false
+  }
+}
+
+async function handleDeleteGraph() {
+  try {
+    await deleteGraphByKnowledgeBase(knowledgeBaseId.value)
+    message.success('图谱已删除')
+    loadGraphStatus()
+  } catch (error) {
+    message.error('删除图谱失败')
+  }
+}
+
+function goToGraphPage() {
+  router.push('/graph')
+}
+
 onMounted(() => {
   loadDetail()
   loadAllTags()
+  loadGraphStatus()
 })
 </script>
 
@@ -481,6 +565,29 @@ onMounted(() => {
 
     :deep(.ant-card-body) {
       padding-top: 12px;
+    }
+  }
+
+  .graph-section {
+    padding: 16px;
+
+    .graph-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+
+      .graph-stats {
+        display: flex;
+        gap: 8px;
+      }
+    }
+
+    .graph-preview {
+      padding: 24px;
+      text-align: center;
+      background: var(--bg-page);
+      border-radius: var(--radius-lg);
     }
   }
 }
