@@ -67,11 +67,6 @@
       <div class="menu-divider" />
 
       <!-- More -->
-      <a-menu-item key="/process-task">
-        <template #icon><CloudUploadOutlined /></template>
-        <span>文档预处理</span>
-      </a-menu-item>
-
       <a-menu-item key="/tag">
         <template #icon><TagsOutlined /></template>
         <span>标签管理</span>
@@ -131,7 +126,6 @@ import {
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
-  CloudUploadOutlined,
   TagsOutlined,
   AudioOutlined,
 } from '@ant-design/icons-vue'

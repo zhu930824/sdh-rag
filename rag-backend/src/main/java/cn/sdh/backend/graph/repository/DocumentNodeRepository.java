@@ -13,9 +13,15 @@ import java.util.Optional;
  */
 public interface DocumentNodeRepository extends Neo4jRepository<DocumentNode, Long> {
 
-    Optional<DocumentNode> findByDocumentId(Long documentId);
+    List<DocumentNode> findAllByDocumentId(Long documentId);
 
-    void deleteByDocumentId(Long documentId);
+    default Optional<DocumentNode> findByDocumentId(Long documentId) {
+        List<DocumentNode> nodes = findAllByDocumentId(documentId);
+        return nodes.isEmpty() ? Optional.empty() : Optional.of(nodes.get(0));
+    }
+
+    @Query("MATCH (d:Document) WHERE d.documentId = $documentId DELETE d")
+    void deleteByDocumentId(@Param("documentId") Long documentId);
 
     @Query("MATCH (d:Document) RETURN d ORDER BY d.createTime DESC LIMIT $limit")
     List<DocumentNode> findTopDocuments(@Param("limit") int limit);

@@ -33,14 +33,29 @@ public class GraphServiceImpl implements GraphService {
 
     @Override
     public GraphDataResponse getGraphData(Long centerNodeId, int depth) {
+        return getGraphData(null, centerNodeId, depth);
+    }
+
+    @Override
+    public GraphDataResponse getGraphData(Long knowledgeBaseId, Long centerNodeId, int depth) {
         List<Long> nodeIds;
 
-        if (centerNodeId != null) {
-            // 以指定节点为中心展开
-            nodeIds = customGraphRepository.expandNodeIds(centerNodeId, depth);
+        if (knowledgeBaseId != null) {
+            if (centerNodeId != null) {
+                // 以指定节点为中心展开（同一知识库内）
+                nodeIds = customGraphRepository.expandNodeIdsWithinKnowledgeBase(centerNodeId, depth, knowledgeBaseId);
+            } else {
+                // 获取知识库全图概览 - top 100节点
+                nodeIds = customGraphRepository.getTopNodeIdsByKnowledgeBaseId(knowledgeBaseId, 100);
+            }
         } else {
-            // 获取全图概览 - top 100节点
-            nodeIds = customGraphRepository.getTopNodeIds(100);
+            if (centerNodeId != null) {
+                // 以指定节点为中心展开
+                nodeIds = customGraphRepository.expandNodeIds(centerNodeId, depth);
+            } else {
+                // 获取全图概览 - top 100节点
+                nodeIds = customGraphRepository.getTopNodeIds(100);
+            }
         }
 
         if (nodeIds == null || nodeIds.isEmpty()) {
@@ -61,25 +76,46 @@ public class GraphServiceImpl implements GraphService {
 
     @Override
     public List<GraphDataResponse.NodeData> searchNodes(String keyword) {
+        return searchNodes(keyword, null);
+    }
+
+    @Override
+    public List<GraphDataResponse.NodeData> searchNodes(String keyword, Long knowledgeBaseId) {
         List<GraphDataResponse.NodeData> results = new ArrayList<>();
 
-        // 搜索实体
-        List<EntityNode> entities = entityNodeRepository.searchByName(keyword, 20);
-        results.addAll(entities.stream()
-                .map(this::convertEntityToNodeData)
-                .collect(Collectors.toList()));
+        if (knowledgeBaseId != null) {
+            // 在指定知识库中搜索
+            List<EntityNode> entities = entityNodeRepository.searchByNameAndKnowledgeBaseId(keyword, knowledgeBaseId, 20);
+            results.addAll(entities.stream()
+                    .map(this::convertEntityToNodeData)
+                    .collect(Collectors.toList()));
 
-        // 搜索概念
-        List<ConceptNode> concepts = conceptNodeRepository.searchByName(keyword, 10);
-        results.addAll(concepts.stream()
-                .map(this::convertConceptToNodeData)
-                .collect(Collectors.toList()));
+            List<ConceptNode> concepts = conceptNodeRepository.searchByNameAndKnowledgeBaseId(keyword, knowledgeBaseId, 10);
+            results.addAll(concepts.stream()
+                    .map(this::convertConceptToNodeData)
+                    .collect(Collectors.toList()));
 
-        // 搜索关键词
-        List<KeywordNode> keywords = keywordNodeRepository.searchByName(keyword, 10);
-        results.addAll(keywords.stream()
-                .map(this::convertKeywordToNodeData)
-                .collect(Collectors.toList()));
+            List<KeywordNode> keywords = keywordNodeRepository.searchByNameAndKnowledgeBaseId(keyword, knowledgeBaseId, 10);
+            results.addAll(keywords.stream()
+                    .map(this::convertKeywordToNodeData)
+                    .collect(Collectors.toList()));
+        } else {
+            // 全局搜索
+            List<EntityNode> entities = entityNodeRepository.searchByName(keyword, 20);
+            results.addAll(entities.stream()
+                    .map(this::convertEntityToNodeData)
+                    .collect(Collectors.toList()));
+
+            List<ConceptNode> concepts = conceptNodeRepository.searchByName(keyword, 10);
+            results.addAll(concepts.stream()
+                    .map(this::convertConceptToNodeData)
+                    .collect(Collectors.toList()));
+
+            List<KeywordNode> keywords = keywordNodeRepository.searchByName(keyword, 10);
+            results.addAll(keywords.stream()
+                    .map(this::convertKeywordToNodeData)
+                    .collect(Collectors.toList()));
+        }
 
         return results.stream().limit(50).collect(Collectors.toList());
     }
@@ -155,6 +191,11 @@ public class GraphServiceImpl implements GraphService {
     @Override
     public GraphStatsResponse getStats() {
         return customGraphRepository.getStats();
+    }
+
+    @Override
+    public GraphStatsResponse getStats(Long knowledgeBaseId) {
+        return customGraphRepository.getStatsByKnowledgeBaseId(knowledgeBaseId);
     }
 
     @Override

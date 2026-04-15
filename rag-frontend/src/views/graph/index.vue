@@ -25,6 +25,17 @@
     <div class="toolbar-card">
       <div class="toolbar-content">
         <div class="toolbar-left">
+          <a-select
+            v-model:value="selectedKnowledgeBaseId"
+            placeholder="选择知识库"
+            style="width: 200px"
+            allowClear
+            @change="handleKnowledgeBaseChange"
+          >
+            <a-select-option v-for="kb in knowledgeBases" :key="kb.id" :value="kb.id">
+              {{ kb.name }}
+            </a-select-option>
+          </a-select>
           <a-input-search
             v-model:value="searchKeyword"
             placeholder="搜索节点..."
@@ -190,6 +201,7 @@ import {
   type GraphData,
   type GraphStats
 } from '@/api/graph'
+import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
 
 const graphContainerRef = ref<HTMLElement>()
 const searchKeyword = ref('')
@@ -200,6 +212,10 @@ const pathStartNode = ref<number>()
 const pathSearchLoading = ref(false)
 const pathSearchResults = ref<NodeData[]>([])
 const pathEndNode = ref<number>()
+
+// 知识库选择
+const knowledgeBases = ref<KnowledgeBase[]>([])
+const selectedKnowledgeBaseId = ref<number | undefined>(undefined)
 
 let graph: any = null
 
@@ -267,10 +283,29 @@ const getEdgeColor = (relationType: string): string => {
   return colors[relationType] || '#999'
 }
 
+// 加载知识库列表
+async function loadKnowledgeBases() {
+  try {
+    const res = await getKnowledgeBaseList({ page: 1, pageSize: 100 })
+    if (res.code === 200) {
+      knowledgeBases.value = res.data?.records || []
+    }
+  } catch (error) {
+    console.error('加载知识库列表失败', error)
+  }
+}
+
+// 知识库切换
+function handleKnowledgeBaseChange() {
+  selectedNode.value = null
+  loadGraphData()
+  loadStats()
+}
+
 // 加载图谱数据
 async function loadGraphData(centerNodeId?: number) {
   try {
-    const res = await getGraphData(centerNodeId, 2)
+    const res = await getGraphData(centerNodeId, 2, selectedKnowledgeBaseId.value)
     if (res.code === 200) {
       renderGraph(res.data)
     }
@@ -283,7 +318,7 @@ async function loadGraphData(centerNodeId?: number) {
 async function loadStats() {
   statsLoading.value = true
   try {
-    const res = await getGraphStats()
+    const res = await getGraphStats(selectedKnowledgeBaseId.value)
     if (res.code === 200) {
       Object.assign(stats, res.data)
     }
@@ -449,7 +484,7 @@ async function handleSearch() {
   }
 
   try {
-    const res = await searchNodes(searchKeyword.value)
+    const res = await searchNodes(searchKeyword.value, selectedKnowledgeBaseId.value)
     if (res.code === 200 && res.data.length > 0) {
       loadGraphData(res.data[0].id)
     } else {
@@ -501,7 +536,7 @@ async function handlePathNodeSearch(keyword: string) {
 
   pathSearchLoading.value = true
   try {
-    const res = await searchNodes(keyword)
+    const res = await searchNodes(keyword, selectedKnowledgeBaseId.value)
     if (res.code === 200) {
       pathSearchResults.value = res.data
     }
@@ -580,6 +615,7 @@ function handleResize() {
 onMounted(async () => {
   await nextTick()
   initGraph()
+  await loadKnowledgeBases()
   loadGraphData()
   loadStats()
 })

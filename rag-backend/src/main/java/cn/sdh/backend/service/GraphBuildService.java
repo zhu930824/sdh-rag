@@ -1,6 +1,7 @@
 package cn.sdh.backend.service;
 
 import cn.sdh.backend.dto.GraphBuildResponse;
+import cn.sdh.backend.dto.GraphBuildTask;
 
 /**
  * 图谱构建服务接口
@@ -34,17 +35,35 @@ public interface GraphBuildService {
     void batchBuild(Long[] documentIds);
 
     /**
-     * 从知识库构建图谱
+     * 从知识库构建图谱（异步）
+     * @param knowledgeId 知识库ID
+     * @return 构建任务
+     */
+    GraphBuildTask buildFromKnowledgeBaseAsync(Long knowledgeId);
+
+    /**
+     * 从知识库构建图谱（同步，已弃用）
      * @param knowledgeId 知识库ID
      * @return 构建结果
+     * @deprecated 使用 buildFromKnowledgeBaseAsync 替代
      */
+    @Deprecated
     GraphBuildResponse buildFromKnowledgeBase(Long knowledgeId);
 
     /**
-     * 重建知识库图谱
+     * 重建知识库图谱（异步）
+     * @param knowledgeId 知识库ID
+     * @return 构建任务
+     */
+    GraphBuildTask rebuildFromKnowledgeBaseAsync(Long knowledgeId);
+
+    /**
+     * 重建知识库图谱（同步，已弃用）
      * @param knowledgeId 知识库ID
      * @return 构建结果
+     * @deprecated 使用 rebuildFromKnowledgeBaseAsync 替代
      */
+    @Deprecated
     GraphBuildResponse rebuildFromKnowledgeBase(Long knowledgeId);
 
     /**
@@ -59,4 +78,11 @@ public interface GraphBuildService {
      * @return 构建状态
      */
     GraphBuildResponse.KnowledgeGraphStatus getKnowledgeGraphStatus(Long knowledgeId);
+
+    /**
+     * 获取构建任务状态
+     * @param taskId 任务ID
+     * @return 构建任务
+     */
+    GraphBuildTask getBuildTask(String taskId);
 }

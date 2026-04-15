@@ -250,7 +250,6 @@ const menuTreeData = ref<TreeProps['treeData']>([
     label: '内容管理',
     value: 'content-group',
     children: [
-      { label: '文档预处理', value: '/process-task' },
       { label: '标签管理', value: '/tag' },
     ],
   },

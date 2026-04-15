@@ -27,14 +27,8 @@ export interface UserInfo {
   permissions?: string[]
   status: number
   createTime: string
+  updateTime?: string
   defaultModelId?: number
-  theme?: string
-  language?: string
-  emailNotification?: boolean
-  soundNotification?: boolean
-  replyLanguage?: string
-  userLevel?: number
-  experience?: number
 }
 
 // 更新个人信息请求
@@ -50,16 +44,6 @@ export interface ChangePasswordRequest {
   oldPassword: string
   newPassword: string
   confirmPassword: string
-}
-
-// 用户偏好设置请求
-export interface UserPreferenceRequest {
-  defaultModelId?: number
-  theme?: string
-  language?: string
-  emailNotification?: boolean
-  soundNotification?: boolean
-  replyLanguage?: string
 }
 
 // 用户统计数据
@@ -108,16 +92,7 @@ export function changePassword(data: ChangePasswordRequest): Promise<ApiResponse
 export function uploadAvatar(file: File): Promise<ApiResponse<{ avatar: string }>> {
   const formData = new FormData()
   formData.append('file', file)
-  return request.post('/api/user/avatar', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-}
-
-// 更新用户偏好设置
-export function updatePreference(data: UserPreferenceRequest): Promise<ApiResponse<null>> {
-  return request.post('/api/user/preference', data)
+  return request.post('/api/user/avatar', formData)
 }
 
 // 获取用户统计数据
@@ -133,6 +108,5 @@ export default {
   updateProfile,
   changePassword,
   uploadAvatar,
-  updatePreference,
   getUserStats,
 }

@@ -15,7 +15,7 @@ INSERT INTO `user` (`id`, `username`, `password`, `nickname`, `avatar`, `status`
 -- 角色数据
 -- ----------------------------
 INSERT INTO `role` (`id`, `name`, `code`, `description`, `status`, `create_time`, `update_time`, `permissions`) VALUES
-(1, '超级管理员', 'admin', '拥有所有权限', 1, NOW(), NOW(), '/dashboard,/chat,/knowledge,/document,/graph,/workflow,/model,/stats,/hotwords,/feedback,/approval,/process-task,/tag,/user,/role,/log,/sensitive,/announcement,/settings,/session,/scheduled-task,/webhook,/voice,/prompt,/nlp-query'),
+(1, '超级管理员', 'admin', '拥有所有权限', 1, NOW(), NOW(), '/dashboard,/chat,/knowledge,/document,/graph,/workflow,/model,/stats,/hotwords,/feedback,/approval,/tag,/user,/role,/log,/sensitive,/announcement,/settings,/session,/scheduled-task,/webhook,/voice,/prompt,/nlp-query'),
 (2, '普通用户', 'user', '普通用户权限', 1, NOW(), NOW(), NULL),
 (3, '访客', 'guest', '只读权限', 1, NOW(), NOW(), NULL);
 
@@ -36,9 +36,8 @@ INSERT INTO `menu_permission` (`id`, `name`, `path`, `component`, `icon`, `paren
 (13, '知识图谱', '/graph', 'graph/index', 'ApartmentOutlined', NULL, 11, 1, NULL, NOW(), NOW()),
 (15, '数据统计', '/stats', 'stats/index', 'BarChartOutlined', NULL, 12, 1, NULL, NOW(), NOW()),
 (16, '公告管理', '/announcement', 'announcement/index', 'NotificationOutlined', NULL, 13, 1, NULL, NOW(), NOW()),
-(20, '文档预处理', '/process-task', 'process-task/index', 'CloudUploadOutlined', NULL, 14, 1, NULL, NOW(), NOW()),
-(21, '标签管理', '/tag', 'tag/index', 'TagsOutlined', NULL, 15, 1, NULL, NOW(), NOW()),
-(24, '定时任务', '/scheduled-task', 'scheduled-task/index', 'ClockCircleOutlined', NULL, 16, 1, NULL, NOW(), NOW());
+(21, '标签管理', '/tag', 'tag/index', 'TagsOutlined', NULL, 14, 1, NULL, NOW(), NOW()),
+(24, '定时任务', '/scheduled-task', 'scheduled-task/index', 'ClockCircleOutlined', NULL, 15, 1, NULL, NOW(), NOW());
 
 -- ----------------------------
 -- 用户角色关联

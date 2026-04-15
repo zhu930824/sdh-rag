@@ -36,6 +36,10 @@ export default defineConfig({
         target: 'http://192.168.2.26:8989',
         changeOrigin: true,
       },
+      '/uploads': {
+        target: 'http://192.168.2.26:8989',
+        changeOrigin: true,
+      },
     },
   },
   build: {

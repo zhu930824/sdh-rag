@@ -8,14 +8,12 @@ import {
   updateProfile,
   changePassword,
   uploadAvatar,
-  updatePreference,
   getUserStats,
   type LoginRequest,
   type RegisterRequest,
   type UserInfo,
   type UpdateProfileRequest,
   type ChangePasswordRequest,
-  type UserPreferenceRequest,
   type UserStatsResponse,
 } from '@/api/user'
 import { message } from 'ant-design-vue'
@@ -200,28 +198,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 更新偏好设置
-  async function updatePreferenceAction(data: UserPreferenceRequest): Promise<boolean> {
-    loading.value = true
-    try {
-      const result = await updatePreference(data)
-      if (result.code === 200 || result.code === 0) {
-        message.success('设置保存成功')
-        // 重新获取用户信息
-        await fetchUserInfo()
-        return true
-      }
-      message.error(result.message || '设置保存失败')
-      return false
-    } catch (error) {
-      console.error('更新偏好设置失败:', error)
-      message.error('设置保存失败')
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
-
   // 获取用户统计数据
   async function fetchUserStats(): Promise<UserStatsResponse | null> {
     try {
@@ -271,7 +247,6 @@ export const useUserStore = defineStore('user', () => {
     updateProfile: updateProfileAction,
     changePassword: changePasswordAction,
     uploadAvatar: uploadAvatarAction,
-    updatePreference: updatePreferenceAction,
     fetchUserStats,
     restoreLoginState,
     clearAuth,

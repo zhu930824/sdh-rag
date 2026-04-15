@@ -2,6 +2,7 @@ package cn.sdh.backend.controller;
 
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.GraphBuildResponse;
+import cn.sdh.backend.dto.GraphBuildTask;
 import cn.sdh.backend.dto.GraphDataResponse;
 import cn.sdh.backend.dto.GraphPathResponse;
 import cn.sdh.backend.dto.GraphStatsResponse;
@@ -25,17 +26,20 @@ public class GraphController {
      */
     @GetMapping("/data")
     public Result<GraphDataResponse> getGraphData(
+            @RequestParam(required = false) Long knowledgeBaseId,
             @RequestParam(required = false) Long centerNodeId,
             @RequestParam(defaultValue = "2") int depth) {
-        return Result.success(graphService.getGraphData(centerNodeId, depth));
+        return Result.success(graphService.getGraphData(knowledgeBaseId, centerNodeId, depth));
     }
 
     /**
      * 搜索节点
      */
     @GetMapping("/nodes")
-    public Result<List<GraphDataResponse.NodeData>> searchNodes(@RequestParam String keyword) {
-        return Result.success(graphService.searchNodes(keyword));
+    public Result<List<GraphDataResponse.NodeData>> searchNodes(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Long knowledgeBaseId) {
+        return Result.success(graphService.searchNodes(keyword, knowledgeBaseId));
     }
 
     /**
@@ -76,7 +80,11 @@ public class GraphController {
      * 获取统计信息
      */
     @GetMapping("/stats")
-    public Result<GraphStatsResponse> getStats() {
+    public Result<GraphStatsResponse> getStats(
+            @RequestParam(required = false) Long knowledgeBaseId) {
+        if (knowledgeBaseId != null) {
+            return Result.success(graphService.getStats(knowledgeBaseId));
+        }
         return Result.success(graphService.getStats());
     }
 
@@ -116,19 +124,21 @@ public class GraphController {
     }
 
     /**
-     * 从知识库构建图谱
+     * 从知识库构建图谱（异步）
      */
     @PostMapping("/build/knowledge/{knowledgeId}")
-    public Result<GraphBuildResponse> buildFromKnowledgeBase(@PathVariable Long knowledgeId) {
-        return Result.success(graphBuildService.buildFromKnowledgeBase(knowledgeId));
+    public Result<GraphBuildTask> buildFromKnowledgeBase(@PathVariable Long knowledgeId) {
+        GraphBuildTask task = graphBuildService.buildFromKnowledgeBaseAsync(knowledgeId);
+        return Result.success(task);
     }
 
     /**
-     * 重建知识库图谱
+     * 重建知识库图谱（异步）
      */
     @PostMapping("/rebuild/knowledge/{knowledgeId}")
-    public Result<GraphBuildResponse> rebuildFromKnowledgeBase(@PathVariable Long knowledgeId) {
-        return Result.success(graphBuildService.rebuildFromKnowledgeBase(knowledgeId));
+    public Result<GraphBuildTask> rebuildFromKnowledgeBase(@PathVariable Long knowledgeId) {
+        GraphBuildTask task = graphBuildService.rebuildFromKnowledgeBaseAsync(knowledgeId);
+        return Result.success(task);
     }
 
     /**
@@ -146,5 +156,17 @@ public class GraphController {
     @GetMapping("/status/knowledge/{knowledgeId}")
     public Result<GraphBuildResponse.KnowledgeGraphStatus> getKnowledgeGraphStatus(@PathVariable Long knowledgeId) {
         return Result.success(graphBuildService.getKnowledgeGraphStatus(knowledgeId));
+    }
+
+    /**
+     * 获取构建任务状态
+     */
+    @GetMapping("/task/{taskId}")
+    public Result<GraphBuildTask> getBuildTask(@PathVariable String taskId) {
+        GraphBuildTask task = graphBuildService.getBuildTask(taskId);
+        if (task == null) {
+            return Result.notFound("任务不存在");
+        }
+        return Result.success(task);
     }
 }

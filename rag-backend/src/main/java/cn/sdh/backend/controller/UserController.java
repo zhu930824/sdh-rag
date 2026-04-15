@@ -7,7 +7,6 @@ import cn.sdh.backend.dto.LoginRequest;
 import cn.sdh.backend.dto.RegisterRequest;
 import cn.sdh.backend.dto.UpdateProfileRequest;
 import cn.sdh.backend.dto.UserInfoResponse;
-import cn.sdh.backend.dto.UserPreferenceRequest;
 import cn.sdh.backend.dto.UserStatsResponse;
 import cn.sdh.backend.entity.Role;
 import cn.sdh.backend.entity.User;
@@ -151,11 +150,13 @@ public class UserController {
         }
 
         try {
+            // 获取绝对路径
+            Path basePath = Paths.get(uploadPath).toAbsolutePath().normalize();
+            Path avatarDir = basePath.resolve("avatars");
+
             // 创建上传目录
-            String avatarDir = uploadPath + "/avatars";
-            Path dirPath = Paths.get(avatarDir);
-            if (!Files.exists(dirPath)) {
-                Files.createDirectories(dirPath);
+            if (!Files.exists(avatarDir)) {
+                Files.createDirectories(avatarDir);
             }
 
             // 生成文件名
@@ -166,8 +167,8 @@ public class UserController {
             String filename = userId + "_" + System.currentTimeMillis() + extension;
 
             // 保存文件
-            Path filePath = Paths.get(avatarDir, filename);
-            file.transferTo(filePath.toFile());
+            Path filePath = avatarDir.resolve(filename);
+            Files.copy(file.getInputStream(), filePath);
 
             // 更新用户头像URL
             String avatarUrl = "/uploads/avatars/" + filename;
@@ -180,20 +181,6 @@ public class UserController {
             log.error("上传头像失败", e);
             return Result.error("上传头像失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 更新用户偏好设置
-     */
-    @PostMapping("/preference")
-    public Result<Void> updatePreference(@RequestBody UserPreferenceRequest request) {
-        Long userId = UserContext.getCurrentUserId();
-        if (userId == null) {
-            return Result.unauthorized();
-        }
-
-        boolean success = userService.updatePreference(userId, request);
-        return success ? Result.success("设置更新成功", null) : Result.error("设置更新失败");
     }
 
     /**

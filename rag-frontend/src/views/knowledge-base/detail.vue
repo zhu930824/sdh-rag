@@ -100,11 +100,11 @@
           <div class="graph-section">
             <div class="graph-header">
               <a-space>
-                <a-button type="primary" @click="handleBuildGraph" :loading="graphBuilding">
+                <a-button type="primary" @click="handleBuildGraph" :loading="graphBuilding" :disabled="graphBuilding">
                   <template #icon><ApartmentOutlined /></template>
                   {{ graphStatus?.graphBuilt ? '重建图谱' : '构建图谱' }}
                 </a-button>
-                <a-button v-if="graphStatus?.graphBuilt" danger @click="handleDeleteGraph">
+                <a-button v-if="graphStatus?.graphBuilt && !graphBuilding" danger @click="handleDeleteGraph">
                   删除图谱
                 </a-button>
               </a-space>
@@ -114,10 +114,25 @@
                 <a-tag color="purple">已构建文档: {{ graphStatus.builtDocumentCount }}/{{ graphStatus.totalDocumentCount }}</a-tag>
               </div>
             </div>
-            <a-alert v-if="!graphStatus?.graphBuilt" type="info" show-icon style="margin-bottom: 16px">
+
+            <!-- 构建进度 -->
+            <div v-if="graphBuilding && buildTask" class="build-progress">
+              <a-progress :percent="buildTask.progress" :status="buildTask.status === 'FAILED' ? 'exception' : 'active'" />
+              <div class="build-info">
+                <span class="stage">{{ buildTask.currentStage }}</span>
+                <span class="stats" v-if="buildTask.totalDocuments > 0">
+                  文档: {{ buildTask.processedDocuments }}/{{ buildTask.totalDocuments }}
+                  | 实体: {{ buildTask.entityCount }}
+                  | 关系: {{ buildTask.relationCount }}
+                </span>
+              </div>
+              <a-alert v-if="buildTask.status === 'FAILED'" type="error" :message="buildTask.errorMessage" show-icon />
+            </div>
+
+            <a-alert v-if="!graphStatus?.graphBuilt && !graphBuilding" type="info" show-icon style="margin-bottom: 16px">
               <template #message>知识图谱尚未构建。点击"构建图谱"按钮，系统将自动从文档中提取实体、关系、概念和关键词。</template>
             </a-alert>
-            <div class="graph-preview" v-if="graphStatus?.graphBuilt">
+            <div class="graph-preview" v-if="graphStatus?.graphBuilt && !graphBuilding">
               <a-button type="link" @click="goToGraphPage">
                 查看完整知识图谱 <RightOutlined />
               </a-button>
@@ -185,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -215,7 +230,9 @@ import {
   rebuildGraphFromKnowledgeBase,
   deleteGraphByKnowledgeBase,
   getKnowledgeGraphStatus,
+  getBuildTask,
   type KnowledgeGraphStatus,
+  type GraphBuildTask,
 } from '@/api/graph'
 import DocumentList from './components/DocumentList.vue'
 import ChunkList from './components/ChunkList.vue'
@@ -243,6 +260,8 @@ const selectedTagId = ref<number | undefined>(undefined)
 
 const graphStatus = ref<KnowledgeGraphStatus | null>(null)
 const graphBuilding = ref(false)
+const buildTask = ref<GraphBuildTask | null>(null)
+let buildPollTimer: ReturnType<typeof setInterval> | null = null
 
 const editForm = reactive({
   name: '',
@@ -428,19 +447,59 @@ async function loadGraphStatus() {
 
 async function handleBuildGraph() {
   graphBuilding.value = true
+  buildTask.value = null
+
   try {
     const res = graphStatus.value?.graphBuilt
       ? await rebuildGraphFromKnowledgeBase(knowledgeBaseId.value)
       : await buildGraphFromKnowledgeBase(knowledgeBaseId.value)
-    if (res.code === 200) {
-      message.success(`图谱构建成功，提取实体 ${res.data.entityCount} 个，关系 ${res.data.relationCount} 个`)
-      loadGraphStatus()
+
+    if (res.code === 200 && res.data) {
+      buildTask.value = res.data
+      // 开始轮询任务状态
+      startBuildPolling(res.data.taskId)
+    } else {
+      message.error('启动构建任务失败')
+      graphBuilding.value = false
     }
   } catch (error) {
-    message.error('图谱构建失败')
-  } finally {
+    message.error('启动构建任务失败')
     graphBuilding.value = false
   }
+}
+
+function startBuildPolling(taskId: string) {
+  // 清除之前的定时器
+  if (buildPollTimer) {
+    clearInterval(buildPollTimer)
+  }
+
+  // 每2秒轮询一次任务状态
+  buildPollTimer = setInterval(async () => {
+    try {
+      const res = await getBuildTask(taskId)
+      if (res.code === 200 && res.data) {
+        buildTask.value = res.data
+
+        if (res.data.status === 'COMPLETED') {
+          // 构建完成
+          clearInterval(buildPollTimer!)
+          buildPollTimer = null
+          graphBuilding.value = false
+          message.success(`图谱构建成功，提取实体 ${res.data.entityCount} 个，关系 ${res.data.relationCount} 个`)
+          loadGraphStatus()
+        } else if (res.data.status === 'FAILED') {
+          // 构建失败
+          clearInterval(buildPollTimer!)
+          buildPollTimer = null
+          graphBuilding.value = false
+          message.error(`图谱构建失败: ${res.data.errorMessage || '未知错误'}`)
+        }
+      }
+    } catch (error) {
+      console.error('轮询任务状态失败', error)
+    }
+  }, 2000)
 }
 
 async function handleDeleteGraph() {
@@ -461,6 +520,14 @@ onMounted(() => {
   loadDetail()
   loadAllTags()
   loadGraphStatus()
+})
+
+onUnmounted(() => {
+  // 清理轮询定时器
+  if (buildPollTimer) {
+    clearInterval(buildPollTimer)
+    buildPollTimer = null
+  }
 })
 </script>
 
@@ -580,6 +647,25 @@ onMounted(() => {
       .graph-stats {
         display: flex;
         gap: 8px;
+      }
+    }
+
+    .build-progress {
+      margin-bottom: 16px;
+      padding: 16px;
+      background: var(--bg-page);
+      border-radius: var(--radius-lg);
+
+      .build-info {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+
+        .stage {
+          font-weight: 500;
+        }
       }
     }
 

@@ -20,6 +20,11 @@ public abstract class BaseNode {
 
     private String description;
 
+    /**
+     * 知识库ID，用于数据隔离
+     */
+    private Long knowledgeBaseId;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

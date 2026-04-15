@@ -23,10 +23,6 @@
                 />
               </div>
               <h2 class="username">{{ userInfo.nickname || userInfo.username }}</h2>
-              <div class="user-level">
-                <a-tag color="blue">Lv.{{ userLevel }}</a-tag>
-                <span class="experience">{{ experience }} 经验</span>
-              </div>
               <p class="signature">{{ userInfo.signature || '这个人很懒，什么都没留下...' }}</p>
             </div>
 
@@ -49,20 +45,27 @@
             </div>
           </a-card>
 
-          <!-- 成就卡片 -->
-          <a-card class="achievement-card" title="今日活跃">
-            <div class="today-stats">
-              <div class="today-item">
-                <MessageOutlined class="icon" />
-                <span>{{ stats.todayChatCount }} 次对话</span>
+          <!-- 账户信息卡片 -->
+          <a-card class="info-card" title="账户信息">
+            <div class="info-list">
+              <div class="info-item">
+                <span class="info-label">角色</span>
+                <a-tag :color="roleColor">{{ roleLabel }}</a-tag>
               </div>
-            </div>
-            <div class="level-progress">
-              <div class="progress-label">
-                <span>升级进度</span>
-                <span>{{ experience }} / {{ nextLevelExp }}</span>
+              <div class="info-item">
+                <span class="info-label">状态</span>
+                <a-tag :color="userInfo.status === 1 ? 'green' : 'red'">
+                  {{ userInfo.status === 1 ? '正常' : '禁用' }}
+                </a-tag>
               </div>
-              <a-progress :percent="levelProgress" :show-info="false" stroke-color="#1890ff" />
+              <div class="info-item">
+                <span class="info-label">注册时间</span>
+                <span class="info-value">{{ formatTime(userInfo.createTime) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">上次更新</span>
+                <span class="info-value">{{ formatTime(userInfo.updateTime) }}</span>
+              </div>
             </div>
           </a-card>
         </div>
@@ -74,7 +77,7 @@
           <template #title>
             <div class="card-title-wrapper">
               <h2 class="card-title">个人中心</h2>
-              <p class="card-subtitle">管理您的账户信息和偏好设置</p>
+              <p class="card-subtitle">管理您的账户信息和安全设置</p>
             </div>
           </template>
           <a-tabs v-model:activeKey="activeTab">
@@ -108,12 +111,6 @@
                       show-count
                     />
                   </a-form-item>
-                  <a-form-item label="角色">
-                    <a-tag :color="roleColor">{{ roleLabel }}</a-tag>
-                  </a-form-item>
-                  <a-form-item label="注册时间">
-                    <span>{{ formatTime(userInfo.createTime) }}</span>
-                  </a-form-item>
                   <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
                     <a-button type="primary" html-type="submit" :loading="saving">保存修改</a-button>
                   </a-form-item>
@@ -146,7 +143,7 @@
                     <p class="section-desc">
                       {{ userInfo.email ? `已绑定：${userInfo.email}` : '未绑定邮箱' }}
                     </p>
-                    <a-button type="primary" ghost>
+                    <a-button type="primary" ghost @click="showEmailModal = true">
                       {{ userInfo.email ? '更换邮箱' : '绑定邮箱' }}
                     </a-button>
                   </div>
@@ -163,127 +160,11 @@
                     <p class="section-desc">
                       {{ userInfo.phone ? `已绑定：${maskPhone(userInfo.phone)}` : '未绑定手机' }}
                     </p>
-                    <a-button type="primary" ghost>
+                    <a-button type="primary" ghost @click="showPhoneModal = true">
                       {{ userInfo.phone ? '更换手机' : '绑定手机' }}
                     </a-button>
                   </div>
                 </div>
-              </div>
-            </a-tab-pane>
-
-            <!-- 使用统计 -->
-            <a-tab-pane key="stats" tab="使用统计">
-              <div class="tab-content">
-                <a-row :gutter="16">
-                  <a-col :span="8">
-                    <a-card class="stat-card" hoverable @click="handleNavigate('/knowledge')">
-                      <DatabaseOutlined class="stat-icon" style="color: #1890ff" />
-                      <div class="stat-content">
-                        <div class="stat-number">{{ stats.knowledgeCount }}</div>
-                        <div class="stat-title">知识库</div>
-                      </div>
-                    </a-card>
-                  </a-col>
-                  <a-col :span="8">
-                    <a-card class="stat-card" hoverable @click="handleNavigate('/document')">
-                      <FileTextOutlined class="stat-icon" style="color: #52c41a" />
-                      <div class="stat-content">
-                        <div class="stat-number">{{ stats.documentCount }}</div>
-                        <div class="stat-title">文档</div>
-                      </div>
-                    </a-card>
-                  </a-col>
-                  <a-col :span="8">
-                    <a-card class="stat-card" hoverable @click="handleNavigate('/chat')">
-                      <MessageOutlined class="stat-icon" style="color: #722ed1" />
-                      <div class="stat-content">
-                        <div class="stat-number">{{ stats.chatCount }}</div>
-                        <div class="stat-title">对话</div>
-                      </div>
-                    </a-card>
-                  </a-col>
-                </a-row>
-
-                <a-row :gutter="16" style="margin-top: 16px">
-                  <a-col :span="8">
-                    <a-card class="stat-card" hoverable @click="handleNavigate('/workflow')">
-                      <ApartmentOutlined class="stat-icon" style="color: #fa8c16" />
-                      <div class="stat-content">
-                        <div class="stat-number">{{ stats.workflowCount }}</div>
-                        <div class="stat-title">工作流</div>
-                      </div>
-                    </a-card>
-                  </a-col>
-                  <a-col :span="8">
-                    <a-card class="stat-card" hoverable @click="handleNavigate('/prompt')">
-                      <BulbOutlined class="stat-icon" style="color: #eb2f96" />
-                      <div class="stat-content">
-                        <div class="stat-number">{{ stats.promptCount }}</div>
-                        <div class="stat-title">提示词</div>
-                      </div>
-                    </a-card>
-                  </a-col>
-                  <a-col :span="8">
-                    <a-card class="stat-card">
-                      <ThunderboltOutlined class="stat-icon" style="color: #13c2c2" />
-                      <div class="stat-content">
-                        <div class="stat-number">{{ stats.todayChatCount }}</div>
-                        <div class="stat-title">今日对话</div>
-                      </div>
-                    </a-card>
-                  </a-col>
-                </a-row>
-              </div>
-            </a-tab-pane>
-
-            <!-- 偏好设置 -->
-            <a-tab-pane key="preference" tab="偏好设置">
-              <div class="tab-content">
-                <a-form
-                  :model="preferenceForm"
-                  :label-col="{ span: 6 }"
-                  :wrapper-col="{ span: 14 }"
-                  @finish="handleSavePreference"
-                >
-                  <a-form-item label="默认模型">
-                    <a-select v-model:value="preferenceForm.defaultModelId" placeholder="选择默认模型" allow-clear>
-                      <a-select-option v-for="model in modelList" :key="model.id" :value="model.id">
-                        {{ model.name }}
-                      </a-select-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="界面主题">
-                    <a-radio-group v-model:value="preferenceForm.theme">
-                      <a-radio-button value="light">浅色</a-radio-button>
-                      <a-radio-button value="dark">深色</a-radio-button>
-                      <a-radio-button value="auto">跟随系统</a-radio-button>
-                    </a-radio-group>
-                  </a-form-item>
-                  <a-form-item label="界面语言">
-                    <a-select v-model:value="preferenceForm.language" placeholder="选择语言">
-                      <a-select-option value="zh-CN">简体中文</a-select-option>
-                      <a-select-option value="en-US">English</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="回复语言">
-                    <a-select v-model:value="preferenceForm.replyLanguage" placeholder="选择回复语言" allow-clear>
-                      <a-select-option value="auto">自动识别</a-select-option>
-                      <a-select-option value="zh">中文</a-select-option>
-                      <a-select-option value="en">英文</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="邮件通知">
-                    <a-switch v-model:checked="preferenceForm.emailNotification" />
-                    <span class="form-tip">接收系统通知和重要消息</span>
-                  </a-form-item>
-                  <a-form-item label="声音提醒">
-                    <a-switch v-model:checked="preferenceForm.soundNotification" />
-                    <span class="form-tip">对话完成时播放提示音</span>
-                  </a-form-item>
-                  <a-form-item :wrapper-col="{ offset: 6, span: 14 }">
-                    <a-button type="primary" html-type="submit" :loading="saving">保存设置</a-button>
-                  </a-form-item>
-                </a-form>
               </div>
             </a-tab-pane>
           </a-tabs>
@@ -298,6 +179,7 @@
       :width="450"
       ok-text="确认修改"
       cancel-text="取消"
+      :confirm-loading="saving"
       @ok="handleSavePassword"
     >
       <a-form :model="passwordForm" :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
@@ -316,6 +198,40 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 修改邮箱弹窗 -->
+    <a-modal
+      v-model:open="showEmailModal"
+      title="绑定邮箱"
+      :width="450"
+      ok-text="确认"
+      cancel-text="取消"
+      :confirm-loading="saving"
+      @ok="handleSaveEmail"
+    >
+      <a-form :model="emailForm" :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
+        <a-form-item label="邮箱地址" name="email" :rules="[{ required: true, type: 'email', message: '请输入有效的邮箱地址' }]">
+          <a-input v-model:value="emailForm.email" placeholder="请输入邮箱地址" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 修改手机弹窗 -->
+    <a-modal
+      v-model:open="showPhoneModal"
+      title="绑定手机"
+      :width="450"
+      ok-text="确认"
+      cancel-text="取消"
+      :confirm-loading="saving"
+      @ok="handleSavePhone"
+    >
+      <a-form :model="phoneForm" :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
+        <a-form-item label="手机号码" name="phone" :rules="[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号码' }]">
+          <a-input v-model:value="phoneForm.phone" placeholder="请输入手机号码" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -328,18 +244,10 @@ import {
   LockOutlined,
   MailOutlined,
   PhoneOutlined,
-  DatabaseOutlined,
-  FileTextOutlined,
-  MessageOutlined,
-  ApartmentOutlined,
-  BulbOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useUserStore } from '@/stores'
 import type { UserStatsResponse } from '@/api/user'
-import { getActiveModels } from '@/api/model'
-import type { ModelConfig } from '@/types'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -349,8 +257,9 @@ const loading = ref(false)
 const saving = ref(false)
 const activeTab = ref('profile')
 const showPasswordModal = ref(false)
+const showEmailModal = ref(false)
+const showPhoneModal = ref(false)
 const avatarInput = ref<HTMLInputElement>()
-const modelList = ref<ModelConfig[]>([])
 
 // 用户信息
 const userInfo = computed(() => userStore.userInfo || {
@@ -362,10 +271,9 @@ const userInfo = computed(() => userStore.userInfo || {
   avatar: '',
   roles: [],
   createTime: '',
+  updateTime: '',
+  status: 1,
 })
-
-const userLevel = computed(() => userStore.userLevel)
-const experience = computed(() => userStore.experience)
 
 // 角色显示
 const roleLabel = computed(() => {
@@ -381,15 +289,6 @@ const roleColor = computed(() => {
   const role = userInfo.value.role
   if (role === 'admin') return 'red'
   return 'blue'
-})
-
-// 下一级所需经验
-const nextLevelExp = computed(() => {
-  return userLevel.value * 100
-})
-
-const levelProgress = computed(() => {
-  return Math.min((experience.value / nextLevelExp.value) * 100, 100)
 })
 
 // 统计数据
@@ -418,13 +317,12 @@ const passwordForm = reactive({
   confirmPassword: '',
 })
 
-const preferenceForm = reactive({
-  defaultModelId: undefined as number | undefined,
-  theme: 'light',
-  language: 'zh-CN',
-  replyLanguage: 'auto',
-  emailNotification: false,
-  soundNotification: true,
+const emailForm = reactive({
+  email: '',
+})
+
+const phoneForm = reactive({
+  phone: '',
 })
 
 // 初始化
@@ -435,18 +333,10 @@ onMounted(async () => {
 async function loadData() {
   loading.value = true
   try {
-    // 并行加载数据
-    const [statsResult, modelsResult] = await Promise.all([
-      userStore.fetchUserStats(),
-      getActiveModels(),
-    ])
-
+    // 加载统计数据
+    const statsResult = await userStore.fetchUserStats()
     if (statsResult) {
       stats.value = statsResult
-    }
-
-    if (modelsResult.code === 200 || modelsResult.code === 0) {
-      modelList.value = modelsResult.data || []
     }
 
     // 初始化表单
@@ -454,13 +344,6 @@ async function loadData() {
     profileForm.email = userInfo.value.email || ''
     profileForm.phone = userInfo.value.phone || ''
     profileForm.signature = userInfo.value.signature || ''
-
-    preferenceForm.defaultModelId = userInfo.value.defaultModelId
-    preferenceForm.theme = userInfo.value.theme || 'light'
-    preferenceForm.language = userInfo.value.language || 'zh-CN'
-    preferenceForm.replyLanguage = userInfo.value.replyLanguage || 'auto'
-    preferenceForm.emailNotification = userInfo.value.emailNotification ?? false
-    preferenceForm.soundNotification = userInfo.value.soundNotification ?? true
   } finally {
     loading.value = false
   }
@@ -488,10 +371,15 @@ async function handleAvatarChange(event: Event) {
     return
   }
 
-  const result = await userStore.uploadAvatar(file)
-  if (result) {
-    // 清空 input 以便再次选择相同文件
-    target.value = ''
+  try {
+    const result = await userStore.uploadAvatar(file)
+    if (result) {
+      // 清空 input 以便再次选择相同文件
+      target.value = ''
+    }
+  } catch (error) {
+    console.error('上传头像失败:', error)
+    message.error('上传头像失败')
   }
 }
 
@@ -541,18 +429,51 @@ async function handleSavePassword() {
   }
 }
 
-// 保存偏好设置
-async function handleSavePreference() {
+// 保存邮箱
+async function handleSaveEmail() {
+  if (!emailForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.email)) {
+    message.error('请输入有效的邮箱地址')
+    return
+  }
+
   saving.value = true
   try {
-    await userStore.updatePreference({
-      defaultModelId: preferenceForm.defaultModelId,
-      theme: preferenceForm.theme,
-      language: preferenceForm.language,
-      replyLanguage: preferenceForm.replyLanguage,
-      emailNotification: preferenceForm.emailNotification,
-      soundNotification: preferenceForm.soundNotification,
+    const success = await userStore.updateProfile({
+      nickname: profileForm.nickname,
+      email: emailForm.email,
+      phone: profileForm.phone,
+      signature: profileForm.signature,
     })
+
+    if (success) {
+      showEmailModal.value = false
+      profileForm.email = emailForm.email
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+// 保存手机号
+async function handleSavePhone() {
+  if (!phoneForm.phone || !/^1[3-9]\d{9}$/.test(phoneForm.phone)) {
+    message.error('请输入有效的手机号码')
+    return
+  }
+
+  saving.value = true
+  try {
+    const success = await userStore.updateProfile({
+      nickname: profileForm.nickname,
+      email: profileForm.email,
+      phone: phoneForm.phone,
+      signature: profileForm.signature,
+    })
+
+    if (success) {
+      showPhoneModal.value = false
+      profileForm.phone = phoneForm.phone
+    }
   } finally {
     saving.value = false
   }
@@ -663,18 +584,6 @@ function maskPhone(phone: string) {
       font-weight: 600;
     }
 
-    .user-level {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-
-      .experience {
-        font-size: 12px;
-        color: var(--text-secondary);
-      }
-    }
-
     .signature {
       color: var(--text-secondary);
       font-size: 14px;
@@ -712,12 +621,8 @@ function maskPhone(phone: string) {
   }
 }
 
-.achievement-card {
+.info-card {
   flex: 1;
-
-  :deep(.ant-card-body) {
-    padding: 16px 20px;
-  }
 
   :deep(.ant-card-head) {
     min-height: 40px;
@@ -728,29 +633,26 @@ function maskPhone(phone: string) {
     }
   }
 
-  .today-stats {
-    .today-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 0;
-
-      .icon {
-        font-size: 18px;
-        color: var(--primary-color);
-      }
-    }
+  :deep(.ant-card-body) {
+    padding: 16px 20px;
   }
 
-  .level-progress {
-    margin-top: 16px;
-
-    .progress-label {
+  .info-list {
+    .info-item {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 8px;
-      font-size: 12px;
-      color: var(--text-secondary);
+      align-items: center;
+      padding: 8px 0;
+
+      .info-label {
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .info-value {
+        font-size: 14px;
+        color: var(--text-primary);
+      }
     }
   }
 }
@@ -837,35 +739,5 @@ function maskPhone(phone: string) {
       margin: 0;
     }
   }
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  padding: 20px;
-
-  .stat-icon {
-    font-size: 36px;
-    margin-right: 16px;
-  }
-
-  .stat-content {
-    .stat-number {
-      font-size: 28px;
-      font-weight: 600;
-    }
-
-    .stat-title {
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-top: 4px;
-    }
-  }
-}
-
-.form-tip {
-  margin-left: 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
 }
 </style>

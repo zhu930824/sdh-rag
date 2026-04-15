@@ -6,7 +6,6 @@ import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.dto.ChangePasswordRequest;
 import cn.sdh.backend.dto.UpdateProfileRequest;
 import cn.sdh.backend.dto.UserManageRequest;
-import cn.sdh.backend.dto.UserPreferenceRequest;
 import cn.sdh.backend.dto.UserStatsResponse;
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.KnowledgeBase;
@@ -267,37 +266,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public boolean updatePreference(Long userId, UserPreferenceRequest request) {
-        User user = getById(userId);
-        if (user == null) {
-            throw new BusinessException("用户不存在");
-        }
-
-        if (request.getDefaultModelId() != null) {
-            user.setDefaultModelId(request.getDefaultModelId());
-        }
-        if (request.getTheme() != null) {
-            user.setTheme(request.getTheme());
-        }
-        if (request.getLanguage() != null) {
-            user.setLanguage(request.getLanguage());
-        }
-        if (request.getEmailNotification() != null) {
-            user.setEmailNotification(request.getEmailNotification());
-        }
-        if (request.getSoundNotification() != null) {
-            user.setSoundNotification(request.getSoundNotification());
-        }
-        if (request.getReplyLanguage() != null) {
-            user.setReplyLanguage(request.getReplyLanguage());
-        }
-        user.setUpdateTime(LocalDateTime.now());
-
-        return userMapper.updateById(user) > 0;
-    }
-
-    @Override
     public UserStatsResponse getUserStats(Long userId) {
         UserStatsResponse stats = new UserStatsResponse();
 
@@ -329,10 +297,6 @@ public class UserServiceImpl implements UserService {
         workflowWrapper.eq(Workflow::getUserId, userId);
         stats.setWorkflowCount(workflowMapper.selectCount(workflowWrapper));
 
-        // 提示词数量
-        LambdaQueryWrapper<PromptTemplate> promptWrapper = new LambdaQueryWrapper<>();
-        promptWrapper.eq(PromptTemplate::getUserId, userId);
-        stats.setPromptCount(promptTemplateMapper.selectCount(promptWrapper));
 
         // 获取用户等级和经验值
         User user = getById(userId);

@@ -94,7 +94,6 @@ import {
   BarChartOutlined,
   LikeOutlined,
   NotificationOutlined,
-  CloudUploadOutlined,
   TagsOutlined,
   TeamOutlined,
   DatabaseOutlined,
@@ -168,12 +167,6 @@ const menuConfig: MenuItem[] = [
     label: '问答评价',
     icon: LikeOutlined,
     permission: '/feedback',
-  },
-  {
-    key: '/process-task',
-    label: '文档预处理',
-    icon: CloudUploadOutlined,
-    permission: '/process-task',
   },
   {
     key: '/tag',

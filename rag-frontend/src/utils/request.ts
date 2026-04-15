@@ -17,19 +17,22 @@ service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const userStore = useUserStore()
     // 如果存在token则添加到请求头
-//     if (userStore.token) {
-//       config.headers.Authorization = `Bearer ${userStore.token}`
-//     }
     if (userStore.token && userStore.token.trim()) {
-          // 确保 headers 对象存在
-          config.headers = config.headers || {}
-          // 使用 token 作为 header 名称
-          if (typeof config.headers.set === 'function') {
-            config.headers.set('token', userStore.token)
-          } else {
-            config.headers.token = userStore.token
-          }
-        }
+      // 确保 headers 对象存在
+      config.headers = config.headers || {}
+      // 使用 token 作为 header 名称
+      if (typeof config.headers.set === 'function') {
+        config.headers.set('token', userStore.token)
+      } else {
+        config.headers.token = userStore.token
+      }
+    }
+
+    // 如果是 FormData，删除默认的 Content-Type，让浏览器自动设置
+    if (config.data instanceof FormData) {
+      config.headers['Content-Type'] = undefined
+    }
+
     return config
   },
   (error) => {

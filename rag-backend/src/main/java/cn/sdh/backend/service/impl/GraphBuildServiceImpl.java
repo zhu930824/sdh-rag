@@ -2,6 +2,7 @@ package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.dto.EntityExtractionResult;
 import cn.sdh.backend.dto.GraphBuildResponse;
+import cn.sdh.backend.dto.GraphBuildTask;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.graph.extractor.EntityExtractor;
 import cn.sdh.backend.graph.node.ConceptNode;
@@ -9,10 +10,13 @@ import cn.sdh.backend.graph.node.DocumentNode;
 import cn.sdh.backend.graph.node.EntityNode;
 import cn.sdh.backend.graph.node.KeywordNode;
 import cn.sdh.backend.graph.repository.ConceptNodeRepository;
+import cn.sdh.backend.graph.repository.CustomGraphRepository;
 import cn.sdh.backend.graph.repository.DocumentNodeRepository;
 import cn.sdh.backend.graph.repository.EntityNodeRepository;
 import cn.sdh.backend.graph.repository.KeywordNodeRepository;
 import cn.sdh.backend.service.GraphBuildService;
+import cn.sdh.backend.service.GraphBuildAsyncService;
+import cn.sdh.backend.service.GraphBuildTaskManager;
 import cn.sdh.backend.service.KnowledgeBaseService;
 import cn.sdh.backend.service.KnowledgeService;
 import cn.sdh.backend.service.VectorStoreService;
@@ -38,13 +42,22 @@ public class GraphBuildServiceImpl implements GraphBuildService {
     private final EntityNodeRepository entityNodeRepository;
     private final ConceptNodeRepository conceptNodeRepository;
     private final KeywordNodeRepository keywordNodeRepository;
+    private final CustomGraphRepository customGraphRepository;
     private final KnowledgeService knowledgeService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final VectorStoreService vectorStoreService;
+    private final GraphBuildAsyncService graphBuildAsyncService;
+    private final GraphBuildTaskManager taskManager;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public GraphBuildResponse buildFromDocument(Long documentId) {
+        // 单文档构建不关联知识库，使用null作为knowledgeBaseId
+        return buildFromDocument(documentId, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public GraphBuildResponse buildFromDocument(Long documentId, Long knowledgeBaseId) {
         try {
             // 获取文档
             KnowledgeDocument document = knowledgeService.getDocumentById(documentId);
@@ -63,16 +76,16 @@ public class GraphBuildServiceImpl implements GraphBuildService {
             EntityExtractionResult extractionResult = entityExtractor.extract(document.getContent(), documentId);
 
             // 创建文档节点
-            DocumentNode documentNode = createDocumentNode(document);
+            DocumentNode documentNode = createDocumentNode(document, knowledgeBaseId);
 
             // 创建实体节点
-            Map<String, EntityNode> entityMap = createEntityNodes(extractionResult.getEntities(), documentId);
+            Map<String, EntityNode> entityMap = createEntityNodes(extractionResult.getEntities(), documentId, knowledgeBaseId);
 
             // 创建概念节点
-            Map<String, ConceptNode> conceptMap = createConceptNodes(extractionResult.getConcepts());
+            Map<String, ConceptNode> conceptMap = createConceptNodes(extractionResult.getConcepts(), knowledgeBaseId);
 
             // 创建关键词节点
-            Map<String, KeywordNode> keywordMap = createKeywordNodes(extractionResult.getKeywords(), documentId);
+            Map<String, KeywordNode> keywordMap = createKeywordNodes(extractionResult.getKeywords(), documentId, knowledgeBaseId);
 
             // 建立文档与实体/概念/关键词的关系
             documentNode.setEntities(new HashSet<>(entityMap.values()));
@@ -83,8 +96,8 @@ public class GraphBuildServiceImpl implements GraphBuildService {
             // 创建实体间关系
             createEntityRelations(extractionResult.getRelations(), entityMap);
 
-            log.info("图谱构建完成: documentId={}, entities={}, relations={}, concepts={}, keywords={}",
-                    documentId, entityMap.size(), extractionResult.getRelations().size(),
+            log.info("图谱构建完成: documentId={}, knowledgeBaseId={}, entities={}, relations={}, concepts={}, keywords={}",
+                    documentId, knowledgeBaseId, entityMap.size(), extractionResult.getRelations().size(),
                     conceptMap.size(), keywordMap.size());
 
             return GraphBuildResponse.success(documentId,
@@ -122,303 +135,73 @@ public class GraphBuildServiceImpl implements GraphBuildService {
         }
     }
 
-    private DocumentNode createDocumentNode(KnowledgeDocument document) {
-        DocumentNode node = new DocumentNode();
-        node.setDocumentId(document.getId());
-        node.setName(document.getTitle());
-        node.setTitle(document.getTitle());
-        node.setFileType(document.getFileType());
-        node.setUserId(document.getUserId());
-        node.setCategoryId(document.getCategoryId());
-        node.setDescription("文档: " + document.getTitle());
-        node.setCreateTime(LocalDateTime.now());
-        node.setUpdateTime(LocalDateTime.now());
-        return documentNodeRepository.save(node);
-    }
-
-    private Map<String, EntityNode> createEntityNodes(List<EntityExtractionResult.EntityInfo> entities, Long documentId) {
-        Map<String, EntityNode> entityMap = new HashMap<>();
-
-        for (EntityExtractionResult.EntityInfo entityInfo : entities) {
-            if (entityInfo.getName() == null || entityInfo.getName().isBlank()) {
-                continue;
-            }
-
-            String key = entityInfo.getEntityType() + ":" + entityInfo.getName();
-
-            // 检查是否已存在
-            EntityNode existingNode = entityMap.get(key);
-            if (existingNode != null) {
-                existingNode.setFrequency(existingNode.getFrequency() + 1);
-                continue;
-            }
-
-            EntityNode node = new EntityNode();
-            node.setName(entityInfo.getName());
-            node.setEntityType(entityInfo.getEntityType());
-            node.setDescription(entityInfo.getDescription());
-            node.setConfidence(entityInfo.getConfidence());
-            node.setSourceDocumentId(documentId);
-            node.setFrequency(1);
-            node.setCreateTime(LocalDateTime.now());
-            node.setUpdateTime(LocalDateTime.now());
-
-            entityMap.put(key, entityNodeRepository.save(node));
-        }
-
-        return entityMap;
-    }
-
-    private Map<String, ConceptNode> createConceptNodes(List<EntityExtractionResult.ConceptInfo> concepts) {
-        Map<String, ConceptNode> conceptMap = new HashMap<>();
-
-        for (EntityExtractionResult.ConceptInfo conceptInfo : concepts) {
-            if (conceptInfo.getName() == null || conceptInfo.getName().isBlank()) {
-                continue;
-            }
-
-            // 检查是否已存在
-            ConceptNode existingNode = conceptNodeRepository.findByName(conceptInfo.getName()).orElse(null);
-            if (existingNode != null) {
-                existingNode.setWeight(existingNode.getWeight() + 1);
-                conceptMap.put(conceptInfo.getName(), conceptNodeRepository.save(existingNode));
-                continue;
-            }
-
-            ConceptNode node = new ConceptNode();
-            node.setName(conceptInfo.getName());
-            node.setDescription(conceptInfo.getDescription());
-            node.setCategory(conceptInfo.getCategory());
-            node.setWeight(1);
-            node.setCreateTime(LocalDateTime.now());
-            node.setUpdateTime(LocalDateTime.now());
-
-            conceptMap.put(conceptInfo.getName(), conceptNodeRepository.save(node));
-        }
-
-        return conceptMap;
-    }
-
-    private Map<String, KeywordNode> createKeywordNodes(List<EntityExtractionResult.KeywordInfo> keywords, Long documentId) {
-        Map<String, KeywordNode> keywordMap = new HashMap<>();
-
-        for (EntityExtractionResult.KeywordInfo keywordInfo : keywords) {
-            if (keywordInfo.getKeyword() == null || keywordInfo.getKeyword().isBlank()) {
-                continue;
-            }
-
-            // 检查是否已存在
-            KeywordNode existingNode = keywordNodeRepository.findByName(keywordInfo.getKeyword()).orElse(null);
-            if (existingNode != null) {
-                existingNode.setFrequency(existingNode.getFrequency() + 1);
-                keywordMap.put(keywordInfo.getKeyword(), keywordNodeRepository.save(existingNode));
-                continue;
-            }
-
-            KeywordNode node = new KeywordNode();
-            node.setName(keywordInfo.getKeyword());
-            node.setSourceDocumentId(documentId);
-            node.setTfidf(keywordInfo.getTfidf());
-            node.setFrequency(1);
-            node.setCreateTime(LocalDateTime.now());
-            node.setUpdateTime(LocalDateTime.now());
-
-            keywordMap.put(keywordInfo.getKeyword(), keywordNodeRepository.save(node));
-        }
-
-        return keywordMap;
-    }
-
-    private void createEntityRelations(List<EntityExtractionResult.RelationInfo> relations, Map<String, EntityNode> entityMap) {
-        for (EntityExtractionResult.RelationInfo relationInfo : relations) {
-            String sourceKey = relationInfo.getSourceType() + ":" + relationInfo.getSourceName();
-            String targetKey = relationInfo.getTargetType() + ":" + relationInfo.getTargetName();
-
-            EntityNode sourceNode = entityMap.get(sourceKey);
-            EntityNode targetNode = entityMap.get(targetKey);
-
-            if (sourceNode == null || targetNode == null) {
-                continue;
-            }
-
-            // 建立关系
-            if ("RELATED_TO".equals(relationInfo.getRelationType())) {
-                sourceNode.getRelatedEntities().add(targetNode);
-                entityNodeRepository.save(sourceNode);
-            }
-        }
-    }
-
-    // ==================== 知识库图谱构建 ====================
+    // ==================== 异步构建方法 ====================
 
     @Override
+    public GraphBuildTask buildFromKnowledgeBaseAsync(Long knowledgeId) {
+        // 创建任务
+        GraphBuildTask task = taskManager.createTask(knowledgeId, null, GraphBuildTask.TaskType.KNOWLEDGE_BASE);
+
+        // 异步执行构建
+        graphBuildAsyncService.buildFromKnowledgeBaseAsync(task.getTaskId(), knowledgeId);
+
+        log.info("已创建知识库图谱构建任务: taskId={}, knowledgeId={}", task.getTaskId(), knowledgeId);
+        return task;
+    }
+
+    @Override
+    public GraphBuildTask rebuildFromKnowledgeBaseAsync(Long knowledgeId) {
+        // 先删除旧数据
+        deleteByKnowledgeBase(knowledgeId);
+        // 创建异步构建任务
+        return buildFromKnowledgeBaseAsync(knowledgeId);
+    }
+
+    @Override
+    public GraphBuildTask getBuildTask(String taskId) {
+        return taskManager.getTask(taskId).orElse(null);
+    }
+
+    // ==================== 同步构建方法（已弃用，保留兼容） ====================
+
+    @Override
+    @Deprecated
     @Transactional(rollbackFor = Exception.class)
     public GraphBuildResponse buildFromKnowledgeBase(Long knowledgeId) {
-        try {
-            // 从ES获取知识库的分块数量
-            long chunkCount = vectorStoreService.countChunksByKnowledgeId(knowledgeId);
-            if (chunkCount == 0) {
-                return GraphBuildResponse.failForKnowledgeBase(knowledgeId, "知识库下没有分块数据，请先处理文档");
+        // 使用异步构建并等待完成（用于兼容旧接口）
+        GraphBuildTask task = buildFromKnowledgeBaseAsync(knowledgeId);
+
+        // 等待任务完成（最多等待5分钟）
+        int maxWait = 300;
+        int waited = 0;
+        while (waited < maxWait) {
+            GraphBuildTask currentTask = taskManager.getTask(task.getTaskId()).orElse(task);
+            if (currentTask.getStatus() == GraphBuildTask.TaskStatus.COMPLETED) {
+                return GraphBuildResponse.successForKnowledgeBase(knowledgeId,
+                        currentTask.getEntityCount(),
+                        currentTask.getRelationCount(),
+                        currentTask.getConceptCount(),
+                        currentTask.getKeywordCount(),
+                        currentTask.getProcessedDocuments(),
+                        currentTask.getTotalDocuments());
+            } else if (currentTask.getStatus() == GraphBuildTask.TaskStatus.FAILED) {
+                return GraphBuildResponse.failForKnowledgeBase(knowledgeId, currentTask.getErrorMessage());
             }
 
-            log.info("开始构建知识库图谱: knowledgeId={}, chunkCount={}", knowledgeId, chunkCount);
-
-            // 删除知识库旧的图谱数据
-            deleteByKnowledgeBaseInternal(knowledgeId);
-
-            int totalEntities = 0;
-            int totalRelations = 0;
-            int totalConcepts = 0;
-            int totalKeywords = 0;
-
-            // 分页获取所有分块内容，每次处理100个
-            int pageSize = 100;
-            int totalPages = (int) Math.ceil((double) chunkCount / pageSize);
-
-            // 用于合并文本，按文档ID分组
-            Map<Long, StringBuilder> documentTextMap = new HashMap<>();
-
-            for (int page = 0; page < totalPages; page++) {
-                List<org.springframework.ai.document.Document> chunks =
-                        vectorStoreService.getChunksByKnowledgeId(knowledgeId, page, pageSize);
-
-                if (chunks == null || chunks.isEmpty()) {
-                    continue;
-                }
-
-                for (org.springframework.ai.document.Document chunk : chunks) {
-                    String content = chunk.getText();
-                    if (content == null || content.isBlank()) {
-                        continue;
-                    }
-
-                    // 获取文档ID
-                    Object docIdObj = chunk.getMetadata().get("document_id");
-                    Long documentId = docIdObj != null ? ((Number) docIdObj).longValue() : knowledgeId;
-
-                    // 合并到文档文本
-                    documentTextMap.computeIfAbsent(documentId, k -> new StringBuilder())
-                            .append(content).append("\n\n");
-                }
-            }
-
-            // 为每个文档构建图谱
-            int totalDocuments = documentTextMap.size();
-            int processedDocuments = 0;
-
-            for (Map.Entry<Long, StringBuilder> entry : documentTextMap.entrySet()) {
-                Long documentId = entry.getKey();
-                String fullText = entry.getValue().toString();
-
-                // 截取文本，避免过长（LLM有token限制）
-                String truncatedText = fullText.length() > 8000 ? fullText.substring(0, 8000) : fullText;
-
-                try {
-                    // 提取实体和关系
-                    EntityExtractionResult extractionResult = entityExtractor.extract(truncatedText, documentId);
-
-                    // 创建实体节点
-                    Map<String, EntityNode> entityMap = createEntityNodes(extractionResult.getEntities(), documentId);
-                    totalEntities += entityMap.size();
-
-                    // 创建概念节点
-                    Map<String, ConceptNode> conceptMap = createConceptNodes(extractionResult.getConcepts());
-                    totalConcepts += conceptMap.size();
-
-                    // 创建关键词节点
-                    Map<String, KeywordNode> keywordMap = createKeywordNodes(extractionResult.getKeywords(), documentId);
-                    totalKeywords += keywordMap.size();
-
-                    // 创建实体间关系
-                    createEntityRelations(extractionResult.getRelations(), entityMap);
-                    totalRelations += extractionResult.getRelations().size();
-
-                    // 创建文档节点并关联
-                    createDocumentNodeWithRelations(documentId, entityMap, conceptMap, keywordMap);
-
-                    processedDocuments++;
-                    log.info("文档图谱构建完成: documentId={}, entities={}, concepts={}, keywords={}",
-                            documentId, entityMap.size(), conceptMap.size(), keywordMap.size());
-
-                } catch (Exception e) {
-                    log.warn("构建文档图谱失败: documentId={}, error={}", documentId, e.getMessage());
-                }
-            }
-
-            log.info("知识库图谱构建完成: knowledgeId={}, processedDocuments={}, totalEntities={}, totalRelations={}",
-                    knowledgeId, processedDocuments, totalEntities, totalRelations);
-
-            return GraphBuildResponse.successForKnowledgeBase(knowledgeId,
-                    totalEntities, totalRelations, totalConcepts, totalKeywords,
-                    processedDocuments, totalDocuments);
-
-        } catch (Exception e) {
-            log.error("知识库图谱构建失败: knowledgeId={}", knowledgeId, e);
-            return GraphBuildResponse.failForKnowledgeBase(knowledgeId, "知识库图谱构建失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 创建文档节点并关联实体、概念、关键词
-     */
-    private DocumentNode createDocumentNodeWithRelations(Long documentId,
-                                                          Map<String, EntityNode> entityMap,
-                                                          Map<String, ConceptNode> conceptMap,
-                                                          Map<String, KeywordNode> keywordMap) {
-        DocumentNode node = new DocumentNode();
-        node.setDocumentId(documentId);
-        node.setName("文档-" + documentId);
-        node.setTitle("文档-" + documentId);
-        node.setDescription("知识库文档");
-        node.setCreateTime(LocalDateTime.now());
-        node.setUpdateTime(LocalDateTime.now());
-
-        // 关联实体、概念、关键词
-        node.setEntities(new HashSet<>(entityMap.values()));
-        node.setConcepts(new HashSet<>(conceptMap.values()));
-        node.setKeywords(new HashSet<>(keywordMap.values()));
-
-        return documentNodeRepository.save(node);
-    }
-
-    /**
-     * 内部删除方法，根据ES中的文档ID删除Neo4j节点
-     */
-    private void deleteByKnowledgeBaseInternal(Long knowledgeId) {
-        // 从ES获取知识库的所有分块
-        long chunkCount = vectorStoreService.countChunksByKnowledgeId(knowledgeId);
-        if (chunkCount == 0) {
-            return;
-        }
-
-        Set<Long> documentIds = new HashSet<>();
-        int pageSize = 100;
-        int totalPages = (int) Math.ceil((double) chunkCount / pageSize);
-
-        for (int page = 0; page < totalPages; page++) {
-            List<org.springframework.ai.document.Document> chunks =
-                    vectorStoreService.getChunksByKnowledgeId(knowledgeId, page, pageSize);
-            if (chunks != null) {
-                for (org.springframework.ai.document.Document chunk : chunks) {
-                    Object docIdObj = chunk.getMetadata().get("document_id");
-                    if (docIdObj != null) {
-                        documentIds.add(((Number) docIdObj).longValue());
-                    }
-                }
-            }
-        }
-
-        // 删除这些文档的图谱节点
-        for (Long documentId : documentIds) {
             try {
-                documentNodeRepository.deleteByDocumentId(documentId);
-            } catch (Exception e) {
-                log.warn("删除文档图谱节点失败: documentId={}", documentId);
+                Thread.sleep(1000);
+                waited++;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
+
+        return GraphBuildResponse.failForKnowledgeBase(knowledgeId, "构建超时，请稍后查询任务状态");
     }
 
     @Override
+    @Deprecated
     @Transactional(rollbackFor = Exception.class)
     public GraphBuildResponse rebuildFromKnowledgeBase(Long knowledgeId) {
         // 先删除旧数据
@@ -475,11 +258,11 @@ public class GraphBuildServiceImpl implements GraphBuildService {
             }
         }
 
-        // 统计节点数量
+        // 统计节点数量 - 按知识库ID过滤
         try {
-            nodeCount = (int) entityNodeRepository.count() +
-                        (int) conceptNodeRepository.count() +
-                        (int) keywordNodeRepository.count() +
+            nodeCount = (int) entityNodeRepository.findByKnowledgeBaseId(knowledgeId).size() +
+                        (int) conceptNodeRepository.findTopByKnowledgeBaseId(knowledgeId, Integer.MAX_VALUE).size() +
+                        (int) keywordNodeRepository.findTopByKnowledgeBaseId(knowledgeId, Integer.MAX_VALUE).size() +
                         builtDocumentCount;
         } catch (Exception e) {
             log.warn("统计节点数量失败", e);
@@ -494,5 +277,151 @@ public class GraphBuildServiceImpl implements GraphBuildService {
                 .builtDocumentCount(builtDocumentCount)
                 .totalDocumentCount(totalDocumentCount)
                 .build();
+    }
+
+    // ==================== 私有方法 ====================
+
+    private DocumentNode createDocumentNode(KnowledgeDocument document, Long knowledgeBaseId) {
+        DocumentNode node = new DocumentNode();
+        node.setDocumentId(document.getId());
+        node.setName(document.getTitle());
+        node.setTitle(document.getTitle());
+        node.setFileType(document.getFileType());
+        node.setUserId(document.getUserId());
+        node.setCategoryId(document.getCategoryId());
+        node.setKnowledgeBaseId(knowledgeBaseId);
+        node.setDescription("文档: " + document.getTitle());
+        node.setCreateTime(LocalDateTime.now());
+        node.setUpdateTime(LocalDateTime.now());
+        return documentNodeRepository.save(node);
+    }
+
+    private Map<String, EntityNode> createEntityNodes(List<EntityExtractionResult.EntityInfo> entities, Long documentId, Long knowledgeBaseId) {
+        Map<String, EntityNode> entityMap = new HashMap<>();
+
+        for (EntityExtractionResult.EntityInfo entityInfo : entities) {
+            if (entityInfo.getName() == null || entityInfo.getName().isBlank()) {
+                continue;
+            }
+
+            String key = entityInfo.getEntityType() + ":" + entityInfo.getName();
+
+            // 检查是否已存在
+            EntityNode existingNode = entityMap.get(key);
+            if (existingNode != null) {
+                existingNode.setFrequency(existingNode.getFrequency() + 1);
+                continue;
+            }
+
+            EntityNode node = new EntityNode();
+            node.setName(entityInfo.getName());
+            node.setEntityType(entityInfo.getEntityType());
+            node.setDescription(entityInfo.getDescription());
+            node.setConfidence(entityInfo.getConfidence());
+            node.setSourceDocumentId(documentId);
+            node.setKnowledgeBaseId(knowledgeBaseId);
+            node.setFrequency(1);
+            node.setCreateTime(LocalDateTime.now());
+            node.setUpdateTime(LocalDateTime.now());
+
+            entityMap.put(key, entityNodeRepository.save(node));
+        }
+
+        return entityMap;
+    }
+
+    private Map<String, ConceptNode> createConceptNodes(List<EntityExtractionResult.ConceptInfo> concepts, Long knowledgeBaseId) {
+        Map<String, ConceptNode> conceptMap = new HashMap<>();
+
+        for (EntityExtractionResult.ConceptInfo conceptInfo : concepts) {
+            if (conceptInfo.getName() == null || conceptInfo.getName().isBlank()) {
+                continue;
+            }
+
+            // 检查是否已存在同一知识库下的概念
+            ConceptNode existingNode = conceptNodeRepository.findByNameAndKnowledgeBaseId(conceptInfo.getName(), knowledgeBaseId).orElse(null);
+            if (existingNode != null) {
+                existingNode.setWeight(existingNode.getWeight() + 1);
+                conceptMap.put(conceptInfo.getName(), conceptNodeRepository.save(existingNode));
+                continue;
+            }
+
+            ConceptNode node = new ConceptNode();
+            node.setName(conceptInfo.getName());
+            node.setDescription(conceptInfo.getDescription());
+            node.setCategory(conceptInfo.getCategory());
+            node.setKnowledgeBaseId(knowledgeBaseId);
+            node.setWeight(1);
+            node.setCreateTime(LocalDateTime.now());
+            node.setUpdateTime(LocalDateTime.now());
+
+            conceptMap.put(conceptInfo.getName(), conceptNodeRepository.save(node));
+        }
+
+        return conceptMap;
+    }
+
+    private Map<String, KeywordNode> createKeywordNodes(List<EntityExtractionResult.KeywordInfo> keywords, Long documentId, Long knowledgeBaseId) {
+        Map<String, KeywordNode> keywordMap = new HashMap<>();
+
+        for (EntityExtractionResult.KeywordInfo keywordInfo : keywords) {
+            if (keywordInfo.getKeyword() == null || keywordInfo.getKeyword().isBlank()) {
+                continue;
+            }
+
+            // 检查是否已存在同一知识库下的关键词
+            KeywordNode existingNode = keywordNodeRepository.findByNameAndKnowledgeBaseId(keywordInfo.getKeyword(), knowledgeBaseId).orElse(null);
+            if (existingNode != null) {
+                existingNode.setFrequency(existingNode.getFrequency() + 1);
+                keywordMap.put(keywordInfo.getKeyword(), keywordNodeRepository.save(existingNode));
+                continue;
+            }
+
+            KeywordNode node = new KeywordNode();
+            node.setName(keywordInfo.getKeyword());
+            node.setSourceDocumentId(documentId);
+            node.setKnowledgeBaseId(knowledgeBaseId);
+            node.setTfidf(keywordInfo.getTfidf());
+            node.setFrequency(1);
+            node.setCreateTime(LocalDateTime.now());
+            node.setUpdateTime(LocalDateTime.now());
+
+            keywordMap.put(keywordInfo.getKeyword(), keywordNodeRepository.save(node));
+        }
+
+        return keywordMap;
+    }
+
+    private void createEntityRelations(List<EntityExtractionResult.RelationInfo> relations, Map<String, EntityNode> entityMap) {
+        for (EntityExtractionResult.RelationInfo relationInfo : relations) {
+            String sourceKey = relationInfo.getSourceType() + ":" + relationInfo.getSourceName();
+            String targetKey = relationInfo.getTargetType() + ":" + relationInfo.getTargetName();
+
+            EntityNode sourceNode = entityMap.get(sourceKey);
+            EntityNode targetNode = entityMap.get(targetKey);
+
+            if (sourceNode == null || targetNode == null) {
+                continue;
+            }
+
+            // 建立关系
+            if ("RELATED_TO".equals(relationInfo.getRelationType())) {
+                sourceNode.getRelatedEntities().add(targetNode);
+                entityNodeRepository.save(sourceNode);
+            }
+        }
+    }
+
+    /**
+     * 内部删除方法，根据知识库ID直接删除Neo4j节点
+     */
+    private void deleteByKnowledgeBaseInternal(Long knowledgeId) {
+        // 使用 CustomGraphRepository 直接按 knowledgeBaseId 删除
+        try {
+            customGraphRepository.deleteByKnowledgeBaseId(knowledgeId);
+            log.info("删除知识库图谱数据: knowledgeId={}", knowledgeId);
+        } catch (Exception e) {
+            log.warn("删除知识库图谱数据失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
+        }
     }
 }

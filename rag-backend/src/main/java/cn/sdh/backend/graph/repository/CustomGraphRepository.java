@@ -335,4 +335,147 @@ public class CustomGraphRepository {
                 .relationshipsByType(relationshipsByType)
                 .build();
     }
+
+    /**
+     * 获取指定知识库的图统计信息
+     */
+    public GraphStatsResponse getStatsByKnowledgeBaseId(Long knowledgeBaseId) {
+        // 获取节点总数
+        Long nodeCount = neo4jClient.query("MATCH (n) WHERE n.knowledgeBaseId = $knowledgeBaseId RETURN count(n) as nodeCount")
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .fetch()
+                .one()
+                .map(record -> {
+                    Object count = record.get("nodeCount");
+                    if (count instanceof Long) {
+                        return (Long) count;
+                    }
+                    return Long.valueOf(count.toString());
+                })
+                .orElse(0L);
+
+        // 获取关系总数（同一知识库内的节点之间的关系）
+        Long relationshipCount = neo4jClient.query("MATCH (a)-[r]->(b) WHERE a.knowledgeBaseId = $knowledgeBaseId AND b.knowledgeBaseId = $knowledgeBaseId RETURN count(r) as relationshipCount")
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .fetch()
+                .one()
+                .map(record -> {
+                    Object count = record.get("relationshipCount");
+                    if (count instanceof Long) {
+                        return (Long) count;
+                    }
+                    return Long.valueOf(count.toString());
+                })
+                .orElse(0L);
+
+        // 获取节点类型统计
+        List<Map<String, Object>> nodesByType = neo4jClient.query("MATCH (n) WHERE n.knowledgeBaseId = $knowledgeBaseId RETURN labels(n)[0] as type, count(n) as count ORDER BY count DESC")
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .fetch()
+                .all()
+                .stream()
+                .map(record -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("type", record.get("type"));
+                    Object count = record.get("count");
+                    if (count instanceof Long) {
+                        m.put("count", count);
+                    } else if (count != null) {
+                        m.put("count", Long.valueOf(count.toString()));
+                    } else {
+                        m.put("count", 0L);
+                    }
+                    return m;
+                })
+                .collect(Collectors.toList());
+
+        // 获取关系类型统计
+        List<Map<String, Object>> relationshipsByType = neo4jClient.query("MATCH (a)-[r]->(b) WHERE a.knowledgeBaseId = $knowledgeBaseId AND b.knowledgeBaseId = $knowledgeBaseId RETURN type(r) as type, count(r) as count ORDER BY count DESC")
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .fetch()
+                .all()
+                .stream()
+                .map(record -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("type", record.get("type"));
+                    Object count = record.get("count");
+                    if (count instanceof Long) {
+                        m.put("count", count);
+                    } else if (count != null) {
+                        m.put("count", Long.valueOf(count.toString()));
+                    } else {
+                        m.put("count", 0L);
+                    }
+                    return m;
+                })
+                .collect(Collectors.toList());
+
+        return GraphStatsResponse.builder()
+                .totalNodes(nodeCount)
+                .totalRelationships(relationshipCount)
+                .nodesByType(nodesByType)
+                .relationshipsByType(relationshipsByType)
+                .build();
+    }
+
+    /**
+     * 获取指定知识库的top节点ID列表
+     */
+    public List<Long> getTopNodeIdsByKnowledgeBaseId(Long knowledgeBaseId, int limit) {
+        String query = "MATCH (n) WHERE n.knowledgeBaseId = $knowledgeBaseId RETURN id(n) as id ORDER BY coalesce(n.weight, 0) DESC, coalesce(n.frequency, 0) DESC LIMIT $limit";
+
+        return neo4jClient.query(query)
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .bind(limit).to("limit")
+                .fetch()
+                .all()
+                .stream()
+                .map(map -> {
+                    Object id = map.get("id");
+                    if (id instanceof Long) {
+                        return (Long) id;
+                    }
+                    return Long.valueOf(id.toString());
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 以某节点为中心展开图 - 获取指定深度内的所有节点ID（同一知识库内）
+     */
+    @SuppressWarnings("unchecked")
+    public List<Long> expandNodeIdsWithinKnowledgeBase(Long centerNodeId, int depth, Long knowledgeBaseId) {
+        String query = "MATCH (center) WHERE id(center) = $centerNodeId AND center.knowledgeBaseId = $knowledgeBaseId " +
+                       "OPTIONAL MATCH (center)-[*1.." + depth + "]-(leaf) WHERE leaf.knowledgeBaseId = $knowledgeBaseId " +
+                       "RETURN collect(DISTINCT id(center)) + collect(DISTINCT id(leaf)) as nodeIds";
+
+        return neo4jClient.query(query)
+                .bind(centerNodeId).to("centerNodeId")
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .fetch()
+                .one()
+                .map(record -> {
+                    Object nodeIdsObj = record.get("nodeIds");
+                    if (nodeIdsObj instanceof List<?>) {
+                        return ((List<?>) nodeIdsObj).stream()
+                                .filter(obj -> obj instanceof Long)
+                                .map(obj -> (Long) obj)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .collect(Collectors.toList());
+                    }
+                    return new ArrayList<Long>();
+                })
+                .orElse(new ArrayList<>());
+    }
+
+    /**
+     * 按知识库ID删除所有节点
+     */
+    public void deleteByKnowledgeBaseId(Long knowledgeBaseId) {
+        String query = "MATCH (n) WHERE n.knowledgeBaseId = $knowledgeBaseId DETACH DELETE n";
+        neo4jClient.query(query)
+                .bind(knowledgeBaseId).to("knowledgeBaseId")
+                .run();
+    }
 }

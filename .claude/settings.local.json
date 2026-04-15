@@ -19,7 +19,8 @@
       "Bash(javap -public -cp spring-ai-model-1.0.0.jar org.springframework.ai.chat.memory.MessageWindowChatMemory)",
       "Bash(javap -public -cp spring-ai-model-1.0.0.jar org.springframework.ai.chat.memory.InMemoryChatMemoryRepository)",
       "mcp__ide__getDiagnostics",
-      "Bash(ccusage monthly:*)"
+      "Bash(ccusage monthly:*)",
+      "Bash(JAVA_HOME=\"D:/develop/JDK21\" mvn compile)"
     ]
   }
 }
