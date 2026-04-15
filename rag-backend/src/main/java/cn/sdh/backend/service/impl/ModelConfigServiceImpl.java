@@ -75,4 +75,12 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
                 .eq(ModelConfig::getModelType, "chat")
                 .orderByDesc(ModelConfig::getSort));
     }
+
+    @Override
+    public List<ModelConfig> getActiveRerankModels() {
+        return list(new LambdaQueryWrapper<ModelConfig>()
+                .eq(ModelConfig::getStatus, 1)
+                .eq(ModelConfig::getModelType, "reranker")
+                .orderByDesc(ModelConfig::getSort));
+    }
 }

@@ -138,5 +138,14 @@ public class ModelConfigController {
         return Result.success(responses);
     }
 
+    @GetMapping("/active/reranker")
+    public Result<List<ModelConfigResponse>> getActiveRerankModels() {
+        List<ModelConfig> configs = modelConfigService.getActiveRerankModels();
+        List<ModelConfigResponse> responses = configs.stream()
+                .map(ModelConfigResponse::fromEntity)
+                .collect(Collectors.toList());
+        return Result.success(responses);
+    }
+
 
 }

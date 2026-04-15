@@ -42,6 +42,11 @@
           <RetrievalConfig :node="selectedNode" @update="updateNodeData" />
         </template>
 
+        <!-- 重排序节点配置 -->
+        <template v-if="selectedNode.data.type === 'rerank'">
+          <RerankConfig :node="selectedNode" @update="updateNodeData" />
+        </template>
+
         <!-- 条件节点配置 -->
         <template v-if="selectedNode.data.type === 'condition'">
           <ConditionConfig :node="selectedNode" @update="updateNodeData" />
@@ -79,6 +84,7 @@ import InputConfig from './configs/InputConfig.vue'
 import OutputConfig from './configs/OutputConfig.vue'
 import LlmConfig from './configs/LlmConfig.vue'
 import RetrievalConfig from './configs/RetrievalConfig.vue'
+import RerankConfig from './configs/RerankConfig.vue'
 import ConditionConfig from './configs/ConditionConfig.vue'
 import HttpConfig from './configs/HttpConfig.vue'
 import CodeConfig from './configs/CodeConfig.vue'

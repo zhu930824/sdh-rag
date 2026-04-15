@@ -1,11 +1,10 @@
 package cn.sdh.backend.workflow.executor.impl;
 
+import cn.sdh.backend.service.factory.ChatModelFactory;
 import cn.sdh.backend.workflow.dto.ExecutionEvent;
 import cn.sdh.backend.workflow.executor.NodeExecutor;
 import cn.sdh.backend.workflow.model.WorkflowNode;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,8 +24,8 @@ import java.util.regex.Pattern;
 @Component
 public class LlmNodeExecutor implements NodeExecutor {
 
-    @Autowired(required = false)
-    private ChatModel chatModel;
+    @Autowired
+    private ChatModelFactory chatModelFactory;
 
     @Override
     public Map<String, Object> execute(WorkflowNode node, Map<String, Object> input) throws Exception {
@@ -67,9 +66,12 @@ public class LlmNodeExecutor implements NodeExecutor {
         // 调用 LLM
         String response;
         try {
+            // 从工厂获取ChatModel
+            ChatModel chatModel = chatModelFactory.getModel(model);
+
             if (chatModel == null) {
-                log.warn("ChatModel 未注入，返回模拟响应");
-                response = "【模拟响应】ChatModel 未配置，请检查 Spring AI 配置。\n\n您的提示词是：" + userPrompt;
+                log.warn("ChatModel 未配置，返回模拟响应");
+                response = "【模拟响应】ChatModel 未配置，请检查模型配置。\n\n您的提示词是：" + userPrompt;
             } else {
                 ChatClient.Builder builder = ChatClient.builder(chatModel);
 

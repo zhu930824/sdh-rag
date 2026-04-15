@@ -44,23 +44,19 @@ export interface Workflow {
   id: number
   name: string
   description: string
-  icon: string
-  color: string
-  definition: WorkflowDefinition
+  flowData: string  // JSON字符串，包含nodes和edges
   status: number
-  version: number
+  userId: number
   createTime: string
   updateTime: string
 }
 
-// 工作流表单
+// 工作流表单（用于创建/更新）
 export interface WorkflowFormData {
   id?: number
   name: string
-  description: string
-  icon: string
-  color: string
-  definition: WorkflowDefinition
+  description?: string
+  flowData?: string  // JSON字符串
 }
 
 // 工作流执行结果
@@ -122,7 +118,7 @@ export function createWorkflow(data: WorkflowFormData): Promise<ApiResponse<Work
 }
 
 // 更新工作流
-export function updateWorkflow(id: number, data: WorkflowFormData): Promise<ApiResponse<Workflow>> {
+export function updateWorkflow(id: number, data: WorkflowFormData): Promise<ApiResponse<void>> {
   return request.post(`/api/workflow/update/${id}`, data)
 }
 
@@ -141,12 +137,35 @@ export function executeWorkflow(id: number, inputs: Record<string, any>): Promis
   return request.post(`/api/workflow/${id}/execute`, { inputs })
 }
 
-// 获取执行记录
+// 工作流执行记录详情
+export interface WorkflowExecutionDetail {
+  id: number
+  workflowId: number
+  userId: number
+  executionId: string
+  status: string
+  inputData: string
+  outputData: string
+  nodeResults: string
+  errorMessage: string
+  startTime: string
+  endTime: string
+  duration: number
+  totalTokens: number
+  createTime: string
+}
+
+// 获取执行记录列表
 export function getExecutionList(workflowId: number, params: {
   page: number
   pageSize: number
-}): Promise<ApiResponse<PageResult<WorkflowExecution>>> {
+}): Promise<ApiResponse<PageResult<WorkflowExecutionDetail>>> {
   return request.get(`/api/workflow/${workflowId}/executions`, { params })
+}
+
+// 获取执行记录详情
+export function getExecutionDetail(executionId: number): Promise<ApiResponse<WorkflowExecutionDetail>> {
+  return request.get(`/api/workflow/execution/${executionId}`)
 }
 
 // 获取节点类型定义

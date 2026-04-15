@@ -24,4 +24,6 @@ public interface ModelConfigService {
     List<ModelConfig> getActiveList();
 
     List<ModelConfig> getActiveChatModels();
+
+    List<ModelConfig> getActiveRerankModels();
 }

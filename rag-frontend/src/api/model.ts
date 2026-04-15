@@ -56,3 +56,7 @@ export function getActiveModels(): Promise<ApiResponse<ModelConfig[]>> {
 export function getActiveChatModels(): Promise<ApiResponse<ModelConfig[]>> {
   return request.get('/api/model/active/chat')
 }
+
+export function getActiveRerankModels(): Promise<ApiResponse<ModelConfig[]>> {
+  return request.get('/api/model/active/reranker')
+}

@@ -3,11 +3,17 @@ package cn.sdh.backend.controller;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.entity.Workflow;
+import cn.sdh.backend.entity.WorkflowExecution;
 import cn.sdh.backend.service.WorkflowService;
+import cn.sdh.backend.service.WorkflowExecutionService;
 import cn.sdh.backend.workflow.dto.ExecutionEvent;
+import cn.sdh.backend.dto.WorkflowDebugRequest;
 import cn.sdh.backend.workflow.dto.ExecutionResponse;
+import cn.sdh.backend.workflow.dto.NodeTypeDefinition;
 import cn.sdh.backend.workflow.executor.WorkflowEngine;
+import cn.sdh.backend.workflow.service.NodeTypeDefinitionService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.alibaba.fastjson2.JSON;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,7 +34,9 @@ import java.util.concurrent.Executors;
 public class WorkflowController {
 
     private final WorkflowService workflowService;
+    private final WorkflowExecutionService workflowExecutionService;
     private final WorkflowEngine workflowEngine;
+    private final NodeTypeDefinitionService nodeTypeDefinitionService;
 
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
@@ -209,6 +218,62 @@ public class WorkflowController {
         });
 
         return emitter;
+    }
+
+    /**
+     * 获取节点类型定义列表
+     */
+    @GetMapping("/node-types")
+    public Result<List<NodeTypeDefinition>> getNodeTypeDefinitions() {
+        return Result.success(nodeTypeDefinitionService.getAllNodeTypeDefinitions());
+    }
+
+    /**
+     * 获取工作流执行历史
+     */
+    @GetMapping("/{id}/executions")
+    public Result<IPage<WorkflowExecution>> getExecutions(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+
+        if (pageSize > 100) pageSize = 100;
+        IPage<WorkflowExecution> result = workflowExecutionService.getPage(id, page, pageSize);
+        return Result.success(result);
+    }
+
+    /**
+     * 获取执行记录详情
+     */
+    @GetMapping("/execution/{executionId}")
+    public Result<WorkflowExecution> getExecutionDetail(@PathVariable Long executionId) {
+        WorkflowExecution execution = workflowExecutionService.getById(executionId);
+        if (execution == null) {
+            return Result.notFound("执行记录不存在");
+        }
+        return Result.success(execution);
+    }
+
+    /**
+     * 调试单个节点
+     */
+    @PostMapping("/{id}/debug-node")
+    public Result<Map<String, Object>> debugNode(
+            @PathVariable Long id,
+            @RequestBody WorkflowDebugRequest request) {
+
+        Workflow workflow = workflowService.getById(id);
+        if (workflow == null) {
+            return Result.notFound("工作流不存在");
+        }
+
+        try {
+            Map<String, Object> result = workflowEngine.debugNode(workflow, request.getNodeId(), request.getInputs());
+            return Result.success(result);
+        } catch (Exception e) {
+            log.error("调试节点失败", e);
+            return Result.error("调试节点失败: " + e.getMessage());
+        }
     }
 
     /**

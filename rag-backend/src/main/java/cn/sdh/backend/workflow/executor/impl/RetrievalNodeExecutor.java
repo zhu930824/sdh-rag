@@ -1,13 +1,10 @@
 package cn.sdh.backend.workflow.executor.impl;
 
+import cn.sdh.backend.service.VectorStoreService;
 import cn.sdh.backend.workflow.executor.NodeExecutor;
 import cn.sdh.backend.workflow.model.WorkflowNode;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +12,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 检索节点执行器
@@ -24,8 +20,8 @@ import java.util.stream.Collectors;
 @Component
 public class RetrievalNodeExecutor implements NodeExecutor {
 
-    @Autowired(required = false)
-    private VectorStore vectorStore;
+    @Autowired
+    private VectorStoreService vectorStoreService;
 
     @Override
     public Map<String, Object> execute(WorkflowNode node, Map<String, Object> input) {
@@ -63,30 +59,15 @@ public class RetrievalNodeExecutor implements NodeExecutor {
         log.info("检索查询: {}", query);
 
         try {
-            if (vectorStore == null) {
-                log.warn("VectorStore 未注入，返回模拟结果");
-                output.put("context", "【模拟检索结果】VectorStore 未配置。");
-                output.put("documents", List.of(Map.of(
-                    "content", "模拟文档内容",
-                    "score", 0.95,
-                    "metadata", Map.of()
-                )));
+            if (knowledgeBaseId == null) {
+                log.warn("未指定知识库ID，返回空结果");
+                output.put("context", "");
+                output.put("documents", new ArrayList<>());
                 return output;
             }
 
-            // 执行向量检索
-            SearchRequest.Builder builder = SearchRequest.builder().
-                    query(query)
-                    .topK(topK)
-                    .similarityThreshold(scoreThreshold);
-
-            // 如果指定了知识库，添加过滤条件
-            if (knowledgeBaseId != null) {
-                log.info("添加知识库过滤条件: knowledgeBaseId == {}", knowledgeBaseId);
-                builder.filterExpression("knowledgeBaseId == " + knowledgeBaseId);
-            }
-
-            List<Document> documents = vectorStore.similaritySearch(builder.build());
+            // 执行向量检索（使用VectorStoreService，自动处理知识库过滤）
+            List<Document> documents = vectorStoreService.similaritySearch(query, knowledgeBaseId, topK);
 
             log.info("检索到 {} 个文档", documents.size());
 

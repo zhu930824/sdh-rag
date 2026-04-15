@@ -20,12 +20,58 @@
           <template #icon><SaveOutlined /></template>
           保存
         </a-button>
-        <a-button type="primary" :disabled="!currentWorkflowId" :loading="running" @click="handleRun">
+        <a-button type="primary" :disabled="!currentWorkflowId" :loading="running" @click="showRunDialog">
           <template #icon><PlayCircleOutlined /></template>
           运行
         </a-button>
       </div>
     </div>
+
+    <!-- 运行参数输入对话框 -->
+    <a-modal
+      v-model:open="runDialogVisible"
+      title="输入运行参数"
+      :confirm-loading="running"
+      @ok="handleRun"
+      @cancel="runDialogVisible = false"
+    >
+      <div v-if="inputVariables.length > 0">
+        <a-form layout="vertical">
+          <a-form-item
+            v-for="variable in inputVariables"
+            :key="variable.name"
+            :label="variable.name"
+            :required="!variable.defaultValue"
+          >
+            <a-input
+              v-if="variable.type === 'string'"
+              v-model:value="inputValues[variable.name]"
+              :placeholder="`请输入${variable.name}`"
+            />
+            <a-input-number
+              v-else-if="variable.type === 'number'"
+              v-model:value="inputValues[variable.name]"
+              :placeholder="`请输入${variable.name}`"
+              style="width: 100%"
+            />
+            <a-switch
+              v-else-if="variable.type === 'boolean'"
+              v-model:checked="inputValues[variable.name]"
+            />
+            <a-textarea
+              v-else
+              v-model:value="inputValues[variable.name]"
+              :placeholder="`请输入${variable.name}（JSON格式）`"
+              :rows="4"
+            />
+            <div v-if="variable.defaultValue" class="default-value-hint">
+              默认值: {{ variable.defaultValue }}
+            </div>
+          </a-form-item>
+        </a-form>
+      </div>
+      <a-empty v-else description="无需输入参数" />
+    </a-modal>
 
     <!-- 主内容区 -->
     <div class="editor-content">
@@ -123,6 +169,8 @@ const saving = ref(false)
 const running = ref(false)
 const resultDrawerVisible = ref(false)
 const executionResult = ref<WorkflowExecution | null>(null)
+const runDialogVisible = ref(false)
+const inputValues = ref<Record<string, any>>({})
 
 // 计算属性
 const workflowName = computed({
@@ -131,6 +179,25 @@ const workflowName = computed({
 })
 
 const currentWorkflowId = computed(() => workflowStore.currentWorkflowId)
+
+// 获取所有输入节点的变量
+const inputVariables = computed(() => {
+  const variables: { name: string; type: string; defaultValue: string }[] = []
+  workflowStore.nodes.forEach((node) => {
+    if (node.data.type === 'input' && node.data.variables) {
+      node.data.variables.forEach((v) => {
+        if (v.name) {
+          variables.push({
+            name: v.name,
+            type: v.type || 'string',
+            defaultValue: v.defaultValue || '',
+          })
+        }
+      })
+    }
+  })
+  return variables
+})
 
 // 加载工作流
 async function loadWorkflow(id: number) {
@@ -187,8 +254,9 @@ function getDefaultConfig(type: string): Partial<WorkflowNodeData> {
   const defaults: Record<string, Partial<WorkflowNodeData>> = {
     input: { variables: [{ name: 'query', type: 'string', defaultValue: '' }] },
     output: { outputParams: [], responseContent: '' },
-    llm: { model: 'qwen-max', temperature: 0.7, maxTokens: 2000, inputParams: [], prompt: '' },
-    retrieval: { topK: 5, scoreThreshold: 0.7 },
+    llm: { model: '', temperature: 0.7, maxTokens: 2000, inputParams: [], prompt: '' },
+    retrieval: { topK: 5, scoreThreshold: 0.7, knowledgeBaseId: null },
+    rerank: { model: '', topK: 5 },
     condition: { conditions: [{ expression: 'true', label: '默认' }] },
     http: { method: 'GET', url: '', headers: '{}', body: '' },
     code: { language: 'javascript', code: '' },
@@ -295,28 +363,17 @@ async function handleSave() {
 
     if (currentWorkflowId.value) {
       await updateWorkflow(currentWorkflowId.value, {
+        id: currentWorkflowId.value,
         name: workflowName.value,
         description: '',
-        icon: 'workflow',
-        color: '#1890ff',
-        definition: { nodes: [], edges: [] },
-      })
-      // 更新 flowData
-      await updateWorkflow(currentWorkflowId.value, {
-        name: workflowName.value,
-        description: '',
-        icon: 'workflow',
-        color: '#1890ff',
-        definition: JSON.parse(flowData),
+        flowData: flowData,
       })
       message.success('保存成功')
     } else {
       const res = await createWorkflow({
         name: workflowName.value,
         description: '',
-        icon: 'workflow',
-        color: '#1890ff',
-        definition: JSON.parse(flowData),
+        flowData: flowData,
       })
       if (res.data?.id) {
         workflowStore.setCurrentWorkflowId(res.data.id)
@@ -332,6 +389,31 @@ async function handleSave() {
   }
 }
 
+// 显示运行参数对话框
+function showRunDialog() {
+  if (!currentWorkflowId.value) {
+    message.warning('请先保存工作流')
+    return
+  }
+
+  // 初始化输入值，使用默认值
+  inputValues.value = {}
+  inputVariables.value.forEach((v) => {
+    if (v.defaultValue) {
+      // 根据类型转换默认值
+      if (v.type === 'number') {
+        inputValues.value[v.name] = Number(v.defaultValue) || 0
+      } else if (v.type === 'boolean') {
+        inputValues.value[v.name] = v.defaultValue === 'true'
+      } else {
+        inputValues.value[v.name] = v.defaultValue
+      }
+    }
+  })
+
+  runDialogVisible.value = true
+}
+
 // 运行工作流
 async function handleRun() {
   if (!currentWorkflowId.value) {
@@ -339,12 +421,22 @@ async function handleRun() {
     return
   }
 
+  // 检查必填参数
+  const missingParams = inputVariables.value.filter(
+    (v) => !v.defaultValue && inputValues.value[v.name] === undefined
+  )
+  if (missingParams.length > 0) {
+    message.warning(`请填写参数: ${missingParams.map((p) => p.name).join(', ')}`)
+    return
+  }
+
+  runDialogVisible.value = false
   running.value = true
   resultDrawerVisible.value = true
   executionResult.value = null
 
   try {
-    const res = await executeWorkflow(currentWorkflowId.value, {})
+    const res = await executeWorkflow(currentWorkflowId.value, inputValues.value)
     executionResult.value = res.data
   } catch (error) {
     message.error('执行失败')
@@ -460,5 +552,11 @@ watch(
     overflow-x: auto;
     max-height: 300px;
   }
+}
+
+.default-value-hint {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-top: 4px;
 }
 </style>

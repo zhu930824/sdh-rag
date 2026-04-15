@@ -1,19 +1,21 @@
 package cn.sdh.backend.workflow.executor;
 
+import cn.sdh.backend.entity.WorkflowExecution;
+import cn.sdh.backend.service.WorkflowExecutionService;
 import cn.sdh.backend.workflow.dag.DAGParser;
 import cn.sdh.backend.workflow.dto.ExecutionEvent;
 import cn.sdh.backend.workflow.dto.ExecutionResponse;
 import cn.sdh.backend.workflow.model.WorkflowConfig;
+import cn.sdh.backend.workflow.model.WorkflowEdge;
 import cn.sdh.backend.workflow.model.WorkflowNode;
 import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.function.Consumer;
 
 /**
@@ -28,6 +30,10 @@ public class WorkflowEngine {
 
     @Autowired
     private NodeExecutorFactory executorFactory;
+
+    @Autowired
+    @Lazy
+    private WorkflowExecutionService workflowExecutionService;
 
     /**
      * 执行工作流（无回调）
@@ -52,19 +58,44 @@ public class WorkflowEngine {
             return response;
         }
 
-        // 拓扑排序获取执行顺序
-        List<WorkflowNode> sortedNodes;
-        try {
-            sortedNodes = dagParser.parse(config);
-        } catch (Exception e) {
-            log.error("工作流解析失败", e);
+        // 构建节点映射和边映射
+        Map<String, WorkflowNode> nodeMap = new HashMap<>();
+        for (WorkflowNode node : config.getNodes()) {
+            nodeMap.put(node.getId(), node);
+        }
+
+        // 构建出边映射: nodeId -> List<Edge>
+        Map<String, List<WorkflowEdge>> outgoingEdges = new HashMap<>();
+        if (config.getEdges() != null) {
+            for (WorkflowEdge edge : config.getEdges()) {
+                outgoingEdges.computeIfAbsent(edge.getSource(), k -> new ArrayList<>()).add(edge);
+            }
+        }
+
+        // 找到起始节点（入度为0的节点）
+        Set<String> hasIncoming = new HashSet<>();
+        if (config.getEdges() != null) {
+            for (WorkflowEdge edge : config.getEdges()) {
+                hasIncoming.add(edge.getTarget());
+            }
+        }
+
+        String startNodeId = null;
+        for (WorkflowNode node : config.getNodes()) {
+            if (!hasIncoming.contains(node.getId())) {
+                startNodeId = node.getId();
+                break;
+            }
+        }
+
+        if (startNodeId == null) {
             ExecutionResponse response = new ExecutionResponse();
             response.setStatus("FAILED");
-            response.setErrorMessage("工作流解析失败: " + e.getMessage());
+            response.setErrorMessage("未找到起始节点");
             return response;
         }
 
-        log.info("工作流执行顺序: {}", sortedNodes.stream().map(WorkflowNode::getId).toList());
+        log.info("工作流起始节点: {}", startNodeId);
 
         // 初始化执行上下文
         List<ExecutionResponse.NodeResult> nodeResults = new ArrayList<>();
@@ -105,15 +136,31 @@ public class WorkflowEngine {
             eventCallback.accept(ExecutionEvent.workflowStart(null));
         }
 
-        // 按顺序执行节点
-        for (WorkflowNode node : sortedNodes) {
+        // 执行节点（支持条件分支）
+        String currentNodeId = startNodeId;
+        Set<String> executedNodes = new HashSet<>();
+
+        while (currentNodeId != null) {
+            // 检测循环
+            if (executedNodes.contains(currentNodeId)) {
+                log.warn("检测到循环执行，跳过节点: {}", currentNodeId);
+                break;
+            }
+            executedNodes.add(currentNodeId);
+
+            WorkflowNode node = nodeMap.get(currentNodeId);
+            if (node == null) {
+                log.warn("节点不存在: {}", currentNodeId);
+                break;
+            }
+
             long nodeStartTime = System.currentTimeMillis();
 
             String nodeType = node.getType();
             String nodeId = node.getId();
             String nodeName = node.getData() != null
-                ? (String) node.getData().get("label")
-                : nodeId;
+                    ? (String) node.getData().get("label")
+                    : nodeId;
 
             log.info("开始执行节点: {} ({})", nodeId, nodeType);
 
@@ -153,6 +200,9 @@ public class WorkflowEngine {
                 }
 
                 log.info("节点执行成功: {} (耗时: {}ms)", nodeId, nodeDuration);
+
+                // 决定下一个节点（支持条件分支）
+                currentNodeId = determineNextNode(currentNodeId, nodeType, output, outgoingEdges);
 
             } catch (Exception e) {
                 log.error("节点执行失败: {}", nodeId, e);
@@ -200,5 +250,114 @@ public class WorkflowEngine {
         log.info("工作流执行完成: status={}, duration={}ms", status, duration);
 
         return response;
+    }
+
+    /**
+     * 决定下一个要执行的节点
+     * 对于条件节点，根据分支结果选择下一个节点
+     */
+    private String determineNextNode(String currentNodeId, String nodeType, Map<String, Object> output,
+                                      Map<String, List<WorkflowEdge>> outgoingEdges) {
+        List<WorkflowEdge> edges = outgoingEdges.get(currentNodeId);
+        if (edges == null || edges.isEmpty()) {
+            return null; // 没有后续节点
+        }
+
+        // 如果是条件节点，根据branch结果选择
+        if ("condition".equals(nodeType)) {
+            String branch = (String) output.get("branch");
+            log.info("条件节点 {} 选择分支: {}", currentNodeId, branch);
+
+            // 查找匹配分支的边
+            for (WorkflowEdge edge : edges) {
+                String sourceHandle = edge.getSourceHandle();
+                // sourceHandle 存储分支标识，如 "true", "false", "default" 或自定义分支名
+                if (sourceHandle != null && sourceHandle.equals(branch)) {
+                    log.info("跟随分支边: {} -> {} (handle={})", currentNodeId, edge.getTarget(), branch);
+                    return edge.getTarget();
+                }
+            }
+
+            // 没有匹配的分支，尝试找默认分支
+            for (WorkflowEdge edge : edges) {
+                if (edge.getSourceHandle() == null || "default".equals(edge.getSourceHandle())) {
+                    log.info("跟随默认分支边: {} -> {}", currentNodeId, edge.getTarget());
+                    return edge.getTarget();
+                }
+            }
+
+            // 没有任何分支匹配
+            log.warn("条件节点 {} 没有匹配的分支", currentNodeId);
+            return null;
+        }
+
+        // 非条件节点，返回第一条边的目标（如果有多个，只取第一个，这种情况需要并行执行，暂不支持）
+        return edges.get(0).getTarget();
+    }
+
+    /**
+     * 调试单个节点
+     */
+    public Map<String, Object> debugNode(cn.sdh.backend.entity.Workflow workflow, String nodeId,
+                                          Map<String, Object> inputs) {
+        // 解析工作流配置
+        WorkflowConfig config = JSON.parseObject(workflow.getFlowData(), WorkflowConfig.class);
+        if (config == null || config.getNodes() == null) {
+            throw new RuntimeException("工作流配置为空");
+        }
+
+        // 查找目标节点
+        WorkflowNode targetNode = config.getNodes().stream()
+                .filter(n -> n.getId().equals(nodeId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("节点不存在: " + nodeId));
+
+        // 初始化输入数据
+        Map<String, Object> currentInput = new HashMap<>();
+        if (inputs != null) {
+            currentInput.putAll(inputs);
+        }
+
+        // 设置默认值
+        if (!currentInput.containsKey("query")) {
+            currentInput.put("query", "");
+        }
+        if (!currentInput.containsKey("input")) {
+            currentInput.put("input", "");
+        }
+
+        // 执行节点
+        String nodeType = targetNode.getType();
+        NodeExecutor executor = executorFactory.getExecutor(nodeType);
+
+        log.info("调试节点: {} ({})", nodeId, nodeType);
+        long startTime = System.currentTimeMillis();
+
+        try {
+            Map<String, Object> output = executor.execute(targetNode, currentInput, null);
+            long duration = System.currentTimeMillis() - startTime;
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("nodeId", nodeId);
+            result.put("nodeType", nodeType);
+            result.put("status", "SUCCESS");
+            result.put("input", currentInput);
+            result.put("output", output);
+            result.put("duration", duration);
+
+            log.info("节点调试成功: {} (耗时: {}ms)", nodeId, duration);
+            return result;
+
+        } catch (Exception e) {
+            log.error("节点调试失败: {}", nodeId, e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("nodeId", nodeId);
+            result.put("nodeType", nodeType);
+            result.put("status", "FAILED");
+            result.put("input", currentInput);
+            result.put("error", e.getMessage());
+            result.put("duration", System.currentTimeMillis() - startTime);
+            return result;
+        }
     }
 }

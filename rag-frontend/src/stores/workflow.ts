@@ -293,6 +293,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
         return ['output', 'tokens']
       case 'retrieval':
         return ['documents', 'context']
+      case 'rerank':
+        return ['documents', 'context']
       case 'http':
         return ['response', 'status']
       default:

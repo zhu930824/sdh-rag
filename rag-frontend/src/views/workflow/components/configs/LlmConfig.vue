@@ -5,15 +5,22 @@
     <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
       <!-- 模型选择 -->
       <a-form-item label="模型">
-        <a-select v-model:value="model" placeholder="选择模型" size="small">
-          <a-select-option value="gpt-4o">GPT-4o</a-select-option>
-          <a-select-option value="gpt-4-turbo">GPT-4 Turbo</a-select-option>
-          <a-select-option value="gpt-3.5-turbo">GPT-3.5 Turbo</a-select-option>
-          <a-select-option value="claude-3-opus">Claude 3 Opus</a-select-option>
-          <a-select-option value="claude-3-sonnet">Claude 3 Sonnet</a-select-option>
-          <a-select-option value="qwen-max">通义千问 Max</a-select-option>
-          <a-select-option value="qwen-plus">通义千问 Plus</a-select-option>
-          <a-select-option value="deepseek-chat">DeepSeek Chat</a-select-option>
+        <a-select
+          v-model:value="model"
+          placeholder="选择模型"
+          size="small"
+          :loading="modelLoading"
+          show-search
+          :filter-option="filterModelOption"
+        >
+          <a-select-option
+            v-for="modelItem in chatModels"
+            :key="modelItem.id"
+            :value="modelItem.modelId"
+          >
+            {{ modelItem.name }}
+            <span class="model-id-hint">({{ modelItem.modelId }})</span>
+          </a-select-option>
         </a-select>
       </a-form-item>
 
@@ -111,9 +118,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { useWorkflowStore, type WorkflowNodeData, type InputParam } from '@/stores/workflow'
+import { getActiveChatModels, type ModelConfigRequest } from '@/api/model'
 import type { Node } from '@vue-flow/core'
 
 const props = defineProps<{
@@ -125,6 +133,38 @@ const emit = defineEmits<{
 }>()
 
 const workflowStore = useWorkflowStore()
+
+// 模型列表
+const chatModels = ref<{ id: number; name: string; modelId: string }[]>([])
+const modelLoading = ref(false)
+
+// 加载可用模型列表
+async function loadChatModels() {
+  modelLoading.value = true
+  try {
+    const res = await getActiveChatModels()
+    if (res.code === 200 && res.data) {
+      chatModels.value = res.data.map(m => ({
+        id: m.id,
+        name: m.name,
+        modelId: m.modelId,
+      }))
+    }
+  } catch (error) {
+    console.error('加载模型列表失败', error)
+  } finally {
+    modelLoading.value = false
+  }
+}
+
+// 模型筛选
+function filterModelOption(input: string, option: any) {
+  const modelItem = chatModels.value.find(m => m.modelId === option.value)
+  if (!modelItem) return false
+  const searchStr = input.toLowerCase()
+  return modelItem.name.toLowerCase().includes(searchStr) ||
+         modelItem.modelId.toLowerCase().includes(searchStr)
+}
 
 const model = computed({
   get: () => props.node.data.model || '',
@@ -170,6 +210,10 @@ function removeInputParam(index: number) {
   newParams.splice(index, 1)
   emit('update', { inputParams: newParams })
 }
+
+onMounted(() => {
+  loadChatModels()
+})
 </script>
 
 <style scoped lang="scss">
@@ -182,6 +226,12 @@ function removeInputParam(index: number) {
     padding-bottom: 8px;
     border-bottom: 1px solid #f0f0f0;
   }
+}
+
+.model-id-hint {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-left: 4px;
 }
 
 .field-tip {
