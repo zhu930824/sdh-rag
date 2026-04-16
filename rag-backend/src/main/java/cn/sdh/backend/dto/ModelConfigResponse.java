@@ -22,6 +22,7 @@ public class ModelConfigResponse {
     private Integer sort;
     private Integer isLocal;
     private Integer isBuiltIn;
+    private Integer isMultiModel;
     private String icon;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -45,6 +46,7 @@ public class ModelConfigResponse {
         response.setSort(entity.getSort());
         response.setIsLocal(entity.getIsLocal());
         response.setIsBuiltIn(entity.getIsBuiltIn());
+        response.setIsMultiModel(entity.getIsMultiModel());
         response.setIcon(entity.getIcon());
         response.setCreateTime(entity.getCreateTime());
         response.setUpdateTime(entity.getUpdateTime());

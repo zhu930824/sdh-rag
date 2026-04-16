@@ -40,6 +40,11 @@ public class ModelConfig {
 
     private Integer isBuiltIn;
 
+    /**
+     * 是否为多模态模型：0-否，1-是
+     */
+    private Integer isMultiModel;
+
     private String icon;
 
     private LocalDateTime createTime;

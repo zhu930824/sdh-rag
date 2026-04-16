@@ -61,14 +61,17 @@ export interface WorkflowFormData {
 
 // 工作流执行结果
 export interface WorkflowExecution {
-  id: string
-  workflowId: number
-  status: 'running' | 'success' | 'failed'
-  startTime: string
+  executionId?: string
+  status: string  // 'RUNNING' | 'SUCCESS' | 'FAILED' (后端返回大写)
+  startTime?: string
   endTime?: string
-  inputs: Record<string, any>
+  inputs?: Record<string, any>
   outputs?: Record<string, any>
-  nodeExecutions: NodeExecution[]
+  outputData?: Record<string, any>  // 后端返回的输出数据字段
+  nodeExecutions?: NodeExecution[]
+  nodeResults?: NodeExecution[]  // 后端返回的节点结果字段
+  errorMessage?: string
+  duration?: number
   error?: string
 }
 
@@ -76,12 +79,15 @@ export interface WorkflowExecution {
 export interface NodeExecution {
   nodeId: string
   nodeName: string
-  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped'
-  startTime: string
+  nodeType?: string
+  status: string  // 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED' (后端返回大写)
+  startTime?: string
   endTime?: string
-  inputs: Record<string, any>
+  input?: string
+  output?: string
+  inputs?: Record<string, any>
   outputs?: Record<string, any>
-  error?: string
+  error?: string | null
   duration?: number
 }
 

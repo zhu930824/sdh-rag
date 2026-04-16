@@ -43,8 +43,9 @@ export interface InputParam {
 
 export interface OutputParam {
   name: string
-  type: string
-  description?: string
+  type: 'input' | 'reference'
+  value?: string
+  referenceNode?: string
 }
 
 export interface ConditionItem {

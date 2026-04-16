@@ -95,6 +95,7 @@ export interface ModelConfig {
   sort: number
   isLocal?: number
   isBuiltIn?: number
+  isMultiModel?: number
   icon?: string
   createTime?: string
   updateTime?: string

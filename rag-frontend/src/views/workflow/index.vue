@@ -100,15 +100,15 @@
     >
       <div v-if="executionResult" class="execution-result">
         <a-alert
-          :type="executionResult.status === 'success' ? 'success' : 'error'"
-          :message="executionResult.status === 'success' ? '执行成功' : '执行失败'"
+          :type="executionResult.status?.toUpperCase() === 'SUCCESS' ? 'success' : 'error'"
+          :message="executionResult.status?.toUpperCase() === 'SUCCESS' ? '执行成功' : '执行失败'"
           show-icon
           style="margin-bottom: 16px"
         />
 
         <a-timeline>
           <a-timeline-item
-            v-for="nodeExec in executionResult.nodeExecutions"
+            v-for="nodeExec in executionResult.nodeResults || executionResult.nodeExecutions"
             :key="nodeExec.nodeId"
             :color="getNodeExecutionColor(nodeExec.status)"
           >
@@ -130,7 +130,7 @@
         </a-timeline>
 
         <a-divider>输出结果</a-divider>
-        <pre class="output-json">{{ JSON.stringify(executionResult.outputs, null, 2) }}</pre>
+        <pre class="output-json">{{ JSON.stringify(executionResult.outputData || executionResult.outputs, null, 2) }}</pre>
       </div>
     </a-drawer>
   </div>
@@ -168,7 +168,7 @@ const workflowStore = useWorkflowStore()
 const saving = ref(false)
 const running = ref(false)
 const resultDrawerVisible = ref(false)
-const executionResult = ref<WorkflowExecution | null>(null)
+const executionResult = ref<any>(null)
 const runDialogVisible = ref(false)
 const inputValues = ref<Record<string, any>>({})
 
@@ -448,6 +448,7 @@ async function handleRun() {
 
 // 获取节点执行颜色
 function getNodeExecutionColor(status: string): string {
+  const statusLower = status?.toLowerCase()
   const colors: Record<string, string> = {
     pending: 'gray',
     running: 'blue',
@@ -455,7 +456,7 @@ function getNodeExecutionColor(status: string): string {
     failed: 'red',
     skipped: 'default',
   }
-  return colors[status] || 'default'
+  return colors[statusLower] || 'default'
 }
 
 // 初始化

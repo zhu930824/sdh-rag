@@ -28,5 +28,6 @@ public class ModelConfigRequest {
     private Integer sort = 0;
     private Integer isLocal = 0;
     private Integer isBuiltIn = 0;
+    private Integer isMultiModel = 0;
     private String icon;
 }

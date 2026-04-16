@@ -3,6 +3,9 @@
     <div class="node-header">
       <span class="node-icon">🔍</span>
       <span class="node-title">{{ data.label }}</span>
+      <button v-if="selected" class="delete-btn" @click.stop="handleDelete">
+        <CloseOutlined />
+      </button>
     </div>
     <div class="node-body">
       <div class="node-info">
@@ -24,12 +27,22 @@
 
 <script setup lang="ts">
 import { Handle, Position } from '@vue-flow/core'
-import type { WorkflowNodeData } from '@/stores/workflow'
+import { CloseOutlined } from '@ant-design/icons-vue'
+import { useWorkflowStore, type WorkflowNodeData } from '@/stores/workflow'
 
-defineProps<{
+const props = defineProps<{
   data: WorkflowNodeData
   selected?: boolean
+  id?: string
 }>()
+
+const workflowStore = useWorkflowStore()
+
+function handleDelete() {
+  if (props.id) {
+    workflowStore.deleteNode(props.id)
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -76,6 +89,25 @@ defineProps<{
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .delete-btn {
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: all 0.2s;
+
+    &:hover {
+      background: #ff4d4f;
+    }
   }
 }
 

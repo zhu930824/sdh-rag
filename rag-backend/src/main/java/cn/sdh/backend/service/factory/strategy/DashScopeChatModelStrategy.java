@@ -56,9 +56,12 @@ public class DashScopeChatModelStrategy extends AbstractChatModelStrategy {
                 .apiKey(apiKey)
                 .build();
 
+        // 判断是否为多模态模型，默认 false
+        boolean isMultiModel = config != null && config.getIsMultiModel() != null && config.getIsMultiModel() == 1;
+
         DashScopeChatOptions.DashScopeChatOptionsBuilder builder = DashScopeChatOptions.builder()
                 .model(modelName)
-                .multiModel(true);
+                .multiModel(isMultiModel);
 
         if (config != null) {
             if (config.getTemperature() != null) {

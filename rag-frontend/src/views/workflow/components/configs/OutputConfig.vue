@@ -12,30 +12,38 @@
         </a-button>
       </div>
 
-      <div v-for="(param, index) in outputParams" :key="index" class="param-item">
+      <div v-for="(param, index) in localParams" :key="index" class="param-item">
         <a-input
-          v-model:value="param.name"
+          :value="param.name"
           placeholder="参数名"
           size="small"
           style="width: 80px"
+          @change="(e) => updateParam(index, 'name', e.target.value)"
         />
-        <a-select v-model:value="param.type" size="small" style="width: 80px">
+        <a-select
+          :value="param.type"
+          size="small"
+          style="width: 80px"
+          @change="(val) => updateParam(index, 'type', val)"
+        >
           <a-select-option value="input">输入</a-select-option>
           <a-select-option value="reference">引用</a-select-option>
         </a-select>
         <div class="param-value">
           <a-input
             v-if="param.type === 'input'"
-            v-model:value="param.value"
+            :value="param.value"
             placeholder="输入值"
             size="small"
+            @change="(e) => updateParam(index, 'value', e.target.value)"
           />
           <a-select
             v-else
-            v-model:value="param.referenceNode"
+            :value="param.referenceNode"
             placeholder="选择引用"
             size="small"
             allow-clear
+            @change="(val) => updateParam(index, 'referenceNode', val)"
           >
             <a-select-option
               v-for="ref in referenceableParams"
@@ -56,10 +64,11 @@
     <div class="template-section">
       <div class="template-label">响应模板</div>
       <a-textarea
-        v-model:value="responseContent"
+        :value="responseContent"
         placeholder="使用 {{参数名}} 引用输出配置中的参数"
         :rows="6"
         style="font-family: monospace"
+        @change="(e) => updateResponseContent(e.target.value)"
       />
       <div class="template-tip">
         💡 使用 {{ 参数名 }} 引用上面定义的参数
@@ -69,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { useWorkflowStore, type WorkflowNodeData, type OutputParam } from '@/stores/workflow'
 import type { Node } from '@vue-flow/core'
@@ -84,15 +93,19 @@ const emit = defineEmits<{
 
 const workflowStore = useWorkflowStore()
 
-const outputParams = computed({
-  get: () => props.node.data.outputParams || [],
-  set: (val) => emit('update', { outputParams: val }),
-})
+// 使用本地 ref 存储参数，确保响应式更新
+const localParams = ref<OutputParam[]>([])
 
-const responseContent = computed({
-  get: () => props.node.data.responseContent || '',
-  set: (val) => emit('update', { responseContent: val }),
-})
+// 监听 node 变化，同步本地参数
+watch(
+  () => props.node.data.outputParams,
+  (newParams) => {
+    localParams.value = newParams ? JSON.parse(JSON.stringify(newParams)) : []
+  },
+  { immediate: true, deep: true }
+)
+
+const responseContent = computed(() => props.node.data.responseContent || '')
 
 // 获取可引用的参数
 const referenceableParams = computed(() =>
@@ -100,14 +113,29 @@ const referenceableParams = computed(() =>
 )
 
 function addParam() {
-  const newParam: OutputParam = { name: '', type: 'input', value: '' }
-  emit('update', { outputParams: [...outputParams.value, newParam] })
+  const newParam: OutputParam = { name: '', type: 'input', value: '', referenceNode: '' }
+  localParams.value.push(newParam)
+  emitUpdate()
 }
 
 function removeParam(index: number) {
-  const newParams = [...outputParams.value]
-  newParams.splice(index, 1)
-  emit('update', { outputParams: newParams })
+  localParams.value.splice(index, 1)
+  emitUpdate()
+}
+
+function updateParam(index: number, field: string, value: any) {
+  if (localParams.value[index]) {
+    localParams.value[index][field] = value
+    emitUpdate()
+  }
+}
+
+function updateResponseContent(value: string) {
+  emit('update', { responseContent: value })
+}
+
+function emitUpdate() {
+  emit('update', { outputParams: JSON.parse(JSON.stringify(localParams.value)) })
 }
 </script>
 

@@ -1,21 +1,14 @@
 <template>
-  <div class="workflow-node http-node" :class="{ selected }">
-    <div class="node-header">
-      <span class="node-icon">🌐</span>
+  <div class="node-wrapper" :class="{ selected }">
+    <div class="node-header" :style="{ background: headerColor }">
+      <span class="node-icon">{{ icon }}</span>
       <span class="node-title">{{ data.label }}</span>
-      <button v-if="selected" class="delete-btn" @click.stop="handleDelete">
+      <button v-if="deletable && selected" class="delete-btn" @click.stop="handleDelete">
         <CloseOutlined />
       </button>
     </div>
     <div class="node-body">
-      <div class="node-info">
-        <span class="info-label">方法:</span>
-        <span class="info-value">{{ data.method || 'GET' }}</span>
-      </div>
-      <div class="node-info">
-        <span class="info-label">URL:</span>
-        <span class="info-value truncate">{{ data.url || '未设置' }}</span>
-      </div>
+      <slot></slot>
     </div>
 
     <!-- 输入连接点 -->
@@ -33,41 +26,37 @@ import { useWorkflowStore, type WorkflowNodeData } from '@/stores/workflow'
 const props = defineProps<{
   data: WorkflowNodeData
   selected?: boolean
-  id?: string
+  icon: string
+  headerColor: string
+  deletable?: boolean
 }>()
 
 const workflowStore = useWorkflowStore()
 
 function handleDelete() {
-  if (props.id) {
-    workflowStore.deleteNode(props.id)
+  if (props.data.type !== 'input' && props.data.type !== 'output') {
+    workflowStore.deleteNode((props as any).id || '')
   }
 }
 </script>
 
 <style scoped lang="scss">
-.workflow-node {
+.node-wrapper {
   background: #fff;
   border: 2px solid #e8e8e8;
   border-radius: 8px;
   min-width: 180px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
+  position: relative;
 
   &:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   }
 
   &.selected {
-    border-color: #2f54eb;
-    box-shadow: 0 0 0 2px rgba(47, 84, 235, 0.2);
-  }
-}
-
-.http-node {
-  .node-header {
-    background: linear-gradient(135deg, #2f54eb 0%, #597ef7 100%);
-    border-radius: 6px 6px 0 0;
+    border-color: var(--node-color, #1890ff);
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
   }
 }
 
@@ -77,6 +66,7 @@ function handleDelete() {
   gap: 8px;
   padding: 10px 12px;
   color: #fff;
+  border-radius: 6px 6px 0 0;
 
   .node-icon {
     font-size: 16px;
@@ -118,38 +108,16 @@ function handleDelete() {
   gap: 4px;
 }
 
-.node-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-
-  .info-label {
-    color: #8c8c8c;
-  }
-
-  .info-value {
-    color: #262626;
-    font-weight: 500;
-    max-width: 100px;
-
-    &.truncate {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-}
-
 .node-handle {
   width: 12px;
   height: 12px;
-  border: 2px solid #2f54eb;
+  border: 2px solid var(--node-color, #1890ff);
   background: #fff;
   transition: all 0.2s ease;
 
   &:hover {
     transform: scale(1.2);
-    background: #2f54eb;
+    background: var(--node-color, #1890ff);
   }
 }
 

@@ -64,6 +64,7 @@ public class ModelConfigController {
         config.setSort(request.getSort());
         config.setIsLocal(request.getIsLocal());
         config.setIsBuiltIn(request.getIsBuiltIn());
+        config.setIsMultiModel(request.getIsMultiModel());
         config.setIcon(request.getIcon());
         modelConfigService.save(config);
         return Result.success();
@@ -95,6 +96,7 @@ public class ModelConfigController {
         config.setSort(request.getSort());
         config.setIsLocal(request.getIsLocal());
         config.setIsBuiltIn(request.getIsBuiltIn());
+        config.setIsMultiModel(request.getIsMultiModel());
         config.setIcon(request.getIcon());
         modelConfigService.update(config);
         return Result.success();

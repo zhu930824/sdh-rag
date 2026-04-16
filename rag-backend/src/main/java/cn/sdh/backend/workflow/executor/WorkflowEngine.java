@@ -230,9 +230,33 @@ public class WorkflowEngine {
         long endTime = System.currentTimeMillis();
         int duration = (int) (endTime - startTime);
 
-        // 准备输出数据
-        Map<String, Object> outputData = new HashMap<>(currentInput);
+        // 准备输出数据 - 检查是否有输出节点的最终输出
+        Map<String, Object> outputData = new HashMap<>();
+
+        // 查找输出节点的结果
+        for (ExecutionResponse.NodeResult result : nodeResults) {
+            if ("output".equals(result.getNodeType())) {
+                // 从输出节点的输出中获取最终结果
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> outputNodeResult = JSON.parseObject(result.getOutput(), Map.class);
+                    if (outputNodeResult != null) {
+                        outputData.putAll(outputNodeResult);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析输出节点结果失败", e);
+                }
+            }
+        }
+
+        // 如果没有输出节点或输出节点没有返回数据，使用默认行为
+        if (outputData.isEmpty() || !outputData.containsKey("__isFinalOutput__")) {
+            outputData = new HashMap<>(currentInput);
+        }
+
+        // 移除内部标记
         outputData.remove("__nodeOutputs__");
+        outputData.remove("__isFinalOutput__");
 
         // 发送工作流完成事件
         if (eventCallback != null) {

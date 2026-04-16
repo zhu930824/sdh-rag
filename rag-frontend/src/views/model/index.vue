@@ -195,6 +195,9 @@
         <a-form-item label="是否内置">
           <a-switch :checked="formData.isBuiltIn === 1" @change="(checked: boolean) => formData.isBuiltIn = checked ? 1 : 0" />
         </a-form-item>
+        <a-form-item label="是否多模态">
+          <a-switch :checked="formData.isMultiModel === 1" @change="(checked: boolean) => formData.isMultiModel = checked ? 1 : 0" />
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -220,8 +223,9 @@ import type { ModelConfig } from '@/api/model'
 
 interface ExtendedModelConfig extends ModelConfig {
   icon?: string
-  isLocal?: boolean
-  isBuiltIn?: boolean
+  isLocal?: number
+  isBuiltIn?: number
+  isMultiModel?: number
 }
 
 const loading = ref(false)
@@ -245,6 +249,7 @@ const formData = reactive<Partial<ExtendedModelConfig>>({
   status: 1,
   isLocal: 0,
   isBuiltIn: 0,
+  isMultiModel: 0,
 })
 
 const providers = [
@@ -325,8 +330,11 @@ async function loadData() {
     const res = await getModelList({ page: 1, pageSize: 100, keyword: undefined })
     tableData.value = (res.data?.records || []).map((item: any) => ({
       ...item,
-      isLocal: item.provider === 'local' || item.provider === 'ollama' || item.provider === 'vllm',
-      isBuiltIn: item.name.includes('内置') || item.provider === 'local',
+      // 保持后端返回的原始数值，用于编辑回显
+      // 如果后端没有返回，则根据 provider 判断默认值
+      isLocal: item.isLocal ?? (item.provider === 'local' || item.provider === 'ollama' || item.provider === 'vllm' ? 1 : 0),
+      isBuiltIn: item.isBuiltIn ?? (item.name.includes('内置') || item.provider === 'local' ? 1 : 0),
+      isMultiModel: item.isMultiModel ?? 0,
     }))
   } catch (error) {
     tableData.value = []
@@ -360,6 +368,7 @@ function handleAdd() {
     status: 1,
     isLocal: 0,
     isBuiltIn: 0,
+    isMultiModel: 0,
   })
   dialogVisible.value = true
 }
@@ -378,6 +387,7 @@ async function handleSubmit() {
       ...formData,
       isLocal: formData.isLocal ? 1 : 0,
       isBuiltIn: formData.isBuiltIn ? 1 : 0,
+      isMultiModel: formData.isMultiModel ? 1 : 0,
     }
 
     if (isEdit.value && formData.id) {
