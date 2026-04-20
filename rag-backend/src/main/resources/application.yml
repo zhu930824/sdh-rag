@@ -10,7 +10,7 @@ spring:
     resources:
       add-mappings: false
   neo4j:
-    uri: bolt://192.168.2.128:7687
+    uri: bolt://192.168.1.196:7687
     authentication:
       username: neo4j
       password: password
@@ -32,7 +32,7 @@ spring:
         dimensions: 1536
         similarity: cosine
   elasticsearch:
-    uris: 192.168.2.128:9200
+    uris: 192.168.1.196:9200
   datasource:
     username: root
     password: root
@@ -50,7 +50,7 @@ spring:
 
   data:
     redis:
-      host: 192.168.2.128
+      host: 192.168.1.196
       port: 6379              # Redis 服务器端口，默认为 6379
 #      password:               # Redis 密码，默认为空
       timeout: 5000ms         # 连接超时时间
@@ -77,7 +77,7 @@ xushu:
 
 # MinIO 配置
 minio:
-  endpoint: http://192.168.2.128:9000
+  endpoint: http://192.168.1.196:9000
   access-key: admin
   secret-key: password
   bucket-name: sdh-documents

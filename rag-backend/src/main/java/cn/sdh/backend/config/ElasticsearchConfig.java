@@ -90,8 +90,10 @@ public class ElasticsearchConfig {
         // chunk_index - 长整型
         properties.put("chunk_index", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
 
-        // content - 文本类型
-        properties.put("content", Property.of(p -> p.text(TextProperty.of(t -> t))));
+        // content - 文本类型，使用 ik 分词器（需要 ES 服务端安装 elasticsearch-analysis-ik 插件）
+        properties.put("content", Property.of(p -> p.text(TextProperty.of(t -> t
+            .analyzer("ik_max_word")
+            .searchAnalyzer("ik_smart")))));
 
         // embedding - 密集向量（用于 knn 搜索）
         // 使用 index: true 启用 knn 索引

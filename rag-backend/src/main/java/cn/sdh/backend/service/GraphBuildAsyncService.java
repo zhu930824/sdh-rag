@@ -18,11 +18,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 图谱构建异步服务
@@ -70,12 +67,11 @@ public class GraphBuildAsyncService {
             int totalConcepts = 0;
             int totalKeywords = 0;
 
-            // 分页获取所有分块内容，每次处理100个
+            // 先收集所有文档ID，再按文档单独查询分块，确保分块顺序正确
             int pageSize = 100;
             int totalPages = (int) Math.ceil((double) chunkCount / pageSize);
 
-            // 用于合并文本，按文档ID分组
-            Map<Long, StringBuilder> documentTextMap = new HashMap<>();
+            Set<Long> documentIds = new LinkedHashSet<>();
 
             taskManager.updateProgress(taskId, 15, "正在加载文档内容...");
 
@@ -88,18 +84,38 @@ public class GraphBuildAsyncService {
                 }
 
                 for (org.springframework.ai.document.Document chunk : chunks) {
-                    String content = chunk.getText();
-                    if (content == null || content.isBlank()) {
-                        continue;
-                    }
-
-                    // 获取文档ID
                     Object docIdObj = chunk.getMetadata().get("document_id");
-                    Long documentId = docIdObj != null ? ((Number) docIdObj).longValue() : knowledgeId;
+                    if (docIdObj != null) {
+                        documentIds.add(((Number) docIdObj).longValue());
+                    }
+                }
+            }
 
-                    // 合并到文档文本
-                    documentTextMap.computeIfAbsent(documentId, k -> new StringBuilder())
-                            .append(content).append("\n\n");
+            // 按文档ID逐个查询分块，保证同一文档内按 chunk_index 正序合并
+            Map<Long, String> documentTextMap = new LinkedHashMap<>();
+
+            for (Long documentId : documentIds) {
+                List<org.springframework.ai.document.Document> docChunks =
+                        vectorStoreService.getChunksByDocumentId(documentId, knowledgeId, 0, 10000);
+                if (docChunks == null || docChunks.isEmpty()) {
+                    continue;
+                }
+
+                // 按 chunk_index 排序，确保分块顺序正确
+                docChunks.sort(Comparator.comparingInt(d -> {
+                    Object idx = d.getMetadata().get("chunk_index");
+                    return idx != null ? ((Number) idx).intValue() : 0;
+                }));
+
+                StringBuilder sb = new StringBuilder();
+                for (org.springframework.ai.document.Document chunk : docChunks) {
+                    String content = chunk.getText();
+                    if (content != null && !content.isBlank()) {
+                        sb.append(content).append("\n\n");
+                    }
+                }
+                if (!sb.isEmpty()) {
+                    documentTextMap.put(documentId, sb.toString());
                 }
             }
 
@@ -109,9 +125,9 @@ public class GraphBuildAsyncService {
             taskManager.updateStats(taskId, 0, totalDocuments, 0, 0, 0, 0);
 
             // 为每个文档构建图谱
-            for (Map.Entry<Long, StringBuilder> entry : documentTextMap.entrySet()) {
+            for (Map.Entry<Long, String> entry : documentTextMap.entrySet()) {
                 Long documentId = entry.getKey();
-                String fullText = entry.getValue().toString();
+                String fullText = entry.getValue();
 
                 // 截取文本，避免过长（LLM有token限制）
                 String truncatedText = fullText.length() > 8000 ? fullText.substring(0, 8000) : fullText;

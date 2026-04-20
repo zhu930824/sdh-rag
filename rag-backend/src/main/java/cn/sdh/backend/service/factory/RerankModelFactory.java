@@ -8,6 +8,7 @@ import com.alibaba.cloud.ai.dashscope.rerank.DashScopeRerankModel;
 import com.alibaba.cloud.ai.dashscope.rerank.DashScopeRerankOptions;
 import com.alibaba.cloud.ai.model.RerankModel;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +42,7 @@ public class RerankModelFactory extends ModelFactory<RerankModel> {
         }
 
         // 目前仅 DashScope 支持原生的 Rerank 功能
-        String apiKey = config.getApiKey() != null ? config.getApiKey() : dashscopeApiKey;
+        String apiKey = StringUtils.isNotBlank(config.getApiKey()) ? config.getApiKey() : dashscopeApiKey;
         return createDashScopeRerankModel(apiKey, config.getModelId());
     }
 
