@@ -82,8 +82,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             elasticsearchClient.index(request);
 
-            log.info("添加向量成功: vectorId={}, chunkId={}, knowledgeId={}, embeddingModel={}",
-                    vectorId, chunk.getId(), knowledgeId, embeddingModelName);
+            log.info("添加向量成功: vectorId={}, chunkIndex={}, knowledgeId={}, embeddingModel={}",
+                    vectorId, chunk.getChunkIndex(), knowledgeId, embeddingModelName);
             return vectorId;
         } catch (Exception e) {
             log.error("添加向量失败: chunkId={}, error={}", chunk.getId(), e.getMessage(), e);
