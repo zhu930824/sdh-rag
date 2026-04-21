@@ -64,12 +64,12 @@
             <span v-if="record.hitRate !== null">{{ (record.hitRate * 100).toFixed(1) }}%</span>
             <span v-else>-</span>
           </template>
-          <template v-else-if="column.key === 'mrr'">
-            <span v-if="record.mrr !== null">{{ record.mrr.toFixed(4) }}</span>
+          <template v-else-if="column.key === 'docHitRate'">
+            <span v-if="record.docHitRate !== null">{{ (record.docHitRate * 100).toFixed(1) }}%</span>
             <span v-else>-</span>
           </template>
-          <template v-else-if="column.key === 'avgRecall'">
-            <span v-if="record.avgRecall !== null">{{ (record.avgRecall * 100).toFixed(1) }}%</span>
+          <template v-else-if="column.key === 'mrr'">
+            <span v-if="record.mrr !== null">{{ record.mrr.toFixed(3) }}</span>
             <span v-else>-</span>
           </template>
           <template v-else-if="column.key === 'action'">
@@ -148,8 +148,33 @@
                 </div>
               </div>
               <div class="metric-info">
-                <div class="metric-name">Hit Rate</div>
-                <div class="metric-desc">命中率</div>
+                <div class="metric-name">分块命中率</div>
+                <div class="metric-desc">精确匹配</div>
+              </div>
+            </div>
+
+            <div class="metric-divider"></div>
+
+            <div class="metric-item metric-doc-hit">
+              <div class="metric-visual">
+                <svg viewBox="0 0 36 36" class="metric-ring">
+                  <path
+                    class="ring-bg"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    class="ring-fill ring-fill-orange"
+                    :stroke-dasharray="`${(currentTask.docHitRate || 0) * 100}, 100`"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                </svg>
+                <div class="metric-ring-value metric-ring-value-orange">
+                  {{ currentTask.docHitRate ? (currentTask.docHitRate * 100).toFixed(0) : 0 }}<span class="percent">%</span>
+                </div>
+              </div>
+              <div class="metric-info">
+                <div class="metric-name">文档命中率</div>
+                <div class="metric-desc">同文档任意分块</div>
               </div>
             </div>
 
@@ -169,20 +194,15 @@
 
             <div class="metric-divider"></div>
 
-            <div class="metric-item metric-recall">
+            <div class="metric-item metric-rank">
               <div class="metric-visual">
-                <div class="metric-bar-visual">
-                  <div class="bar-track">
-                    <div class="bar-fill" :style="{ width: (currentTask.avgRecall || 0) * 100 + '%' }"></div>
-                  </div>
-                  <div class="bar-value">
-                    {{ currentTask.avgRecall ? (currentTask.avgRecall * 100).toFixed(0) : 0 }}%
-                  </div>
+                <div class="metric-big-value highlight">
+                  {{ currentTask.avgHitRank ? currentTask.avgHitRank.toFixed(1) : '-' }}
                 </div>
               </div>
               <div class="metric-info">
-                <div class="metric-name">Recall@K</div>
-                <div class="metric-desc">召回率</div>
+                <div class="metric-name">平均排名</div>
+                <div class="metric-desc">命中位置</div>
               </div>
             </div>
 
@@ -190,7 +210,7 @@
 
             <div class="metric-item metric-count">
               <div class="metric-visual">
-                <div class="metric-big-value highlight">
+                <div class="metric-big-value purple">
                   {{ currentTask.qaCount || 0 }}
                 </div>
               </div>
@@ -208,7 +228,12 @@
             <div class="stats-segment stats-hit" :style="{ width: (hitCount / qaList.length * 100) + '%' }">
               <CheckCircleOutlined />
               <span class="segment-num">{{ hitCount }}</span>
-              <span class="segment-label">命中</span>
+              <span class="segment-label">分块命中</span>
+            </div>
+            <div class="stats-segment stats-doc-hit" :style="{ width: ((docHitOnlyCount) / qaList.length * 100) + '%' }">
+              <FileTextOutlined />
+              <span class="segment-num">{{ docHitOnlyCount }}</span>
+              <span class="segment-label">文档命中</span>
             </div>
             <div class="stats-segment stats-miss" :style="{ width: (missCount / qaList.length * 100) + '%' }">
               <CloseCircleOutlined />
@@ -216,10 +241,29 @@
               <span class="segment-label">未命中</span>
             </div>
           </div>
-          <div class="stats-footer" v-if="avgHitRank">
-            <TrophyOutlined class="trophy-icon" />
-            <span>平均命中排名</span>
-            <span class="rank-value">第 {{ avgHitRank }} 位</span>
+
+          <!-- Top-K 分布 -->
+          <div class="top-k-bar" v-if="topKHits">
+            <div class="top-k-item">
+              <span class="top-k-label">Top-1</span>
+              <div class="top-k-track"><div class="top-k-fill" :style="{ width: (topKHits.top1 / qaList.length * 100) + '%' }"></div></div>
+              <span class="top-k-num">{{ topKHits.top1 }}</span>
+            </div>
+            <div class="top-k-item">
+              <span class="top-k-label">Top-3</span>
+              <div class="top-k-track"><div class="top-k-fill" :style="{ width: (topKHits.top3 / qaList.length * 100) + '%' }"></div></div>
+              <span class="top-k-num">{{ topKHits.top3 }}</span>
+            </div>
+            <div class="top-k-item">
+              <span class="top-k-label">Top-5</span>
+              <div class="top-k-track"><div class="top-k-fill" :style="{ width: (topKHits.top5 / qaList.length * 100) + '%' }"></div></div>
+              <span class="top-k-num">{{ topKHits.top5 }}</span>
+            </div>
+            <div class="top-k-item">
+              <span class="top-k-label">Top-10</span>
+              <div class="top-k-track"><div class="top-k-fill" :style="{ width: (topKHits.top10 / qaList.length * 100) + '%' }"></div></div>
+              <span class="top-k-num">{{ topKHits.top10 }}</span>
+            </div>
           </div>
         </div>
 
@@ -244,12 +288,16 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'hit'">
-                <a-tag :color="record.hit ? 'success' : 'error'" style="font-weight: 500">
+                <a-tag :color="record.hit ? 'success' : 'default'" style="font-weight: 500">
                   <template #icon>
                     <CheckCircleOutlined v-if="record.hit" />
-                    <CloseCircleOutlined v-else />
                   </template>
-                  {{ record.hit ? '命中' : '未命中' }}
+                  {{ record.hit ? '命中' : '-' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'docHit'">
+                <a-tag :color="record.docHit ? (record.hit ? 'default' : 'warning') : 'default'" style="font-weight: 500">
+                  {{ record.docHit ? (record.hit ? '-' : '命中') : '-' }}
                 </a-tag>
               </template>
               <template v-else-if="column.key === 'hitRank'">
@@ -258,6 +306,7 @@
                   :count="record.hitRank"
                   :number-style="{ backgroundColor: record.hitRank <= 3 ? '#52c41a' : '#1890ff' }"
                 />
+                <span v-else-if="record.docHitRank" class="text-muted">D{{ record.docHitRank }}</span>
                 <span v-else class="text-muted">-</span>
               </template>
               <template v-else-if="column.key === 'question'">
@@ -267,7 +316,7 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-button type="link" size="small" @click="showQaDetail(record)">
-                  查看详情
+                  详情
                 </a-button>
               </template>
             </template>
@@ -300,13 +349,17 @@
           <a-descriptions-item label="问题" :span="2">
             {{ selectedQa.question }}
           </a-descriptions-item>
-          <a-descriptions-item label="是否命中">
+          <a-descriptions-item label="分块命中">
             <a-tag :color="selectedQa.hit ? 'success' : 'error'">
               {{ selectedQa.hit ? '命中' : '未命中' }}
             </a-tag>
+            <span v-if="selectedQa.hitRank"> (第 {{ selectedQa.hitRank }} 位)</span>
           </a-descriptions-item>
-          <a-descriptions-item label="命中排名">
-            {{ selectedQa.hitRank ? '第 ' + selectedQa.hitRank + ' 位' : '-' }}
+          <a-descriptions-item label="文档命中">
+            <a-tag :color="selectedQa.docHit ? 'success' : 'error'">
+              {{ selectedQa.docHit ? '命中' : '未命中' }}
+            </a-tag>
+            <span v-if="selectedQa.docHitRank && !selectedQa.hit"> (第 {{ selectedQa.docHitRank }} 位)</span>
           </a-descriptions-item>
           <a-descriptions-item label="期望答案" :span="2">
             {{ selectedQa.expectedAnswer }}
@@ -315,6 +368,9 @@
             <a-typography-text copyable>
               {{ selectedQa.sourceChunkId || '-' }}
             </a-typography-text>
+          </a-descriptions-item>
+          <a-descriptions-item label="源文档ID" :span="2">
+            {{ selectedQa.sourceDocumentId || '-' }}
           </a-descriptions-item>
           <a-descriptions-item label="源分块内容" :span="2">
             <div class="chunk-preview">{{ selectedQa.sourceChunkContent || '-' }}</div>
@@ -377,28 +433,33 @@ const taskColumns = [
   { title: '任务名称', dataIndex: 'taskName', key: 'taskName' },
   { title: '知识库', dataIndex: 'knowledgeName', key: 'knowledgeName', width: 120 },
   { title: 'QA数量', dataIndex: 'qaCount', key: 'qaCount', width: 80 },
-  { title: 'Hit Rate', key: 'hitRate', width: 100 },
-  { title: 'MRR', key: 'mrr', width: 100 },
-  { title: 'Recall@K', key: 'avgRecall', width: 100 },
+  { title: '分块命中率', key: 'hitRate', width: 100 },
+  { title: '文档命中率', key: 'docHitRate', width: 100 },
+  { title: 'MRR', key: 'mrr', width: 80 },
   { title: '状态', key: 'status', width: 80 },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 },
   { title: '操作', key: 'action', width: 140 },
 ]
 
 const qaColumns = [
-  { title: '问题', dataIndex: 'question', key: 'question', ellipsis: true, width: 300 },
-  { title: '是否命中', key: 'hit', width: 100 },
-  { title: '命中排名', key: 'hitRank', width: 100 },
-  { title: '操作', key: 'action', width: 100 },
+  { title: '问题', dataIndex: 'question', key: 'question', ellipsis: true, width: 280 },
+  { title: '分块命中', key: 'hit', width: 90 },
+  { title: '文档命中', key: 'docHit', width: 90 },
+  { title: '排名', key: 'hitRank', width: 80 },
+  { title: '操作', key: 'action', width: 80 },
 ]
 
 // 计算属性
 const hitCount = computed(() => qaList.value.filter(q => q.hit).length)
-const missCount = computed(() => qaList.value.filter(q => !q.hit).length)
-const avgHitRank = computed(() => {
-  const hitRanks = qaList.value.filter(q => q.hitRank).map(q => q.hitRank!)
-  if (hitRanks.length === 0) return null
-  return (hitRanks.reduce((a, b) => a + b, 0) / hitRanks.length).toFixed(1)
+const docHitOnlyCount = computed(() => qaList.value.filter(q => q.docHit && !q.hit).length)
+const missCount = computed(() => qaList.value.filter(q => !q.docHit).length)
+const topKHits = computed(() => {
+  if (!currentTask.value?.topKHits) return null
+  try {
+    return JSON.parse(currentTask.value.topKHits)
+  } catch {
+    return null
+  }
 })
 const filteredQaList = computed(() => {
   if (!qaSearchText.value) return qaList.value
@@ -764,9 +825,17 @@ onMounted(() => {
   }
 
   .metric-hit .metric-name { color: #0958d9; }
+  .metric-doc-hit .metric-name { color: #d46b08; }
   .metric-mrr .metric-name { color: #237804; }
-  .metric-recall .metric-name { color: #d46b08; }
+  .metric-rank .metric-name { color: #531dab; }
   .metric-count .metric-name { color: #531dab; }
+
+  .metric-ring-value-orange {
+    color: #d46b08 !important;
+  }
+  .ring-fill-orange {
+    stroke: #fa8c16 !important;
+  }
 
   // 大数字 - MRR
   .metric-big-value {
@@ -778,6 +847,9 @@ onMounted(() => {
     line-height: 60px;
 
     &.highlight {
+      color: #531dab;
+    }
+    &.purple {
       color: #531dab;
     }
   }
@@ -844,32 +916,60 @@ onMounted(() => {
       color: #389e0d;
     }
 
+    .stats-doc-hit {
+      background: #fffbe6;
+      color: #d48806;
+    }
+
     .stats-miss {
       background: #fff2f0;
       color: #cf1322;
     }
 
-    .stats-footer {
+    // Top-K 分布
+    .top-k-bar {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #fafafa;
+      border-radius: 8px;
+    }
+
+    .top-k-item {
+      flex: 1;
       display: flex;
       align-items: center;
-      justify-content: center;
       gap: 8px;
-      margin-top: 10px;
-      padding: 8px;
-      background: #fffbe6;
-      border-radius: 8px;
-      font-size: 13px;
+    }
+
+    .top-k-label {
+      font-size: 12px;
       color: #8c8c8c;
+      min-width: 45px;
+    }
 
-      .trophy-icon {
-        color: #faad14;
-        font-size: 15px;
-      }
+    .top-k-track {
+      flex: 1;
+      height: 6px;
+      background: #e8e8e8;
+      border-radius: 3px;
+      overflow: hidden;
+    }
 
-      .rank-value {
-        font-weight: 600;
-        color: #d48806;
-      }
+    .top-k-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #1890ff, #52c41a);
+      border-radius: 3px;
+      transition: width 0.6s ease;
+    }
+
+    .top-k-num {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1890ff;
+      min-width: 24px;
+      text-align: right;
     }
   }
 

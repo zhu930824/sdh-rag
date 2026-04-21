@@ -26,14 +26,35 @@ public class EvaluationTask implements Serializable {
     @TableField("qa_count")
     private Integer qaCount;
 
+    /**
+     * 分块级命中率：精确匹配源分块的比例
+     */
     @TableField("hit_rate")
     private BigDecimal hitRate;
 
+    /**
+     * 文档级命中率：检索到同一文档任意分块的比例
+     */
+    @TableField("doc_hit_rate")
+    private BigDecimal docHitRate;
+
+    /**
+     * MRR (Mean Reciprocal Rank)：平均倒数排名
+     */
     @TableField("mrr")
     private BigDecimal mrr;
 
-    @TableField("avg_recall")
-    private BigDecimal avgRecall;
+    /**
+     * 平均命中排名（只统计命中的）
+     */
+    @TableField("avg_hit_rank")
+    private BigDecimal avgHitRank;
+
+    /**
+     * Top-K 命中分布JSON：{"top1":5,"top3":7,"top5":8,"top10":10}
+     */
+    @TableField("top_k_hits")
+    private String topKHits;
 
     /**
      * 状态: 0-待运行, 1-运行中, 2-完成, 3-失败

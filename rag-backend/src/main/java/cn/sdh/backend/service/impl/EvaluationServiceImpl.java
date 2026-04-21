@@ -193,7 +193,13 @@ public class EvaluationServiceImpl implements EvaluationService {
 
     private EvaluationQa generateQaFromDocument(Document doc, Long taskId, String modelId) {
         String content = doc.getText();
-        String vectorId = doc.getId();
+        // 从 metadata 获取正确的 ES vectorId，而不是 Document.getId()（那是内部 UUID）
+        String vectorId = (String) doc.getMetadata().get("id");
+        Object docIdObj = doc.getMetadata().get("document_id");
+        Long documentId = null;
+        if (docIdObj instanceof Number) {
+            documentId = ((Number) docIdObj).longValue();
+        }
 
         String prompt = String.format(QA_GENERATION_PROMPT, content);
         String response = chatService.chat(prompt, modelId);
@@ -219,8 +225,10 @@ public class EvaluationServiceImpl implements EvaluationService {
             qa.setQuestion(question.trim());
             qa.setExpectedAnswer(answer != null ? answer.trim() : "");
             qa.setSourceChunkId(vectorId);
+            qa.setSourceDocumentId(documentId);
             qa.setSourceChunkContent(content);
             qa.setHit(false);
+            qa.setDocHit(false);
             qa.setCreateTime(LocalDateTime.now());
 
             return qa;
@@ -246,39 +254,74 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     private void evaluateQa(EvaluationQa qa, Long knowledgeId) {
-        // 执行检索
+        // 执行检索（使用知识库配置的参数）
         RagSearchService.RagSearchResult result = ragSearchService.search(
                 qa.getQuestion(), knowledgeId, null
         );
 
         List<Document> docs = result.getDocuments();
         if (docs == null || docs.isEmpty()) {
+            log.debug("评估QA检索无结果: question={}", qa.getQuestion());
             qa.setHit(false);
+            qa.setDocHit(false);
             qa.setHitRank(null);
+            qa.setDocHitRank(null);
             qa.setRetrievedChunkIds("[]");
             return;
         }
 
-        // 提取检索到的分块ID
-        List<String> retrievedIds = docs.stream()
-                .map(doc -> (String) doc.getMetadata().get("id"))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        // 提取检索到的分块ID和文档ID
+        List<String> retrievedIds = new ArrayList<>();
+        List<Long> retrievedDocIds = new ArrayList<>();
+
+        for (Document doc : docs) {
+            String id = (String) doc.getMetadata().get("id");
+            if (id != null) {
+                retrievedIds.add(id);
+            }
+            Object docIdObj = doc.getMetadata().get("document_id");
+            if (docIdObj instanceof Number) {
+                retrievedDocIds.add(((Number) docIdObj).longValue());
+            } else {
+                retrievedDocIds.add(null);
+            }
+        }
 
         qa.setRetrievedChunkIds(toJsonArray(retrievedIds));
 
-        // 检查是否命中
         String sourceId = qa.getSourceChunkId();
+        Long sourceDocId = qa.getSourceDocumentId();
+
+        // 1. 检查分块级命中（精确匹配）
         for (int i = 0; i < retrievedIds.size(); i++) {
             if (sourceId.equals(retrievedIds.get(i))) {
                 qa.setHit(true);
                 qa.setHitRank(i + 1);
+                // 分块命中时，文档级也必然命中
+                qa.setDocHit(true);
+                qa.setDocHitRank(i + 1);
+                log.debug("评估QA分块命中: question={}, rank={}, sourceId={}", qa.getQuestion(), i + 1, sourceId);
                 return;
             }
         }
 
+        // 2. 检查文档级命中（同一文档的其他分块）
+        if (sourceDocId != null) {
+            for (int i = 0; i < retrievedDocIds.size(); i++) {
+                if (sourceDocId.equals(retrievedDocIds.get(i))) {
+                    qa.setDocHit(true);
+                    qa.setDocHitRank(i + 1);
+                    log.debug("评估QA文档命中: question={}, rank={}, docId={}", qa.getQuestion(), i + 1, sourceDocId);
+                    return;
+                }
+            }
+        }
+
+        log.debug("评估QA未命中: question={}, sourceId={}, retrievedCount={}", qa.getQuestion(), sourceId, retrievedIds.size());
         qa.setHit(false);
+        qa.setDocHit(false);
         qa.setHitRank(null);
+        qa.setDocHitRank(null);
     }
 
     private void calculateMetrics(EvaluationTask task, List<EvaluationQa> qaList) {
@@ -288,29 +331,74 @@ public class EvaluationServiceImpl implements EvaluationService {
 
         int totalQa = qaList.size();
         int hitCount = 0;
+        int docHitCount = 0;
         double mrrSum = 0.0;
+        double docMrrSum = 0.0;
+        double hitRankSum = 0.0;
+        int top1 = 0, top3 = 0, top5 = 0, top10 = 0;
 
         for (EvaluationQa qa : qaList) {
-            if (qa.getHit()) {
+            // 分块级指标
+            if (Boolean.TRUE.equals(qa.getHit())) {
                 hitCount++;
-                if (qa.getHitRank() != null && qa.getHitRank() > 0) {
-                    mrrSum += 1.0 / qa.getHitRank();
+                int rank = qa.getHitRank() != null ? qa.getHitRank() : 0;
+                if (rank > 0) {
+                    mrrSum += 1.0 / rank;
+                    hitRankSum += rank;
+
+                    // Top-K 分布
+                    if (rank <= 1) top1++;
+                    if (rank <= 3) top3++;
+                    if (rank <= 5) top5++;
+                    if (rank <= 10) top10++;
+                }
+            }
+
+            // 文档级指标
+            if (Boolean.TRUE.equals(qa.getDocHit())) {
+                docHitCount++;
+                int docRank = qa.getDocHitRank() != null ? qa.getDocHitRank() : 0;
+                if (docRank > 0) {
+                    docMrrSum += 1.0 / docRank;
                 }
             }
         }
 
-        // Hit Rate
+        // 分块级命中率
         BigDecimal hitRate = BigDecimal.valueOf((double) hitCount / totalQa)
                 .setScale(4, RoundingMode.HALF_UP);
         task.setHitRate(hitRate);
 
-        // MRR (Mean Reciprocal Rank)
+        // 文档级命中率
+        BigDecimal docHitRate = BigDecimal.valueOf((double) docHitCount / totalQa)
+                .setScale(4, RoundingMode.HALF_UP);
+        task.setDocHitRate(docHitRate);
+
+        // MRR (分块级)
         BigDecimal mrr = BigDecimal.valueOf(mrrSum / totalQa)
                 .setScale(4, RoundingMode.HALF_UP);
         task.setMrr(mrr);
 
-        // Recall@K (这里用 Hit Rate 近似)
-        task.setAvgRecall(hitRate);
+        // 平均命中排名
+        BigDecimal avgHitRank = hitCount > 0
+                ? BigDecimal.valueOf(hitRankSum / hitCount).setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        task.setAvgHitRank(avgHitRank);
+
+        // Top-K 命中分布
+        Map<String, Integer> topKHits = new HashMap<>();
+        topKHits.put("top1", top1);
+        topKHits.put("top3", top3);
+        topKHits.put("top5", top5);
+        topKHits.put("top10", top10);
+        try {
+            task.setTopKHits(objectMapper.writeValueAsString(topKHits));
+        } catch (JsonProcessingException e) {
+            log.warn("序列化Top-K命中分布失败", e);
+        }
+
+        log.info("评估指标计算完成: totalQa={}, hitRate={}, docHitRate={}, mrr={}, avgHitRank={}, topK={}",
+                totalQa, hitRate, docHitRate, mrr, avgHitRank, topKHits);
     }
 
     private String toJsonArray(List<String> list) {

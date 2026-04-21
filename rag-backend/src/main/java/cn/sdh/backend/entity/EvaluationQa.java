@@ -27,16 +27,31 @@ public class EvaluationQa implements Serializable {
     @TableField("source_chunk_id")
     private String sourceChunkId;
 
+    @TableField("source_document_id")
+    private Long sourceDocumentId;
+
     @TableField("source_chunk_content")
     private String sourceChunkContent;
 
     @TableField("retrieved_chunk_ids")
     private String retrievedChunkIds;
 
+    /**
+     * 分块级命中：精确匹配源分块
+     */
     private Boolean hit;
+
+    /**
+     * 文档级命中：检索结果中包含同一文档的分块
+     */
+    @TableField("doc_hit")
+    private Boolean docHit;
 
     @TableField("hit_rank")
     private Integer hitRank;
+
+    @TableField("doc_hit_rank")
+    private Integer docHitRank;
 
     @TableField("create_time")
     private LocalDateTime createTime;

@@ -6,9 +6,11 @@ export interface EvaluationTask {
   knowledgeName: string | null
   taskName: string
   qaCount: number
-  hitRate: number | null
-  mrr: number | null
-  avgRecall: number | null
+  hitRate: number | null         // 分块级命中率
+  docHitRate: number | null      // 文档级命中率
+  mrr: number | null             // MRR
+  avgHitRank: number | null      // 平均命中排名
+  topKHits: string | null        // Top-K命中分布JSON
   status: number // 0-待运行, 1-运行中, 2-完成, 3-失败
   configSnapshot: string | null
   userId: number
@@ -23,10 +25,13 @@ export interface EvaluationQa {
   question: string
   expectedAnswer: string
   sourceChunkId: string
+  sourceDocumentId: number | null
   sourceChunkContent: string
   retrievedChunkIds: string
-  hit: boolean
-  hitRank: number | null
+  hit: boolean                   // 分块级命中
+  docHit: boolean                 // 文档级命中
+  hitRank: number | null         // 分块命中排名
+  docHitRank: number | null       // 文档命中排名
   createTime: string
 }
 

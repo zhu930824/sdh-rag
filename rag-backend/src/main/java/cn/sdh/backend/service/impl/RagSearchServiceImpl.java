@@ -183,12 +183,12 @@ public class RagSearchServiceImpl implements RagSearchService {
                     }
                 }
 
-                // 将未被rerank选中的文档按原始RRF分数顺序追加到后面
-                for (int i = 0; i < documents.size(); i++) {
-                    if (!rerankedIndices.contains(i)) {
-                        rerankedDocs.add(documents.get(i));
-                    }
-                }
+//                // 将未被rerank选中的文档按原始RRF分数顺序追加到后面
+//                for (int i = 0; i < documents.size(); i++) {
+//                    if (!rerankedIndices.contains(i)) {
+//                        rerankedDocs.add(documents.get(i));
+//                    }
+//                }
 
                 result.setDocuments(rerankedDocs);
                 result.setRerankedCount(rerankedDocs.size());

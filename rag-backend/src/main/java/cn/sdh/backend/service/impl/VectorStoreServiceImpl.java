@@ -541,6 +541,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             if (source != null) {
                 Document doc = new Document((String) source.get("content"));
                 doc.getMetadata().put("id", hit.id());
+                doc.getMetadata().put("chunk_id", source.get("chunk_id"));
                 doc.getMetadata().put("chunk_index", source.get("chunk_index"));
                 doc.getMetadata().put("document_id", source.get("document_id"));
                 doc.getMetadata().put("knowledge_id", source.get("knowledge_id"));
