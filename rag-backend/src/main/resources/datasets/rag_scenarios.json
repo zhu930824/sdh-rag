@@ -1,0 +1,156 @@
+{
+  "name": "RAG常见场景测试集",
+  "description": "涵盖精确匹配、语义匹配、多跳推理、负样本和边界场景的综合性测试集",
+  "items": [
+    {
+      "question": "什么是深度学习？它与机器学习有什么关系？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "exact_1"
+    },
+    {
+      "question": "自然语言处理的主要任务包括哪些？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "exact_2"
+    },
+    {
+      "question": "向量数据库的用途是什么？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "exact_3"
+    },
+    {
+      "question": "Elasticsearch支持哪些类型的搜索？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "exact_4"
+    },
+    {
+      "question": "微服务架构的核心组件有哪些？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "exact_5"
+    },
+    {
+      "question": "怎样让计算机理解人类语言？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "semantic_1"
+    },
+    {
+      "question": "把文字变成数学表示的方法有哪些？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "semantic_2"
+    },
+    {
+      "question": "怎么衡量两个文本的相似程度？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "semantic_3"
+    },
+    {
+      "question": "如何在海量文档中快速找到需要的信息？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "semantic_4"
+    },
+    {
+      "question": "如何让AI系统给出更准确的回答？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "semantic_5"
+    },
+    {
+      "question": "检索增强生成技术中，检索和生成两个环节如何配合工作？各自承担什么职责？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "multi_1"
+    },
+    {
+      "question": "从文档切分到最终生成回答，整个流程涉及哪些关键步骤？每一步的作用是什么？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "multi_2"
+    },
+    {
+      "question": "知识图谱和向量检索在知识管理中分别解决了什么问题？它们可以如何互补？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "multi_3"
+    },
+    {
+      "question": "分块策略对检索效果有什么影响？如何选择合适的分块大小和重叠？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "multi_4"
+    },
+    {
+      "question": "明年火星殖民计划的具体时间表是什么？",
+      "expectedAnswer": "",
+      "isNegative": true,
+      "externalId": "neg_1"
+    },
+    {
+      "question": "中国2024年GDP增长目标是多少？",
+      "expectedAnswer": "",
+      "isNegative": true,
+      "externalId": "neg_2"
+    },
+    {
+      "question": "特斯拉最新款手机的售价是多少？",
+      "expectedAnswer": "",
+      "isNegative": true,
+      "externalId": "neg_3"
+    },
+    {
+      "question": "2025年诺贝尔物理学奖颁给了谁？",
+      "expectedAnswer": "",
+      "isNegative": true,
+      "externalId": "neg_4"
+    },
+    {
+      "question": "北京大学计算机系去年的录取分数线是多少？",
+      "expectedAnswer": "",
+      "isNegative": true,
+      "externalId": "neg_5"
+    },
+    {
+      "question": "亚马逊雨林中哪种蝴蝶的翅膀最大？",
+      "expectedAnswer": "",
+      "isNegative": true,
+      "externalId": "neg_6"
+    },
+    {
+      "question": "这个东西怎么用？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "edge_1"
+    },
+    {
+      "question": "能详细说说吗？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "edge_2"
+    },
+    {
+      "question": "技术",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "edge_3"
+    },
+    {
+      "question": "Spring Boot 和 Docker 和 Kubernetes 之间有什么区别和联系？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "edge_4"
+    },
+    {
+      "question": "能否用通俗易懂的语言解释什么是RAG？它的优缺点分别是什么？在什么场景下适合使用？",
+      "expectedAnswer": "",
+      "isNegative": false,
+      "externalId": "edge_5"
+    }
+  ]
+}

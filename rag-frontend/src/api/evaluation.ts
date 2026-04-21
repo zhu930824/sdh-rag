@@ -6,12 +6,15 @@ export interface EvaluationTask {
   knowledgeName: string | null
   taskName: string
   qaCount: number
-  hitRate: number | null         // 分块级命中率
-  docHitRate: number | null      // 文档级命中率
-  mrr: number | null             // MRR
-  avgHitRank: number | null      // 平均命中排名
-  topKHits: string | null        // Top-K命中分布JSON
-  status: number // 0-待运行, 1-运行中, 2-完成, 3-失败
+  hitRate: number | null
+  docHitRate: number | null
+  mrr: number | null
+  avgHitRank: number | null
+  topKHits: string | null
+  negativeCount: number | null
+  negativeHitRate: number | null
+  datasetType: string | null       // generated/imported/builtin
+  status: number
   configSnapshot: string | null
   userId: number
   errorMessage: string | null
@@ -28,11 +31,22 @@ export interface EvaluationQa {
   sourceDocumentId: number | null
   sourceChunkContent: string
   retrievedChunkIds: string
-  hit: boolean                   // 分块级命中
-  docHit: boolean                 // 文档级命中
-  hitRank: number | null         // 分块命中排名
-  docHitRank: number | null       // 文档命中排名
+  hit: boolean
+  docHit: boolean
+  hitRank: number | null
+  docHitRank: number | null
+  isNegative: boolean | null
+  sourceType: string | null
+  externalId: string | null
   createTime: string
+}
+
+export interface DatasetInfo {
+  name: string
+  description: string
+  itemCount: number
+  negativeCount: number
+  fileName: string
 }
 
 // 生成测试集并运行评估
@@ -42,6 +56,31 @@ export function generateTestset(data: {
   taskName?: string
 }) {
   return request.post<EvaluationTask>('/api/evaluation/generate-testset', data)
+}
+
+// 导入外部测试集
+export function importTestset(formData: FormData) {
+  return request.post<EvaluationTask>('/api/evaluation/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+// 下载导入模板
+export function downloadTemplate() {
+  return request.get('/api/evaluation/template', { responseType: 'blob' })
+}
+
+// 运行内置数据集评估
+export function runBuiltinDataset(data: {
+  datasetName: string
+  knowledgeId: number
+}) {
+  return request.post<EvaluationTask>('/api/evaluation/builtin', data)
+}
+
+// 获取内置数据集列表
+export function getBuiltinDatasets() {
+  return request.get<DatasetInfo[]>('/api/evaluation/builtin/list')
 }
 
 // 获取评估任务详情
@@ -54,7 +93,7 @@ export function getEvaluationQaList(taskId: number) {
   return request.get<EvaluationQa[]>(`/api/evaluation/task/${taskId}/qa-list`)
 }
 
-// 获取评估任务列表（不传知识库ID则返回全部）
+// 获取评估任务列表
 export function getEvaluationList(knowledgeId?: number) {
   return request.get<EvaluationTask[]>('/api/evaluation/list', { params: knowledgeId ? { knowledgeId } : {} })
 }

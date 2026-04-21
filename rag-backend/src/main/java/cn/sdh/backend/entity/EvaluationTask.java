@@ -56,6 +56,15 @@ public class EvaluationTask implements Serializable {
     @TableField("top_k_hits")
     private String topKHits;
 
+    @TableField("negative_count")
+    private Integer negativeCount;
+
+    @TableField("negative_hit_rate")
+    private BigDecimal negativeHitRate;
+
+    @TableField("dataset_type")
+    private String datasetType;
+
     /**
      * 状态: 0-待运行, 1-运行中, 2-完成, 3-失败
      */

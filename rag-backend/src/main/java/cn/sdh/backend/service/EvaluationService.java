@@ -1,5 +1,7 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.dto.DatasetInfo;
+import cn.sdh.backend.dto.EvaluationQaItem;
 import cn.sdh.backend.entity.EvaluationTask;
 import cn.sdh.backend.entity.EvaluationQa;
 
@@ -18,6 +20,29 @@ public interface EvaluationService {
      * @return 评估任务
      */
     EvaluationTask generateAndRun(Long knowledgeId, int qaCount, String taskName);
+
+    /**
+     * 导入外部测试集并运行评估
+     * @param knowledgeId 知识库ID
+     * @param items QA数据项列表
+     * @param taskName 任务名称
+     * @return 评估任务
+     */
+    EvaluationTask importAndRun(Long knowledgeId, List<EvaluationQaItem> items, String taskName);
+
+    /**
+     * 运行内置数据集评估
+     * @param datasetName 数据集名称
+     * @param knowledgeId 知识库ID（可选）
+     * @return 评估任务
+     */
+    EvaluationTask runBuiltinDataset(String datasetName, Long knowledgeId);
+
+    /**
+     * 获取内置数据集列表
+     * @return 数据集信息列表
+     */
+    List<DatasetInfo> listBuiltinDatasets();
 
     /**
      * 执行评估

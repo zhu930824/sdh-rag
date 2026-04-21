@@ -53,6 +53,15 @@ public class EvaluationQa implements Serializable {
     @TableField("doc_hit_rank")
     private Integer docHitRank;
 
+    @TableField("is_negative")
+    private Boolean isNegative;
+
+    @TableField("source_type")
+    private String sourceType;
+
+    @TableField("external_id")
+    private String externalId;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 }
