@@ -96,6 +96,17 @@ public interface VectorStoreService {
     List<Document> similaritySearch(String query, Long knowledgeId, int topK, String embeddingModelName);
 
     /**
+     * 相似度搜索（带阈值过滤）
+     * @param query 查询文本
+     * @param knowledgeId 知识库ID
+     * @param topK 返回数量
+     * @param embeddingModelName 嵌入模型名称
+     * @param minScore 最小相似度阈值（0-1），低于此值的结果会被过滤
+     * @return 相似文档列表
+     */
+    List<Document> similaritySearch(String query, Long knowledgeId, int topK, String embeddingModelName, Double minScore);
+
+    /**
      * 按文档ID删除所有向量
      * @param documentId 文档ID
      */
@@ -187,4 +198,19 @@ public interface VectorStoreService {
      */
     List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK, int keywordTopK,
                                 double vectorWeight, double keywordWeight, String embeddingModelName);
+
+    /**
+     * 混合检索（带相似度阈值过滤）
+     * @param query 查询文本
+     * @param knowledgeId 知识库ID
+     * @param vectorTopK 向量检索数量
+     * @param keywordTopK 关键字检索数量
+     * @param vectorWeight 向量权重
+     * @param keywordWeight 关键字权重
+     * @param embeddingModelName 嵌入模型名称
+     * @param minScore 最小相似度阈值（0-1）
+     * @return 混合检索结果
+     */
+    List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK, int keywordTopK,
+                                double vectorWeight, double keywordWeight, String embeddingModelName, Double minScore);
 }

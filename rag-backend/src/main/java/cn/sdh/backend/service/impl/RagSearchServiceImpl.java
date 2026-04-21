@@ -127,15 +127,16 @@ public class RagSearchServiceImpl implements RagSearchService {
                 }
             }
 
-            // 4. 多查询混合检索
+            // 4. 多查询混合检索（相似度阈值在向量检索阶段生效）
             int vectorTopK = knowledgeBase.getVectorTopK() != null ? knowledgeBase.getVectorTopK() : 10;
             int keywordTopK = knowledgeBase.getKeywordTopK() != null ? knowledgeBase.getKeywordTopK() : 10;
             double vectorWeight = knowledgeBase.getVectorWeight() != null ? knowledgeBase.getVectorWeight() : 0.7;
             double keywordWeight = knowledgeBase.getKeywordWeight() != null ? knowledgeBase.getKeywordWeight() : 0.3;
             String embeddingModel = knowledgeBase.getEmbeddingModel();
+            Double similarityThreshold = knowledgeBase.getSimilarityThreshold();
 
-            log.info("混合检索参数: queries={}, vectorTopK={}, keywordTopK={}, vectorWeight={}, keywordWeight={}",
-                    queries.size(), vectorTopK, keywordTopK, vectorWeight, keywordWeight);
+            log.info("混合检索参数: queries={}, vectorTopK={}, keywordTopK={}, vectorWeight={}, keywordWeight={}, threshold={}",
+                    queries.size(), vectorTopK, keywordTopK, vectorWeight, keywordWeight, similarityThreshold);
 
             // 对每个查询执行混合检索，然后用 RRF 合并所有结果
             List<Document> documents = multiQuerySearch(
@@ -145,7 +146,8 @@ public class RagSearchServiceImpl implements RagSearchService {
                     keywordTopK,
                     vectorWeight,
                     keywordWeight,
-                    embeddingModel
+                    embeddingModel,
+                    similarityThreshold
             );
 
             result.setVectorCount(vectorTopK);
@@ -187,41 +189,6 @@ public class RagSearchServiceImpl implements RagSearchService {
                 result.setRerankedCount(documents.size());
             }
 
-            // 6. 相似度阈值过滤
-            // 注意：不同分数来源有不同的量级，需要区别处理
-            // - rerank_score: 重排序模型输出，通常 0-1 范围，0.7 是合理阈值
-            // - originalScore: 向量相似度，通常 0-1 范围（余弦相似度）
-            // - hybrid_score: RRF 合并分数，量级约 0.01-0.02，不适合直接用同一阈值
-            Double similarityThreshold = knowledgeBase.getSimilarityThreshold();
-            if (similarityThreshold != null && similarityThreshold > 0) {
-                List<Document> filteredDocs = result.getDocuments().stream()
-                        .filter(doc -> {
-                            Object rerankScore = doc.getMetadata().get("rerank_score");
-                            Object hybridScore = doc.getMetadata().get("hybrid_score");
-                            Object originalScore = doc.getMetadata().get("score");
-
-                            // 有重排序分数时，使用阈值过滤（rerank_score 通常 0-1）
-                            if (rerankScore != null) {
-                                return ((Number) rerankScore).doubleValue() >= similarityThreshold;
-                            }
-
-                            // 无重排序但有原始向量相似度时，也用阈值过滤
-                            // 但只有当 hybrid_score 不存在时（说明是单查询直接检索）
-                            if (hybridScore == null && originalScore != null) {
-                                return ((Number) originalScore).doubleValue() >= similarityThreshold;
-                            }
-
-                            // hybrid_score 是 RRF 分数，量级不同，不做阈值过滤
-                            // 或者没有任何分数时，保留文档
-                            return true;
-                        })
-                        .collect(Collectors.toList());
-
-                result.setDocuments(filteredDocs);
-                log.info("相似度阈值过滤: threshold={}, 过滤前={}, 过滤后={}",
-                        similarityThreshold, result.getRerankedCount(), filteredDocs.size());
-            }
-
             return result;
 
         } catch (Exception e) {
@@ -242,7 +209,7 @@ public class RagSearchServiceImpl implements RagSearchService {
     private List<Document> multiQuerySearch(List<String> queries, Long knowledgeId,
                                             int vectorTopK, int keywordTopK,
                                             double vectorWeight, double keywordWeight,
-                                            String embeddingModel) {
+                                            String embeddingModel, Double minScore) {
         Map<String, Document> docMap = new HashMap<>();
         Map<String, Double> scoreMap = new HashMap<>();
 
@@ -250,7 +217,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             try {
                 List<Document> queryResults = vectorStoreService.hybridSearch(
                         queries.get(q), knowledgeId, vectorTopK, keywordTopK,
-                        vectorWeight, keywordWeight, embeddingModel
+                        vectorWeight, keywordWeight, embeddingModel, minScore
                 );
 
                 double queryWeight = (q == 0) ? 2.0 : 1.0;
