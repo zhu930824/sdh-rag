@@ -139,11 +139,19 @@ public class EvaluationServiceImpl implements EvaluationService {
             Collections.shuffle(allChunks);
             List<Document> sampledChunks = allChunks.subList(0, sampleCount);
 
+            // 获取知识库配置，用于获取 HyDE 模型
+            KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(task.getKnowledgeId());
+            String qaModelId = null;
+            if (knowledgeBase != null && knowledgeBase.getHydeModel() != null && !knowledgeBase.getHydeModel().isEmpty()) {
+                qaModelId = knowledgeBase.getHydeModel();
+                log.info("QA生成使用 HyDE 模型: {}", qaModelId);
+            }
+
             // 4. 为每个分块生成QA
             List<EvaluationQa> qaList = new ArrayList<>();
             for (Document doc : sampledChunks) {
                 try {
-                    EvaluationQa qa = generateQaFromDocument(doc, taskId);
+                    EvaluationQa qa = generateQaFromDocument(doc, taskId, qaModelId);
                     if (qa != null) {
                         qaList.add(qa);
                     }
@@ -183,12 +191,12 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
     }
 
-    private EvaluationQa generateQaFromDocument(Document doc, Long taskId) {
+    private EvaluationQa generateQaFromDocument(Document doc, Long taskId, String modelId) {
         String content = doc.getText();
         String vectorId = doc.getId();
 
         String prompt = String.format(QA_GENERATION_PROMPT, content);
-        String response = chatService.chat(prompt, null);
+        String response = chatService.chat(prompt, modelId);
 
         if (response == null || response.trim().isEmpty()) {
             return null;
@@ -196,13 +204,15 @@ public class EvaluationServiceImpl implements EvaluationService {
 
         try {
             // 解析JSON响应
-            Map<String, String> qaMap = objectMapper.readValue(response, Map.class);
-            String question = qaMap.get("question");
-            String answer = qaMap.get("answer");
+            Map<String, Object> qaMap = objectMapper.readValue(response, Map.class);
+            String question = (String) qaMap.get("question");
 
             if (question == null || question.trim().isEmpty()) {
                 return null;
             }
+
+            // answer可能是String或List<String>类型
+            String answer = extractAnswer(qaMap.get("answer"));
 
             EvaluationQa qa = new EvaluationQa();
             qa.setTaskId(taskId);
@@ -218,6 +228,21 @@ public class EvaluationServiceImpl implements EvaluationService {
             log.warn("解析QA JSON失败: {}", response, e);
             return null;
         }
+    }
+
+    private String extractAnswer(Object answerObj) {
+        if (answerObj == null) {
+            return "";
+        }
+        if (answerObj instanceof String) {
+            return (String) answerObj;
+        }
+        if (answerObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<String> answerList = (List<String>) answerObj;
+            return String.join("; ", answerList);
+        }
+        return answerObj.toString();
     }
 
     private void evaluateQa(EvaluationQa qa, Long knowledgeId) {
@@ -312,11 +337,51 @@ public class EvaluationServiceImpl implements EvaluationService {
 
     @Override
     public List<EvaluationTask> listByKnowledgeId(Long knowledgeId) {
-        return taskMapper.selectList(
+        List<EvaluationTask> tasks = taskMapper.selectList(
                 new LambdaQueryWrapper<EvaluationTask>()
                         .eq(EvaluationTask::getKnowledgeId, knowledgeId)
                         .orderByDesc(EvaluationTask::getCreateTime)
         );
+        fillKnowledgeName(tasks);
+        return tasks;
+    }
+
+    @Override
+    public List<EvaluationTask> listAll() {
+        List<EvaluationTask> tasks = taskMapper.selectList(
+                new LambdaQueryWrapper<EvaluationTask>()
+                        .orderByDesc(EvaluationTask::getCreateTime)
+        );
+        fillKnowledgeName(tasks);
+        return tasks;
+    }
+
+    private void fillKnowledgeName(List<EvaluationTask> tasks) {
+        if (tasks == null || tasks.isEmpty()) {
+            return;
+        }
+        Set<Long> kbIds = tasks.stream()
+                .map(EvaluationTask::getKnowledgeId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (kbIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> kbNameMap = new HashMap<>();
+        for (Long kbId : kbIds) {
+            try {
+                KnowledgeBase kb = knowledgeBaseService.getKnowledgeBaseById(kbId);
+                if (kb != null) {
+                    kbNameMap.put(kbId, kb.getName());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        for (EvaluationTask task : tasks) {
+            if (task.getKnowledgeId() != null) {
+                task.setKnowledgeName(kbNameMap.get(task.getKnowledgeId()));
+            }
+        }
     }
 
     @Override

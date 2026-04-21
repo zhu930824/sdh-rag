@@ -53,7 +53,7 @@ public interface RagSearchService {
      * @param modelId 模型ID（可选，默认使用知识库配置的模型）
      * @return 假设性文档内容
      */
-    String generateHypotheticalDocument(String query, Long modelId);
+    String generateHypotheticalDocument(String query, String modelId);
 
     /**
      * 对话消息

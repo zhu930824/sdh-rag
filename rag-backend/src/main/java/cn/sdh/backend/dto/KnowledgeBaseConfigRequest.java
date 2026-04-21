@@ -64,4 +64,25 @@ public class KnowledgeBaseConfigRequest {
      * 向量权重
      */
     private Double vectorWeight;
+
+    /**
+     * 是否启用查询扩展
+     */
+    private Boolean enableQueryExpansion;
+
+    /**
+     * 查询扩展数量
+     */
+    private Integer queryExpansionCount;
+
+    /**
+     * 是否启用 HyDE（假设性文档嵌入）
+     */
+    private Boolean enableHyde;
+
+    /**
+     * HyDE 生成文档使用的模型
+     */
+    private String hydeModel;
+
 }

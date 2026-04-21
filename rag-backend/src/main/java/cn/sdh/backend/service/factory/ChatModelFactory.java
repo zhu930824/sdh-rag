@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Component
 public class ChatModelFactory extends ModelFactory<ChatModel> {
 
-    private static final String DEFAULT_MODEL = "qwen-turbo";
+    private static final String DEFAULT_MODEL = "qwen-plus";
     private static final String MODEL_TYPE = "chat";
 
     private final Map<ModelProvider, ModelCreationStrategy<ChatModel>> strategyMap;

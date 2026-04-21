@@ -41,10 +41,16 @@ public interface EvaluationService {
 
     /**
      * 获取知识库的评估任务列表
-     * @param knowledgeId 知识库ID
+     * @param knowledgeId 知识库ID（可选，为空则返回全部）
      * @return 任务列表
      */
     List<EvaluationTask> listByKnowledgeId(Long knowledgeId);
+
+    /**
+     * 获取所有评估任务列表
+     * @return 任务列表
+     */
+    List<EvaluationTask> listAll();
 
     /**
      * 删除评估任务

@@ -59,10 +59,10 @@ public abstract class ModelFactory<M> {
      * @param modelId 模型配置ID
      * @return 模型实例
      */
-    public M getModelById(Long modelId) {
+    public M getModelById(String modelId) {
         String cacheKey = getCacheKeyById(modelId);
         return modelCache.computeIfAbsent(cacheKey, key -> {
-            ModelConfig config = modelConfigMapper.selectById(modelId);
+            ModelConfig config = modelConfigMapper.selectOne(new LambdaQueryWrapper<>(ModelConfig.class).eq(ModelConfig::getModelId, modelId));
             if (config != null) {
                 return createModel(config);
             }
@@ -106,7 +106,7 @@ public abstract class ModelFactory<M> {
     /**
      * 获取ID缓存键
      */
-    protected String getCacheKeyById(Long modelId) {
+    protected String getCacheKeyById(String modelId) {
         return getModelType() + ":id:" + modelId;
     }
 

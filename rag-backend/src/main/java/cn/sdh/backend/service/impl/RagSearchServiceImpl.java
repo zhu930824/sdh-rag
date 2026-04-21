@@ -3,13 +3,12 @@ package cn.sdh.backend.service.impl;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.service.*;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -26,34 +25,34 @@ public class RagSearchServiceImpl implements RagSearchService {
     private final ChatService chatService;
 
     private static final String QUERY_EXPANSION_PROMPT = """
-        你是一个查询扩展助手。请根据用户的原始查询，生成%d个语义相关但表述不同的查询变体。
-
-        原始查询：%s
-
-        要求：
-        1. 保持原始查询的核心意图
-        2. 使用同义词、近义词替换关键词
-        3. 从不同角度描述同一问题
-        4. 每个查询独立成行，不要编号和标点
-        5. 只输出扩展查询，每行一个，不要其他内容
-
-        扩展查询：
-        """;
+            你是一个查询扩展助手。请根据用户的原始查询，生成%d个语义相关但表述不同的查询变体。
+            
+            原始查询：%s
+            
+            要求：
+            1. 保持原始查询的核心意图
+            2. 使用同义词、近义词替换关键词
+            3. 从不同角度描述同一问题
+            4. 每个查询独立成行，不要编号和标点
+            5. 只输出扩展查询，每行一个，不要其他内容
+            
+            扩展查询：
+            """;
 
     private static final String HYDE_PROMPT = """
-        请针对以下问题，写一段可能包含答案的文档内容。
-        这段文档将用于信息检索匹配，请确保内容专业、准确、信息丰富。
-
-        问题：%s
-
-        要求：
-        1. 内容应当是对该问题的详细回答或解释
-        2. 使用专业术语和规范表达
-        3. 内容长度控制在200-500字
-        4. 直接输出文档内容，不要加任何前缀说明
-
-        文档内容：
-        """;
+            请针对以下问题，写一段可能包含答案的文档内容。
+            这段文档将用于信息检索匹配，请确保内容专业、准确、信息丰富。
+            
+            问题：%s
+            
+            要求：
+            1. 内容应当是对该问题的详细回答或解释
+            2. 使用专业术语和规范表达
+            3. 内容长度控制在200-500字
+            4. 直接输出文档内容，不要加任何前缀说明
+            
+            文档内容：
+            """;
 
     private static final int RRF_K = 10;
 
@@ -118,7 +117,7 @@ public class RagSearchServiceImpl implements RagSearchService {
 
             if (enableHyde) {
                 hydeDoc = generateHypotheticalDocument(searchQuery,
-                        knowledgeBase.getHydeModel() != null ? Long.valueOf(knowledgeBase.getHydeModel()) : null);
+                        knowledgeBase.getHydeModel() != null ? knowledgeBase.getHydeModel() : null);
                 if (hydeDoc != null && !hydeDoc.trim().isEmpty()) {
                     result.setHydeDocument(hydeDoc);
                     // 将假设性文档作为额外查询加入检索
@@ -171,19 +170,29 @@ public class RagSearchServiceImpl implements RagSearchService {
                 List<RerankService.RerankResult> rerankResults = rerankService.rerank(
                         searchQuery, docTexts, rerankTopK, rankModel);
 
-                // 按重排序结果重新组织文档
+                // 按重排序结果重新组织文档：rerank命中的排前面，未命中的按原始RRF顺序排在后面
+                Set<Integer> rerankedIndices = new HashSet<>();
                 List<Document> rerankedDocs = new ArrayList<>();
+
                 for (RerankService.RerankResult rr : rerankResults) {
-                    if (rr.getIndex() < documents.size()) {
+                    if (rr.getIndex() >= 0 && rr.getIndex() < documents.size()) {
                         Document doc = documents.get(rr.getIndex());
                         doc.getMetadata().put("rerank_score", rr.getScore());
                         rerankedDocs.add(doc);
+                        rerankedIndices.add(rr.getIndex());
+                    }
+                }
+
+                // 将未被rerank选中的文档按原始RRF分数顺序追加到后面
+                for (int i = 0; i < documents.size(); i++) {
+                    if (!rerankedIndices.contains(i)) {
+                        rerankedDocs.add(documents.get(i));
                     }
                 }
 
                 result.setDocuments(rerankedDocs);
                 result.setRerankedCount(rerankedDocs.size());
-                log.info("重排序完成: 输入文档数={}, 输出文档数={}", documents.size(), rerankedDocs.size());
+                log.info("重排序完成: 输入文档数={}, rerank命中={}, 保留总数={}", documents.size(), rerankedIndices.size(), rerankedDocs.size());
             } else {
                 result.setDocuments(documents);
                 result.setRerankedCount(documents.size());
@@ -201,7 +210,7 @@ public class RagSearchServiceImpl implements RagSearchService {
     /**
      * 多查询混合检索
      * 对多个查询分别执行混合检索，然后用 RRF 合并所有结果
-     *
+     * <p>
      * RRF 分数 = queryWeight / (k + rank)
      * k=10 时，分数区间约 0.09~0.05，区分度明显优于 k=60（0.016~0.014）
      * 原始查询权重 2.0，扩展查询权重 1.0，让原始查询召回的文档排名更靠前
@@ -320,14 +329,14 @@ public class RagSearchServiceImpl implements RagSearchService {
     }
 
     @Override
-    public String generateHypotheticalDocument(String query, Long modelId) {
+    public String generateHypotheticalDocument(String query, String modelId) {
         if (query == null || query.trim().isEmpty()) {
             return null;
         }
 
         try {
             String prompt = String.format(HYDE_PROMPT, query);
-            String hypotheticalDoc = chatService.chat(prompt, modelId != null ? modelId.toString() : null);
+            String hypotheticalDoc = chatService.chat(prompt, StringUtils.isNotBlank(modelId) ? modelId : null);
 
             if (hypotheticalDoc != null && !hypotheticalDoc.trim().isEmpty()) {
                 log.info("HyDE 生成成功: query=[{}], docLength={}", query, hypotheticalDoc.length());

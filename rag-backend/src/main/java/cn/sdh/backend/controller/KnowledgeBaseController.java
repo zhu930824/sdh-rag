@@ -371,6 +371,11 @@ public class KnowledgeBaseController {
         config.setVectorTopK(request.getVectorTopK());
         config.setKeywordWeight(request.getKeywordWeight());
         config.setVectorWeight(request.getVectorWeight());
+        config.setEnableQueryExpansion(request.getEnableQueryExpansion());
+        config.setQueryExpansionCount(request.getQueryExpansionCount());
+        config.setEnableHyde(request.getEnableHyde());
+        config.setHydeModel(request.getHydeModel());
+
 
         knowledgeBaseService.updateKnowledgeBaseFullConfig(id, config);
 

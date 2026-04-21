@@ -17,6 +17,7 @@ import cn.sdh.backend.service.*;
 import cn.sdh.backend.service.RagSearchService.ChatMessage;
 import cn.sdh.backend.service.RagSearchService.RagSearchResult;
 import cn.sdh.backend.service.factory.ChatModelFactory;
+import com.alibaba.cloud.ai.dashscope.rerank.DashScopeRerankModel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ import reactor.core.publisher.Flux;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -69,19 +71,21 @@ public class ChatServiceImpl implements ChatService {
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
         log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}, 使用Advisor模式: {}",
                 userId, knowledgeId, modelId, sessionId, ragConfig.isUseAdvisor());
+        ModelConfig modelConfig = modelConfigService.getById(modelId);
+
 
         // 根据配置选择使用 Advisor 模式还是手动 RAG 模式
         if (ragConfig.isUseAdvisor()) {
-            return askWithAdvisor(question, sessionId, userId, knowledgeId, modelId);
+            return askWithAdvisor(question, sessionId, userId, knowledgeId, modelConfig.getModelId());
         } else {
-            return askManual(question, sessionId, userId, knowledgeId, modelId);
+            return askManual(question, sessionId, userId, knowledgeId, modelConfig.getModelId());
         }
     }
 
     /**
      * 使用 Spring AI Advisor 机制的问答
      */
-    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
+    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId, String modelId) {
         // 生成或使用现有的会话ID
         String currentSessionId = (sessionId != null && !sessionId.isEmpty())
                 ? sessionId
@@ -185,7 +189,7 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 使用手动 RAG 流程的问答（原有实现）
      */
-    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
+    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId, String modelId) {
 
         // 检测敏感词
         List<String> sensitiveWords = sensitiveWordService.findSensitiveWords(question);
@@ -348,7 +352,7 @@ public class ChatServiceImpl implements ChatService {
             return records.stream()
                     .sorted((a, b) -> a.getCreateTime().compareTo(b.getCreateTime()))
                     .flatMap(h -> {
-                        List<ChatMessage> msgs = new java.util.ArrayList<>();
+                        List<ChatMessage> msgs = new ArrayList<>();
                         if (h.getQuestion() != null) {
                             msgs.add(new ChatMessage("user", h.getQuestion()));
                         }
@@ -483,34 +487,26 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public String chat(String question, String modelId) {
         // 获取聊天模型
-        Long modelIdLong = null;
-        if (modelId != null && !modelId.isEmpty()) {
-            try {
-                modelIdLong = Long.valueOf(modelId);
-            } catch (NumberFormatException e) {
-                log.warn("modelId 格式错误: {}", modelId);
-            }
-        }
-        ChatModel chatModel = getChatModel(modelIdLong);
+        ChatModel chatModel = getChatModel(modelId);
         if (chatModel == null) {
             log.error("无法获取聊天模型");
             return null;
         }
 
-        try {
-            Prompt prompt = new Prompt(question);
-            ChatResponse response = chatModel.call(prompt);
-            return extractContent(response);
-        } catch (Exception e) {
-            log.error("AI调用失败: {}", e.getMessage(), e);
-            return null;
+            try {
+                Prompt prompt = new Prompt(question);
+                ChatResponse response = chatModel.call(prompt);
+                return extractContent(response);
+            } catch (Exception e) {
+                log.error("AI调用失败: {}", e.getMessage(), e);
+                return null;
         }
     }
 
     /**
      * 获取聊天模型
      */
-    private ChatModel getChatModel(Long modelId) {
+    private ChatModel getChatModel(String modelId) {
         // 优先使用指定的模型ID
         if (modelId != null) {
             ChatModel model = chatModelFactory.getModelById(modelId);
@@ -522,7 +518,7 @@ public class ChatServiceImpl implements ChatService {
         // 获取默认模型配置
         ModelConfig defaultConfig = modelConfigService.getDefault();
         if (defaultConfig != null) {
-            return chatModelFactory.getModelById(defaultConfig.getId());
+            return chatModelFactory.getModelById(defaultConfig.getModelId());
         }
 
         // 使用默认模型名称

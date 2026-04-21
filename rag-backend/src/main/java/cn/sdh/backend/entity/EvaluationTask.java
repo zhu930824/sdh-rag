@@ -54,4 +54,10 @@ public class EvaluationTask implements Serializable {
 
     @TableField("update_time")
     private LocalDateTime updateTime;
+
+    /**
+     * 知识库名称（非数据库字段，用于展示）
+     */
+    @TableField(exist = false)
+    private String knowledgeName;
 }

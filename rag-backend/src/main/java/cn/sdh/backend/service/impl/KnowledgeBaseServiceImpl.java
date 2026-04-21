@@ -259,6 +259,19 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         if (config.getVectorWeight() != null) {
             kb.setVectorWeight(config.getVectorWeight());
         }
+        if (config.getEnableQueryExpansion() != null) {
+            kb.setEnableQueryExpansion(config.getEnableQueryExpansion());
+        }
+        if (config.getQueryExpansionCount() != null) {
+            kb.setQueryExpansionCount(config.getQueryExpansionCount());
+        }
+        if (config.getEnableHyde() != null) {
+            kb.setEnableHyde(config.getEnableHyde());
+        }
+        if (config.getHydeModel() != null) {
+            kb.setHydeModel(config.getHydeModel());
+        }
+
 
         kb.setUpdateTime(LocalDateTime.now());
         return knowledgeBaseMapper.updateById(kb) > 0;

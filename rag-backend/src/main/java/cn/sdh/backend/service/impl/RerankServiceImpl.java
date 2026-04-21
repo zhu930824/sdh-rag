@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * 重排序服务实现
@@ -45,9 +46,13 @@ public class RerankServiceImpl implements RerankService {
         }
 
         try {
-            // 将字符串列表转换为 Document 列表
-            List<Document> docList = documents.stream()
-                    .map(Document::new)
+            // 将字符串列表转换为 Document 列表，并在 metadata 中记录原始索引
+            List<Document> docList = IntStream.range(0, documents.size())
+                    .mapToObj(i -> {
+                        Document doc = new Document(documents.get(i));
+                        doc.getMetadata().put("original_index", i);
+                        return doc;
+                    })
                     .collect(Collectors.toList());
 
             // 创建 RerankRequest
@@ -82,25 +87,29 @@ public class RerankServiceImpl implements RerankService {
     private RerankResult convertToRerankResult(DocumentWithScore docWithScore) {
         RerankResult result = new RerankResult();
 
-        // 查找原始文档索引
         String content = docWithScore.getOutput().getText();
         result.setDocument(content);
         result.setScore(docWithScore.getScore() != null ? docWithScore.getScore() : 0.0);
 
-        // 索引需要从元数据中获取，如果没有则设为 0
-        result.setIndex(0);
+        // 从 metadata 中获取原始索引
+        Object indexObj = docWithScore.getOutput().getMetadata().get("original_index");
+        if (indexObj instanceof Number) {
+            result.setIndex(((Number) indexObj).intValue());
+        } else {
+            result.setIndex(0);
+        }
 
         return result;
     }
 
     /**
-     * 降级处理
+     * 降级处理：取 topK 个文档，按原始顺序返回
      */
     private List<RerankResult> fallbackRerank(List<String> documents, int topK) {
         log.warn("使用降级重排序策略");
         int limit = Math.min(topK, documents.size());
-        return documents.subList(0, limit).stream()
-                .map(doc -> new RerankResult(0, doc, 0.5))
+        return IntStream.range(0, limit)
+                .mapToObj(i -> new RerankResult(i, documents.get(i), 0.5))
                 .collect(Collectors.toList());
     }
 }

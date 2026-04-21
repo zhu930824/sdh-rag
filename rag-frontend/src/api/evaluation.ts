@@ -3,6 +3,7 @@ import request from '@/utils/request'
 export interface EvaluationTask {
   id: number
   knowledgeId: number
+  knowledgeName: string | null
   taskName: string
   qaCount: number
   hitRate: number | null
@@ -48,9 +49,9 @@ export function getEvaluationQaList(taskId: number) {
   return request.get<EvaluationQa[]>(`/api/evaluation/task/${taskId}/qa-list`)
 }
 
-// 获取知识库的评估任务列表
-export function getEvaluationList(knowledgeId: number) {
-  return request.get<EvaluationTask[]>('/api/evaluation/list', { params: { knowledgeId } })
+// 获取评估任务列表（不传知识库ID则返回全部）
+export function getEvaluationList(knowledgeId?: number) {
+  return request.get<EvaluationTask[]>('/api/evaluation/list', { params: knowledgeId ? { knowledgeId } : {} })
 }
 
 // 删除评估任务

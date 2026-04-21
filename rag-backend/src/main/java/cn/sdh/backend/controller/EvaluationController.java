@@ -54,11 +54,16 @@ public class EvaluationController {
     }
 
     /**
-     * 获取知识库的评估任务列表
+     * 获取评估任务列表
      */
     @GetMapping("/list")
-    public Result<List<EvaluationTask>> listByKnowledgeId(@RequestParam Long knowledgeId) {
-        List<EvaluationTask> tasks = evaluationService.listByKnowledgeId(knowledgeId);
+    public Result<List<EvaluationTask>> list(@RequestParam(required = false) Long knowledgeId) {
+        List<EvaluationTask> tasks;
+        if (knowledgeId != null) {
+            tasks = evaluationService.listByKnowledgeId(knowledgeId);
+        } else {
+            tasks = evaluationService.listAll();
+        }
         return Result.success(tasks);
     }
 
