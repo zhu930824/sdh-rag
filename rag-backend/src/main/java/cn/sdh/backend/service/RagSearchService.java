@@ -39,6 +39,23 @@ public interface RagSearchService {
     String rewriteQuery(String query, List<ChatMessage> chatHistory, Long modelId);
 
     /**
+     * 查询扩展（生成多个语义相关的查询以提升召回率）
+     * @param query 原始查询
+     *param expansionCount 扩展查询数量
+     * @return 包含原始查询在内的所有查询列表
+     */
+    List<String> expandQuery(String query, int expansionCount);
+
+    /**
+     * HyDE - 生成假设性文档
+     * 通过 LLM 生成一个假设包含答案的文档，用于向量检索
+     * @param query 用户查询
+     * @param modelId 模型ID（可选，默认使用知识库配置的模型）
+     * @return 假设性文档内容
+     */
+    String generateHypotheticalDocument(String query, Long modelId);
+
+    /**
      * 对话消息
      */
     class ChatMessage {
@@ -75,6 +92,8 @@ public interface RagSearchService {
     class RagSearchResult {
         private List<Document> documents;
         private String rewrittenQuery; // 改写后的查询（如果有）
+        private List<String> expandedQueries; // 扩展查询列表（如果有）
+        private String hydeDocument; // HyDE 生成的假设性文档（如果有）
         private int vectorCount; // 向量检索数量
         private int keywordCount; // 关键字检索数量
         private int rerankedCount; // 重排序后数量
@@ -93,6 +112,22 @@ public interface RagSearchService {
 
         public void setRewrittenQuery(String rewrittenQuery) {
             this.rewrittenQuery = rewrittenQuery;
+        }
+
+        public List<String> getExpandedQueries() {
+            return expandedQueries;
+        }
+
+        public void setExpandedQueries(List<String> expandedQueries) {
+            this.expandedQueries = expandedQueries;
+        }
+
+        public String getHydeDocument() {
+            return hydeDocument;
+        }
+
+        public void setHydeDocument(String hydeDocument) {
+            this.hydeDocument = hydeDocument;
         }
 
         public int getVectorCount() {

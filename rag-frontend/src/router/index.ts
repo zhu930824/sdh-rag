@@ -182,6 +182,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/profile/index.vue'),
         meta: { title: '个人中心', icon: 'User', requiresAuth: true, hidden: true } as RouteMeta,
       },
+      {
+        path: 'evaluation',
+        name: 'Evaluation',
+        component: () => import('@/views/evaluation/index.vue'),
+        meta: { title: '检索评估', icon: 'DataAnalysis', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
+      },
     ],
   },
   {

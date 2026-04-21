@@ -107,6 +107,30 @@ public class KnowledgeBase implements Serializable {
     @TableField("vector_weight")
     private Double vectorWeight;
 
+    /**
+     * 是否启用查询扩展
+     */
+    @TableField("enable_query_expansion")
+    private Boolean enableQueryExpansion;
+
+    /**
+     * 查询扩展数量（生成几个扩展查询）
+     */
+    @TableField("query_expansion_count")
+    private Integer queryExpansionCount;
+
+    /**
+     * 是否启用 HyDE（假设性文档嵌入）
+     */
+    @TableField("enable_hyde")
+    private Boolean enableHyde;
+
+    /**
+     * HyDE 生成文档使用的模型（为空则使用默认聊天模型）
+     */
+    @TableField("hyde_model")
+    private String hydeModel;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 

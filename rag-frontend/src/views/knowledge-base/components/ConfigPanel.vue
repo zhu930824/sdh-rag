@@ -80,6 +80,45 @@
             <span class="form-hint">根据对话历史改写查询，提高多轮对话检索效果</span>
           </a-form-item>
 
+          <a-form-item label="查询扩展" name="enableQueryExpansion">
+            <a-switch v-model:checked="form.enableQueryExpansion" />
+            <span class="form-hint">生成多个语义相关的查询变体，提升召回率</span>
+          </a-form-item>
+
+          <a-form-item v-if="form.enableQueryExpansion" label="扩展数量" name="queryExpansionCount">
+            <a-input-number
+              v-model:value="form.queryExpansionCount"
+              :min="1"
+              :max="5"
+              style="width: 200px"
+            />
+            <span class="form-hint">生成查询变体的数量，推荐 2-3 个</span>
+          </a-form-item>
+
+          <a-form-item label="HyDE 检索增强" name="enableHyde">
+            <a-switch v-model:checked="form.enableHyde" />
+            <span class="form-hint">生成假设性答案文档用于检索，缓解查询-文档语义不匹配</span>
+          </a-form-item>
+
+          <a-form-item v-if="form.enableHyde" label="HyDE 模型" name="hydeModel">
+            <a-select
+              v-model:value="form.hydeModel"
+              style="width: 300px"
+              allow-clear
+              placeholder="默认使用聊天模型"
+              :loading="loadingModels"
+            >
+              <a-select-option
+                v-for="model in chatModels"
+                :key="model.id"
+                :value="model.modelId"
+              >
+                {{ model.name }} ({{ model.modelId }})
+              </a-select-option>
+            </a-select>
+            <span class="form-hint">用于生成假设性文档的模型</span>
+          </a-form-item>
+
           <a-form-item label="相似度阈值" name="similarityThreshold">
             <a-slider
               v-model:value="form.similarityThreshold"
@@ -175,6 +214,10 @@ const emit = defineEmits<{
     embeddingModel: string
     rankModel?: string
     enableRewrite?: boolean
+    enableQueryExpansion?: boolean
+    queryExpansionCount?: number
+    enableHyde?: boolean
+    hydeModel?: string
     similarityThreshold?: number
     keywordTopK?: number
     vectorTopK?: number
@@ -198,12 +241,21 @@ const rerankerModels = computed(() => {
   return allModels.value.filter(m => m.modelType === 'reranker' && m.status === 1)
 })
 
+// 聊天模型列表（用于 HyDE）
+const chatModels = computed(() => {
+  return allModels.value.filter(m => m.modelType === 'chat' && m.status === 1)
+})
+
 const form = reactive({
   chunkSize: 500,
   chunkOverlap: 50,
   embeddingModel: '',
   rankModel: '',
   enableRewrite: false,
+  enableQueryExpansion: false,
+  queryExpansionCount: 3,
+  enableHyde: false,
+  hydeModel: '',
   similarityThreshold: 0.7,
   keywordTopK: 10,
   vectorTopK: 10,
@@ -233,6 +285,10 @@ watch(() => props.knowledgeBase, (kb) => {
     form.embeddingModel = kb.embeddingModel || ''
     form.rankModel = kb.rankModel || ''
     form.enableRewrite = kb.enableRewrite || false
+    form.enableQueryExpansion = kb.enableQueryExpansion || false
+    form.queryExpansionCount = kb.queryExpansionCount || 3
+    form.enableHyde = kb.enableHyde || false
+    form.hydeModel = kb.hydeModel || ''
     form.similarityThreshold = kb.similarityThreshold || 0.7
     form.keywordTopK = kb.keywordTopK || 10
     form.vectorTopK = kb.vectorTopK || 10
@@ -248,6 +304,10 @@ function handleSave() {
     embeddingModel: form.embeddingModel,
     rankModel: form.rankModel || undefined,
     enableRewrite: form.enableRewrite,
+    enableQueryExpansion: form.enableQueryExpansion,
+    queryExpansionCount: form.queryExpansionCount,
+    enableHyde: form.enableHyde,
+    hydeModel: form.hydeModel || undefined,
     similarityThreshold: form.similarityThreshold,
     keywordTopK: form.keywordTopK,
     vectorTopK: form.vectorTopK,
@@ -263,6 +323,10 @@ function handleReset() {
     form.embeddingModel = props.knowledgeBase.embeddingModel || ''
     form.rankModel = props.knowledgeBase.rankModel || ''
     form.enableRewrite = props.knowledgeBase.enableRewrite || false
+    form.enableQueryExpansion = props.knowledgeBase.enableQueryExpansion || false
+    form.queryExpansionCount = props.knowledgeBase.queryExpansionCount || 3
+    form.enableHyde = props.knowledgeBase.enableHyde || false
+    form.hydeModel = props.knowledgeBase.hydeModel || ''
     form.similarityThreshold = props.knowledgeBase.similarityThreshold || 0.7
     form.keywordTopK = props.knowledgeBase.keywordTopK || 10
     form.vectorTopK = props.knowledgeBase.vectorTopK || 10

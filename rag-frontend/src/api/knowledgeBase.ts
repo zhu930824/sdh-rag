@@ -13,6 +13,10 @@ export interface KnowledgeBase {
   // 检索配置
   rankModel: string
   enableRewrite: boolean
+  enableQueryExpansion: boolean  // 是否启用查询扩展
+  queryExpansionCount: number    // 查询扩展数量
+  enableHyde: boolean            // 是否启用 HyDE
+  hydeModel: string              // HyDE 使用的模型
   similarityThreshold: number
   keywordTopK: number
   vectorTopK: number
@@ -109,6 +113,10 @@ export interface KnowledgeBaseConfigRequest {
   // 检索配置
   rankModel?: string
   enableRewrite?: boolean
+  enableQueryExpansion?: boolean
+  queryExpansionCount?: number
+  enableHyde?: boolean
+  hydeModel?: string
   similarityThreshold?: number
   keywordTopK?: number
   vectorTopK?: number

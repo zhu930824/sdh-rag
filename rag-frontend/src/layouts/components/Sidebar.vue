@@ -97,6 +97,7 @@ import {
   TagsOutlined,
   TeamOutlined,
   DatabaseOutlined,
+  RadarChartOutlined,
 } from '@ant-design/icons-vue'
 
 interface MenuItem {
@@ -136,6 +137,7 @@ const menuConfig: MenuItem[] = [
       { key: '/knowledge', label: '知识库', icon: DatabaseOutlined, permission: '/knowledge' },
       { key: '/document', label: '文档管理', icon: FileTextOutlined, permission: '/document' },
       { key: '/graph', label: '知识图谱', icon: ApartmentOutlined, permission: '/graph' },
+      { key: '/evaluation', label: '检索评估', icon: RadarChartOutlined, permission: '/knowledge' },
     ],
   },
   {
@@ -222,7 +224,7 @@ function filterMenu(items: MenuItem[]): MenuItem[] {
 const filteredMenu = computed(() => filterMenu(menuConfig))
 
 const subMenuMap: Record<string, string[]> = {
-  'knowledge': ['/knowledge', '/document', '/graph'],
+  'knowledge': ['/knowledge', '/document', '/graph', '/evaluation'],
   'system': ['/user', '/role', '/log', '/sensitive', '/announcement', '/settings']
 }
 
