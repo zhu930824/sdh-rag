@@ -2,11 +2,16 @@ package cn.sdh.backend.controller;
 
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.DatasetInfo;
+import cn.sdh.backend.dto.EvaluationExportOverview;
+import cn.sdh.backend.dto.EvaluationExportQaDetail;
 import cn.sdh.backend.dto.EvaluationQaItem;
 import cn.sdh.backend.entity.EvaluationQa;
 import cn.sdh.backend.entity.EvaluationTask;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import cn.sdh.backend.service.EvaluationService;
 import cn.sdh.backend.utils.EvaluationFileParser;
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.write.builder.ExcelWriterBuilder;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +19,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 @Slf4j
 @RestController
@@ -145,6 +153,24 @@ public class EvaluationController {
     }
 
     /**
+     * 运行数据集评估（按数据集ID）
+     */
+    @PostMapping("/dataset/{datasetId}")
+    public Result<EvaluationTask> runDatasetEvaluation(
+            @PathVariable Long datasetId,
+            @RequestBody Map<String, Object> params) {
+
+        Long knowledgeId = Long.valueOf(params.get("knowledgeId").toString());
+
+        try {
+            EvaluationTask task = evaluationService.runDatasetEvaluation(datasetId, knowledgeId);
+            return Result.success(task);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
      * 获取内置数据集列表
      */
     @GetMapping("/builtin/list")
@@ -175,17 +201,18 @@ public class EvaluationController {
     }
 
     /**
-     * 获取评估任务列表
+     * 获取评估任务列表（分页）
      */
     @GetMapping("/list")
-    public Result<List<EvaluationTask>> list(@RequestParam(required = false) Long knowledgeId) {
-        List<EvaluationTask> tasks;
-        if (knowledgeId != null) {
-            tasks = evaluationService.listByKnowledgeId(knowledgeId);
-        } else {
-            tasks = evaluationService.listAll();
-        }
-        return Result.success(tasks);
+    public Result<Map<String, Object>> list(
+            @RequestParam(required = false) Long knowledgeId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int pageSize) {
+        IPage<EvaluationTask> paged = evaluationService.listPaged(knowledgeId, page, pageSize);
+        Map<String, Object> result = new HashMap<>();
+        result.put("records", paged.getRecords());
+        result.put("total", paged.getTotal());
+        return Result.success(result);
     }
 
     /**
@@ -195,5 +222,104 @@ public class EvaluationController {
     public Result<Void> deleteTask(@PathVariable Long id) {
         evaluationService.deleteTask(id);
         return Result.success();
+    }
+
+    /**
+     * 导出评估报告为 Excel
+     */
+    @GetMapping("/task/{id}/export")
+    public void exportReport(@PathVariable Long id, HttpServletResponse response) {
+        EvaluationTask task = evaluationService.getTaskDetail(id);
+        if (task == null) {
+            response.setStatus(404);
+            return;
+        }
+
+        List<EvaluationQa> qaList = evaluationService.getTaskQaList(id);
+
+        try {
+            String fileName = URLEncoder.encode((task.getTaskName() != null ? task.getTaskName() : "评估报告") + ".xlsx", StandardCharsets.UTF_8);
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+
+            // Sheet 1: 评估概览
+            List<EvaluationExportOverview> overviewList = buildOverviewData(task);
+
+            // Sheet 2: QA详情
+            List<EvaluationExportQaDetail> qaDetailList = buildQaDetailData(qaList);
+
+            com.alibaba.excel.ExcelWriter excelWriter = EasyExcel.write(response.getOutputStream()).build();
+            try {
+                com.alibaba.excel.write.metadata.WriteSheet sheet1 = EasyExcel.writerSheet(0, "评估概览")
+                        .head(EvaluationExportOverview.class).build();
+                excelWriter.write(overviewList, sheet1);
+
+                com.alibaba.excel.write.metadata.WriteSheet sheet2 = EasyExcel.writerSheet(1, "QA详情")
+                        .head(EvaluationExportQaDetail.class).build();
+                excelWriter.write(qaDetailList, sheet2);
+            } finally {
+                excelWriter.finish();
+            }
+
+        } catch (Exception e) {
+            log.error("导出评估报告失败", e);
+        }
+    }
+
+    private List<EvaluationExportOverview> buildOverviewData(EvaluationTask task) {
+        List<EvaluationExportOverview> list = new ArrayList<>();
+        list.add(new EvaluationExportOverview("任务名称", task.getTaskName() != null ? task.getTaskName() : "-"));
+        list.add(new EvaluationExportOverview("知识库", task.getKnowledgeName() != null ? task.getKnowledgeName() : "-"));
+        list.add(new EvaluationExportOverview("创建时间", task.getCreateTime() != null ? task.getCreateTime().toString() : "-"));
+        list.add(new EvaluationExportOverview("数据集类型", task.getDatasetType() != null ? task.getDatasetType() : "-"));
+        list.add(new EvaluationExportOverview("QA数量", String.valueOf(task.getQaCount() != null ? task.getQaCount() : 0)));
+        list.add(new EvaluationExportOverview("分块命中率", task.getHitRate() != null ? (task.getHitRate().doubleValue() * 100) + "%" : "-"));
+        list.add(new EvaluationExportOverview("文档命中率", task.getDocHitRate() != null ? (task.getDocHitRate().doubleValue() * 100) + "%" : "-"));
+        list.add(new EvaluationExportOverview("MRR", task.getMrr() != null ? task.getMrr().toPlainString() : "-"));
+        list.add(new EvaluationExportOverview("平均命中排名", task.getAvgHitRank() != null ? task.getAvgHitRank().toPlainString() : "-"));
+        list.add(new EvaluationExportOverview("负样本数量", String.valueOf(task.getNegativeCount() != null ? task.getNegativeCount() : 0)));
+        list.add(new EvaluationExportOverview("负样本错误命中率", task.getNegativeHitRate() != null ? (task.getNegativeHitRate().doubleValue() * 100) + "%" : "-"));
+        list.add(new EvaluationExportOverview("状态", formatStatus(task.getStatus())));
+        return list;
+    }
+
+    private List<EvaluationExportQaDetail> buildQaDetailData(List<EvaluationQa> qaList) {
+        List<EvaluationExportQaDetail> list = new ArrayList<>();
+        int index = 1;
+        for (EvaluationQa qa : qaList) {
+            EvaluationExportQaDetail detail = new EvaluationExportQaDetail();
+            detail.setIndex(index++);
+            detail.setQuestion(qa.getQuestion());
+            detail.setExpectedAnswer(qa.getExpectedAnswer());
+            detail.setSampleType(Boolean.TRUE.equals(qa.getIsNegative()) ? "负样本" : "正样本");
+
+            if (Boolean.TRUE.equals(qa.getIsNegative())) {
+                String retrieved = qa.getRetrievedChunkIds();
+                boolean hasRetrieved = retrieved != null && !retrieved.equals("[]") && !retrieved.isEmpty();
+                detail.setHitStatus(hasRetrieved ? "错误命中" : "正确未命中");
+                detail.setDocHitStatus(hasRetrieved ? "错误命中" : "正确未命中");
+            } else {
+                detail.setHitStatus(Boolean.TRUE.equals(qa.getHit()) ? "命中" : "未命中");
+                detail.setDocHitStatus(Boolean.TRUE.equals(qa.getDocHit()) ? "命中" : "未命中");
+            }
+
+            detail.setHitRank(qa.getHitRank() != null ? String.valueOf(qa.getHitRank()) : "-");
+            detail.setDocHitRank(qa.getDocHitRank() != null ? String.valueOf(qa.getDocHitRank()) : "-");
+            detail.setRetrievedChunkIds(qa.getRetrievedChunkIds());
+
+            list.add(detail);
+        }
+        return list;
+    }
+
+    private String formatStatus(Integer status) {
+        if (status == null) return "未知";
+        return switch (status) {
+            case 0 -> "待运行";
+            case 1 -> "运行中";
+            case 2 -> "完成";
+            case 3 -> "失败";
+            default -> "未知";
+        };
     }
 }

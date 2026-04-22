@@ -50,4 +50,7 @@ public class ModelConfig {
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;
+
+
+    private Integer embeddingDimension;
 }

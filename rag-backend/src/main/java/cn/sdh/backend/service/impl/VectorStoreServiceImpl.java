@@ -3,6 +3,7 @@ package cn.sdh.backend.service.impl;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
 import cn.sdh.backend.mapper.KnowledgeBaseMapper;
+import cn.sdh.backend.service.ElasticsearchIndexService;
 import cn.sdh.backend.service.EmbeddingService;
 import cn.sdh.backend.service.VectorStoreService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -12,7 +13,6 @@ import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
@@ -22,9 +22,8 @@ import java.util.stream.Collectors;
 
 /**
  * 向量存储服务实现
- * 支持按知识库ID过滤的向量搜索
- * 支持根据知识库配置动态选择嵌入模型
- * 支持相似度阈值过滤
+ * 每个知识库使用独立的 ES 索引，索引名格式：sdh-rag-kb-{knowledgeId}
+ * 支持根据知识库配置动态选择嵌入模型和维度
  */
 @Slf4j
 @Service
@@ -33,20 +32,20 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     private static final int RRF_K = 10;
 
     private final ElasticsearchClient elasticsearchClient;
+    private final ElasticsearchIndexService elasticsearchIndexService;
     private final EmbeddingService embeddingService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
 
     public VectorStoreServiceImpl(
             ElasticsearchClient elasticsearchClient,
+            ElasticsearchIndexService elasticsearchIndexService,
             @Lazy EmbeddingService embeddingService,
             KnowledgeBaseMapper knowledgeBaseMapper) {
         this.elasticsearchClient = elasticsearchClient;
+        this.elasticsearchIndexService = elasticsearchIndexService;
         this.embeddingService = embeddingService;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
     }
-
-    @Value("${spring.ai.vectorstore.elasticsearch.index-name:sdh-rag-index}")
-    private String indexName;
 
     @Override
     public String addVector(KnowledgeChunk chunk, Long knowledgeId) {
@@ -57,6 +56,9 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public String addVector(KnowledgeChunk chunk, Long knowledgeId, String embeddingModelName) {
         try {
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+            elasticsearchIndexService.ensureIndexExists(knowledgeId, embeddingModelName);
+
             float[] embedding = embeddingService.getEmbeddingByModel(chunk.getContent(), embeddingModelName);
             if (embedding == null || embedding.length == 0) {
                 log.error("获取向量失败: chunkId={}, embeddingModel={}", chunk.getId(), embeddingModelName);
@@ -81,8 +83,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             elasticsearchClient.index(request);
 
-            log.info("添加向量成功: vectorId={}, chunkIndex={}, knowledgeId={}, embeddingModel={}",
-                    vectorId, chunk.getChunkIndex(), knowledgeId, embeddingModelName);
+            log.info("添加向量成功: vectorId={}, chunkIndex={}, knowledgeId={}, embeddingModel={}, index={}",
+                    vectorId, chunk.getChunkIndex(), knowledgeId, embeddingModelName, indexName);
             return vectorId;
         } catch (Exception e) {
             log.error("添加向量失败: chunkId={}, error={}", chunk.getId(), e.getMessage(), e);
@@ -115,16 +117,21 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
     @Override
     public void removeKnowledgeFromVector(String vectorId, Long knowledgeId) {
-        deleteVector(vectorId);
+        deleteVector(vectorId, knowledgeId);
     }
 
     @Override
     public void deleteVector(String vectorId) {
+        log.warn("deleteVector(String vectorId) 已弃用，请使用 deleteVector(String vectorId, Long knowledgeId)");
+    }
+
+    public void deleteVector(String vectorId, Long knowledgeId) {
         try {
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
             elasticsearchClient.delete(d -> d.index(indexName).id(vectorId));
-            log.info("删除向量成功: vectorId={}", vectorId);
+            log.info("删除向量成功: vectorId={}, index={}", vectorId, indexName);
         } catch (Exception e) {
-            log.error("删除向量失败: vectorId={}, error={}", vectorId, e.getMessage());
+            log.error("删除向量失败: vectorId={}, knowledgeId={}, error={}", vectorId, knowledgeId, e.getMessage());
         }
     }
 
@@ -133,27 +140,35 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         if (vectorIds == null || vectorIds.isEmpty()) {
             return;
         }
+        log.warn("batchDeleteVectors 需要知识库ID，当前方法已弃用");
+    }
+
+    public void batchDeleteVectors(List<String> vectorIds, Long knowledgeId) {
+        if (vectorIds == null || vectorIds.isEmpty()) {
+            return;
+        }
         for (String vectorId : vectorIds) {
-            deleteVector(vectorId);
+            deleteVector(vectorId, knowledgeId);
         }
     }
 
     @Override
     public void deleteVectorsByKnowledgeId(Long knowledgeId) {
         try {
-            Query query = Query.of(q -> q
-                    .term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
 
-            SearchResponse<Map> response = elasticsearchClient.search(s -> s
-                    .index(indexName)
-                    .query(query)
-                    .size(10000), Map.class);
-
-            for (Hit<Map> hit : response.hits().hits()) {
-                deleteVector(hit.id());
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                log.info("知识库索引不存在，跳过删除: knowledgeId={}", knowledgeId);
+                return;
             }
 
-            log.info("删除知识库向量完成: knowledgeId={}, count={}", knowledgeId, response.hits().hits().size());
+            Query query = Query.of(q -> q.matchAll(m -> m));
+
+            elasticsearchClient.deleteByQuery(d -> d
+                    .index(indexName)
+                    .query(query));
+
+            log.info("删除知识库向量完成: knowledgeId={}, index={}", knowledgeId, indexName);
         } catch (Exception e) {
             log.error("删除知识库向量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
         }
@@ -174,6 +189,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     public List<Document> similaritySearch(String query, Long knowledgeId, int topK,
                                             String embeddingModelName, Double minScore) {
         try {
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                log.info("知识库索引不存在: knowledgeId={}", knowledgeId);
+                return Collections.emptyList();
+            }
+
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+
             float[] queryEmbedding = embeddingService.getEmbeddingByModel(query, embeddingModelName);
             if (queryEmbedding == null || queryEmbedding.length == 0) {
                 return Collections.emptyList();
@@ -187,10 +209,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                             .field("embedding")
                             .queryVector(queryVector)
                             .k(topK)
-                            .numCandidates(topK * 10)
-                            .filter(f -> f.term(t -> t
-                                    .field("knowledge_id")
-                                    .value(FieldValue.of(knowledgeId)))))
+                            .numCandidates(topK * 10))
                     .size(topK), Map.class);
 
             List<Document> documents = new ArrayList<>();
@@ -200,7 +219,6 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 if (source != null) {
                     double score = hit.score() != null ? hit.score() : 0.0;
 
-                    // 相似度阈值过滤
                     if (minScore != null && minScore > 0 && score < minScore) {
                         filtered++;
                         continue;
@@ -229,46 +247,29 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
     @Override
     public void deleteVectorsByDocumentId(Long documentId) {
-        try {
-            Query query = Query.of(q -> q
-                    .term(t -> t.field("document_id").value(FieldValue.of(documentId))));
-
-            SearchResponse<Map> response = elasticsearchClient.search(s -> s
-                    .index(indexName)
-                    .query(query)
-                    .size(10000), Map.class);
-
-            for (Hit<Map> hit : response.hits().hits()) {
-                deleteVector(hit.id());
-            }
-
-            log.info("删除文档向量完成: documentId={}, count={}", documentId, response.hits().hits().size());
-        } catch (Exception e) {
-            log.error("删除文档向量失败: documentId={}, error={}", documentId, e.getMessage());
-        }
+        log.warn("deleteVectorsByDocumentId(Long documentId) 需要遍历所有知识库，建议使用 deleteVectorsByDocumentIdAndKnowledgeId");
     }
 
     @Override
     public void deleteVectorsByDocumentIdAndKnowledgeId(Long documentId, Long knowledgeId) {
         try {
-            Query query = Query.of(q -> q
-                    .bool(b -> b
-                            .must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))))
-                            .must(m -> m.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))))));
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
 
-            SearchResponse<Map> response = elasticsearchClient.search(s -> s
-                    .index(indexName)
-                    .query(query)
-                    .size(10000), Map.class);
-
-            for (Hit<Map> hit : response.hits().hits()) {
-                deleteVector(hit.id());
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                log.info("知识库索引不存在，跳过删除: documentId={}, knowledgeId={}", documentId, knowledgeId);
+                return;
             }
 
-            log.info("删除文档知识库向量完成: documentId={}, knowledgeId={}, count={}",
-                    documentId, knowledgeId, response.hits().hits().size());
+            Query query = Query.of(q -> q
+                    .term(t -> t.field("document_id").value(FieldValue.of(documentId))));
+
+            elasticsearchClient.deleteByQuery(d -> d
+                    .index(indexName)
+                    .query(query));
+
+            log.info("删除文档向量完成: documentId={}, knowledgeId={}, index={}", documentId, knowledgeId, indexName);
         } catch (Exception e) {
-            log.error("删除文档知识库向量失败: documentId={}, knowledgeId={}, error={}",
+            log.error("删除文档向量失败: documentId={}, knowledgeId={}, error={}",
                     documentId, knowledgeId, e.getMessage());
         }
     }
@@ -299,10 +300,11 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public long countChunksByKnowledgeId(Long knowledgeId) {
         try {
-            Query query = Query.of(q -> q
-                    .term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
-
-            CountResponse response = elasticsearchClient.count(c -> c.index(indexName).query(query));
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return 0;
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+            CountResponse response = elasticsearchClient.count(c -> c.index(indexName));
             return response.count();
         } catch (Exception e) {
             log.error("统计分块数量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
@@ -313,14 +315,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public long countChunksByDocumentId(Long documentId, Long knowledgeId) {
         try {
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return 0;
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+
             Query query = Query.of(q -> q
-                    .bool(b -> {
-                        b.must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))));
-                        if (knowledgeId != null) {
-                            b.must(m -> m.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
-                        }
-                        return b;
-                    }));
+                    .term(t -> t.field("document_id").value(FieldValue.of(documentId))));
 
             CountResponse response = elasticsearchClient.count(c -> c.index(indexName).query(query));
             return response.count();
@@ -333,12 +334,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public List<Document> getChunksByKnowledgeId(Long knowledgeId, int page, int size) {
         try {
-            Query query = Query.of(q -> q
-                    .term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return Collections.emptyList();
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
-                    .query(query)
                     .from(page * size)
                     .size(size)
                     .sort(sort -> sort.field(f -> f.field("chunk_index")
@@ -355,14 +357,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public List<Document> getChunksByDocumentId(Long documentId, Long knowledgeId, int page, int size) {
         try {
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return Collections.emptyList();
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+
             Query query = Query.of(q -> q
-                    .bool(b -> {
-                        b.must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))));
-                        if (knowledgeId != null) {
-                            b.must(m -> m.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
-                        }
-                        return b;
-                    }));
+                    .term(t -> t.field("document_id").value(FieldValue.of(documentId))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -382,7 +383,17 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
     @Override
     public Document getChunkById(String vectorId) {
+        log.warn("getChunkById(String vectorId) 需要知识库ID，请使用其他方式获取分块");
+        return null;
+    }
+
+    public Document getChunkById(String vectorId, Long knowledgeId) {
         try {
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return null;
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+
             GetResponse<Map> response = elasticsearchClient.get(g -> g
                     .index(indexName)
                     .id(vectorId), Map.class);
@@ -399,7 +410,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return doc;
             }
         } catch (Exception e) {
-            log.error("获取分块详情失败: vectorId={}, error={}", vectorId, e.getMessage());
+            log.error("获取分块详情失败: vectorId={}, knowledgeId={}, error={}", vectorId, knowledgeId, e.getMessage());
         }
         return null;
     }
@@ -407,6 +418,11 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public long getIndexSizeByKnowledgeId(Long knowledgeId) {
         try {
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return 0;
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+
             var statsResponse = elasticsearchClient.indices().stats(i -> i.index(indexName));
 
             if (statsResponse.indices() != null && statsResponse.indices().containsKey(indexName)) {
@@ -422,12 +438,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public long getLastUpdateTimeByKnowledgeId(Long knowledgeId) {
         try {
-            Query query = Query.of(q -> q
-                    .term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))));
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return 0;
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
-                    .query(query)
                     .size(1)
                     .sort(sort -> sort.field(f -> f.field("create_time")
                             .order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))),
@@ -451,10 +468,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public List<Document> keywordSearch(String query, Long knowledgeId, int topK) {
         try {
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                return Collections.emptyList();
+            }
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+
             Query keywordQuery = Query.of(q -> q
-                    .bool(b -> b
-                            .must(m -> m.match(mt -> mt.field("content").query(query)))
-                            .filter(f -> f.term(t -> t.field("knowledge_id").value(FieldValue.of(knowledgeId))))));
+                    .match(m -> m.field("content").query(query)));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -485,13 +505,10 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                                        double vectorWeight, double keywordWeight,
                                        String embeddingModelName, Double minScore) {
         try {
-            // 1. 向量检索（带阈值过滤）
             List<Document> vectorResults = similaritySearch(query, knowledgeId, vectorTopK, embeddingModelName, minScore);
 
-            // 2. 关键字检索
             List<Document> keywordResults = keywordSearch(query, knowledgeId, keywordTopK);
 
-            // 3. 合并结果（RRF）
             Map<String, Document> docMap = new HashMap<>();
             Map<String, Double> scoreMap = new HashMap<>();
 

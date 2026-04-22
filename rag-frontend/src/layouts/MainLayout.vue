@@ -102,7 +102,7 @@ onUnmounted(() => {
 .app-content {
   flex: 1;
   padding: var(--page-padding);
-  overflow: hidden;
+  overflow-y: auto;
   background: var(--bg-body);
 }
 

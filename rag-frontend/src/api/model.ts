@@ -31,6 +31,7 @@ export interface ModelConfigRequest {
   isLocal?: number
   isBuiltIn?: number
   icon?: string
+  embeddingDimension?: number
 }
 
 export function createModel(data: ModelConfigRequest): Promise<ApiResponse<null>> {
@@ -59,4 +60,8 @@ export function getActiveChatModels(): Promise<ApiResponse<ModelConfig[]>> {
 
 export function getActiveRerankModels(): Promise<ApiResponse<ModelConfig[]>> {
   return request.get('/api/model/active/reranker')
+}
+
+export function getActiveEmbeddingModels(): Promise<ApiResponse<ModelConfig[]>> {
+  return request.get('/api/model/active/embedding')
 }

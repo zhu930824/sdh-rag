@@ -103,6 +103,10 @@
                     <span class="detail-label">基础模型</span>
                     <span class="detail-value">{{ model.modelId }}</span>
                   </div>
+                  <div v-if="model.modelType === 'embedding' && model.embeddingDimension" class="model-detail">
+                    <span class="detail-label">向量维度</span>
+                    <span class="detail-value">{{ model.embeddingDimension }}</span>
+                  </div>
                   <div class="model-detail">
                     <span class="detail-label">状态</span>
                     <span class="detail-value status" :class="{ enabled: model.status === 1 }">
@@ -198,6 +202,18 @@
         <a-form-item label="是否多模态">
           <a-switch :checked="formData.isMultiModel === 1" @change="(checked: boolean) => formData.isMultiModel = checked ? 1 : 0" />
         </a-form-item>
+        <a-form-item v-if="formData.modelType === 'embedding'" label="向量维度" required>
+          <a-select v-model:value="formData.embeddingDimension" placeholder="请选择向量维度">
+            <a-select-option :value="384">384</a-select-option>
+            <a-select-option :value="512">512</a-select-option>
+            <a-select-option :value="768">768</a-select-option>
+            <a-select-option :value="1024">1024</a-select-option>
+            <a-select-option :value="1536">1536</a-select-option>
+            <a-select-option :value="2048">2048</a-select-option>
+            <a-select-option :value="3072">3072</a-select-option>
+            <a-select-option :value="4096">4096</a-select-option>
+          </a-select>
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -226,6 +242,7 @@ interface ExtendedModelConfig extends ModelConfig {
   isLocal?: number
   isBuiltIn?: number
   isMultiModel?: number
+  embeddingDimension?: number
 }
 
 const loading = ref(false)
@@ -250,6 +267,7 @@ const formData = reactive<Partial<ExtendedModelConfig>>({
   isLocal: 0,
   isBuiltIn: 0,
   isMultiModel: 0,
+  embeddingDimension: 1024,
 })
 
 const providers = [
@@ -335,6 +353,7 @@ async function loadData() {
       isLocal: item.isLocal ?? (item.provider === 'local' || item.provider === 'ollama' || item.provider === 'vllm' ? 1 : 0),
       isBuiltIn: item.isBuiltIn ?? (item.name.includes('内置') || item.provider === 'local' ? 1 : 0),
       isMultiModel: item.isMultiModel ?? 0,
+      embeddingDimension: item.embeddingDimension ?? undefined,
     }))
   } catch (error) {
     tableData.value = []
@@ -369,6 +388,7 @@ function handleAdd() {
     isLocal: 0,
     isBuiltIn: 0,
     isMultiModel: 0,
+    embeddingDimension: 1024,
   })
   dialogVisible.value = true
 }
@@ -388,6 +408,8 @@ async function handleSubmit() {
       isLocal: formData.isLocal ? 1 : 0,
       isBuiltIn: formData.isBuiltIn ? 1 : 0,
       isMultiModel: formData.isMultiModel ? 1 : 0,
+      // 仅向量模型才提交 embeddingDimension
+      embeddingDimension: formData.modelType === 'embedding' ? formData.embeddingDimension : undefined,
     }
 
     if (isEdit.value && formData.id) {

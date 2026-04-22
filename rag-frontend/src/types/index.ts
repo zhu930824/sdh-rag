@@ -96,6 +96,7 @@ export interface ModelConfig {
   isLocal?: number
   isBuiltIn?: number
   isMultiModel?: number
+  embeddingDimension?: number
   icon?: string
   createTime?: string
   updateTime?: string

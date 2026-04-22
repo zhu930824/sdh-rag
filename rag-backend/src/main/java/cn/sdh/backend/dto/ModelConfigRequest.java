@@ -30,4 +30,6 @@ public class ModelConfigRequest {
     private Integer isBuiltIn = 0;
     private Integer isMultiModel = 0;
     private String icon;
+
+    private Integer embeddingDimension;
 }

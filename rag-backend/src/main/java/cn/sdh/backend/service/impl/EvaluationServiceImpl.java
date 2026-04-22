@@ -7,7 +7,11 @@ import cn.sdh.backend.entity.*;
 import cn.sdh.backend.mapper.EvaluationQaMapper;
 import cn.sdh.backend.mapper.EvaluationTaskMapper;
 import cn.sdh.backend.service.*;
+import cn.sdh.backend.service.TestDatasetService;
+import cn.sdh.backend.entity.TestDataset;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,6 +40,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final RagSearchService ragSearchService;
     private final ChatService chatService;
+    private final TestDatasetService testDatasetService;
     private final ObjectMapper objectMapper;
 
     private static final String QA_GENERATION_PROMPT = """
@@ -61,6 +66,7 @@ public class EvaluationServiceImpl implements EvaluationService {
             KnowledgeBaseService knowledgeBaseService,
             RagSearchService ragSearchService,
             ChatService chatService,
+            TestDatasetService testDatasetService,
             ObjectMapper objectMapper) {
         this.taskMapper = taskMapper;
         this.qaMapper = qaMapper;
@@ -68,6 +74,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         this.knowledgeBaseService = knowledgeBaseService;
         this.ragSearchService = ragSearchService;
         this.chatService = chatService;
+        this.testDatasetService = testDatasetService;
         this.objectMapper = objectMapper;
     }
 
@@ -124,6 +131,36 @@ public class EvaluationServiceImpl implements EvaluationService {
 
         String taskName = "内置数据集-" + datasetName;
         EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "builtin", userId);
+        taskMapper.insert(task);
+
+        new Thread(() -> runImportedEvaluation(task.getId(), items)).start();
+
+        return task;
+    }
+
+    @Override
+    @Transactional
+    public EvaluationTask runDatasetEvaluation(Long datasetId, Long knowledgeId) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            throw new RuntimeException("用户未登录");
+        }
+        if (knowledgeId == null) {
+            throw new RuntimeException("请选择知识库");
+        }
+
+        // 通过 TestDatasetService 获取数据集的QA项
+        List<EvaluationQaItem> items = testDatasetService.getDatasetQaItems(datasetId);
+        if (items.isEmpty()) {
+            throw new RuntimeException("数据集为空或不存在");
+        }
+
+        // 获取数据集信息
+        TestDataset dataset = testDatasetService.getDatasetDetail(datasetId);
+        String taskName = dataset != null ? dataset.getName() + "-评估" : "数据集评估-" + datasetId;
+        String datasetType = dataset != null ? dataset.getDatasetType() : "custom";
+
+        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), datasetType, userId);
         taskMapper.insert(task);
 
         new Thread(() -> runImportedEvaluation(task.getId(), items)).start();
@@ -647,24 +684,16 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
-    public List<EvaluationTask> listByKnowledgeId(Long knowledgeId) {
-        List<EvaluationTask> tasks = taskMapper.selectList(
-                new LambdaQueryWrapper<EvaluationTask>()
-                        .eq(EvaluationTask::getKnowledgeId, knowledgeId)
-                        .orderByDesc(EvaluationTask::getCreateTime)
-        );
-        fillKnowledgeName(tasks);
-        return tasks;
-    }
-
-    @Override
-    public List<EvaluationTask> listAll() {
-        List<EvaluationTask> tasks = taskMapper.selectList(
-                new LambdaQueryWrapper<EvaluationTask>()
-                        .orderByDesc(EvaluationTask::getCreateTime)
-        );
-        fillKnowledgeName(tasks);
-        return tasks;
+    public IPage<EvaluationTask> listPaged(Long knowledgeId, int page, int pageSize) {
+        Page<EvaluationTask> pageParam = new Page<>(page, pageSize);
+        LambdaQueryWrapper<EvaluationTask> wrapper = new LambdaQueryWrapper<EvaluationTask>()
+                .orderByDesc(EvaluationTask::getCreateTime);
+        if (knowledgeId != null) {
+            wrapper.eq(EvaluationTask::getKnowledgeId, knowledgeId);
+        }
+        IPage<EvaluationTask> result = taskMapper.selectPage(pageParam, wrapper);
+        fillKnowledgeName(result.getRecords());
+        return result;
     }
 
     private void fillKnowledgeName(List<EvaluationTask> tasks) {

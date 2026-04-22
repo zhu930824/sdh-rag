@@ -1,5 +1,6 @@
 package cn.sdh.backend.service.impl;
 
+import cn.sdh.backend.dto.ModelConfigResponse;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ModelConfigMapper;
 import cn.sdh.backend.service.ModelConfigService;
@@ -81,6 +82,14 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
         return list(new LambdaQueryWrapper<ModelConfig>()
                 .eq(ModelConfig::getStatus, 1)
                 .eq(ModelConfig::getModelType, "reranker")
+                .orderByDesc(ModelConfig::getSort));
+    }
+
+    @Override
+    public List<ModelConfig> getActiveModelsByType(String modelType) {
+        return list(new LambdaQueryWrapper<ModelConfig>()
+                .eq(ModelConfig::getStatus, 1)
+                .eq(ModelConfig::getModelType, modelType)
                 .orderByDesc(ModelConfig::getSort));
     }
 }

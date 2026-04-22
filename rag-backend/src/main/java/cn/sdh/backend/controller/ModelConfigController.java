@@ -98,6 +98,7 @@ public class ModelConfigController {
         config.setIsBuiltIn(request.getIsBuiltIn());
         config.setIsMultiModel(request.getIsMultiModel());
         config.setIcon(request.getIcon());
+        config.setEmbeddingDimension(request.getEmbeddingDimension());
         modelConfigService.update(config);
         return Result.success();
     }
@@ -148,6 +149,12 @@ public class ModelConfigController {
                 .collect(Collectors.toList());
         return Result.success(responses);
     }
+
+    @GetMapping("/active/embedding")
+    public Result<List<ModelConfig>> getActiveEmbeddingModels() {
+        return Result.success(modelConfigService.getActiveModelsByType("embedding"));
+    }
+
 
 
 }

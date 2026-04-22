@@ -15,6 +15,7 @@ import cn.sdh.backend.mapper.KnowledgeChunkMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentRelationMapper;
 import cn.sdh.backend.service.DocumentProcessService;
+import cn.sdh.backend.service.ElasticsearchIndexService;
 import cn.sdh.backend.service.KnowledgeBaseService;
 import cn.sdh.backend.service.KnowledgeBaseTagService;
 import cn.sdh.backend.service.TagService;
@@ -61,12 +62,29 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private final VectorStoreService vectorStoreService;
     private final KnowledgeBaseTagService knowledgeBaseTagService;
     private final TagService tagService;
+    private final ElasticsearchIndexService elasticsearchIndexService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean createKnowledgeBase(KnowledgeBase knowledgeBase) {
         defaultKnowledgeConfig(knowledgeBase);
-        return knowledgeBaseMapper.insert(knowledgeBase) > 0;
+        boolean inserted = knowledgeBaseMapper.insert(knowledgeBase) > 0;
+
+        if (inserted) {
+            // 创建知识库对应的 ES 索引
+            try {
+                elasticsearchIndexService.createIndexForKnowledgeBase(
+                        knowledgeBase.getId(),
+                        knowledgeBase.getEmbeddingModel());
+                log.info("知识库创建成功，ES 索引已创建: knowledgeId={}, embeddingModel={}",
+                        knowledgeBase.getId(), knowledgeBase.getEmbeddingModel());
+            } catch (Exception e) {
+                log.error("ES 索引创建失败，但知识库已创建: knowledgeId={}, error={}",
+                        knowledgeBase.getId(), e.getMessage());
+            }
+        }
+
+        return inserted;
     }
 
     private void defaultKnowledgeConfig(KnowledgeBase knowledgeBase) {
@@ -295,6 +313,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         for (Long documentId : documentIds) {
             documentProcessService.unlinkDocumentFromKnowledge(documentId, id);
         }
+
+        // 删除知识库对应的 ES 索引
+        elasticsearchIndexService.deleteIndexForKnowledgeBase(id);
 
         // 删除知识库
         return knowledgeBaseMapper.deleteById(id) > 0;

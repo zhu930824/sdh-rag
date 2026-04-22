@@ -39,6 +39,14 @@ public interface EvaluationService {
     EvaluationTask runBuiltinDataset(String datasetName, Long knowledgeId);
 
     /**
+     * 运行数据集评估（支持数据库中的数据集ID）
+     * @param datasetId 数据集ID
+     * @param knowledgeId 知识库ID
+     * @return 评估任务
+     */
+    EvaluationTask runDatasetEvaluation(Long datasetId, Long knowledgeId);
+
+    /**
      * 获取内置数据集列表
      * @return 数据集信息列表
      */
@@ -65,17 +73,13 @@ public interface EvaluationService {
     List<EvaluationQa> getTaskQaList(Long taskId);
 
     /**
-     * 获取知识库的评估任务列表
+     * 分页获取评估任务列表
      * @param knowledgeId 知识库ID（可选，为空则返回全部）
-     * @return 任务列表
+     * @param page 页码
+     * @param pageSize 每页数量
+     * @return 分页结果
      */
-    List<EvaluationTask> listByKnowledgeId(Long knowledgeId);
-
-    /**
-     * 获取所有评估任务列表
-     * @return 任务列表
-     */
-    List<EvaluationTask> listAll();
+    com.baomidou.mybatisplus.core.metadata.IPage<EvaluationTask> listPaged(Long knowledgeId, int page, int pageSize);
 
     /**
      * 删除评估任务

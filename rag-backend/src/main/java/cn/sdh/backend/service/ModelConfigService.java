@@ -1,5 +1,6 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.dto.ModelConfigResponse;
 import cn.sdh.backend.entity.ModelConfig;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
@@ -26,4 +27,7 @@ public interface ModelConfigService {
     List<ModelConfig> getActiveChatModels();
 
     List<ModelConfig> getActiveRerankModels();
+
+    List<ModelConfig> getActiveModelsByType(String modelType);
+
 }

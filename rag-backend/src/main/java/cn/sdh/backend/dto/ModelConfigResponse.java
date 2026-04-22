@@ -24,6 +24,7 @@ public class ModelConfigResponse {
     private Integer isBuiltIn;
     private Integer isMultiModel;
     private String icon;
+    private Integer embeddingDimension;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     

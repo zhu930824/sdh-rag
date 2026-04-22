@@ -13,7 +13,7 @@ export interface EvaluationTask {
   topKHits: string | null
   negativeCount: number | null
   negativeHitRate: number | null
-  datasetType: string | null       // generated/imported/builtin
+  datasetType: string | null       // generated/imported/builtin/custom
   status: number
   configSnapshot: string | null
   userId: number
@@ -93,12 +93,17 @@ export function getEvaluationQaList(taskId: number) {
   return request.get<EvaluationQa[]>(`/api/evaluation/task/${taskId}/qa-list`)
 }
 
-// 获取评估任务列表
-export function getEvaluationList(knowledgeId?: number) {
-  return request.get<EvaluationTask[]>('/api/evaluation/list', { params: knowledgeId ? { knowledgeId } : {} })
+// 获取评估任务列表（分页）
+export function getEvaluationList(params: { page: number; pageSize: number; knowledgeId?: number }) {
+  return request.get<{ records: EvaluationTask[]; total: number }>('/api/evaluation/list', { params })
 }
 
 // 删除评估任务
 export function deleteEvaluationTask(id: number) {
   return request.post(`/api/evaluation/task/${id}/delete`)
+}
+
+// 导出评估报告
+export function exportEvaluationReport(taskId: number) {
+  return request.get(`/api/evaluation/task/${taskId}/export`, { responseType: 'blob' })
 }
