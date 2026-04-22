@@ -21,6 +21,7 @@ public class EmbeddingDimensionMapping {
         DIMENSION_MAP.put("text-embedding-v3", 1024);
         DIMENSION_MAP.put("text-embedding-v2", 1536);
         DIMENSION_MAP.put("text-embedding-v1", 1536);
+        DIMENSION_MAP.put("text-embedding-v4", 1536);
 
         // OpenAI
         DIMENSION_MAP.put("text-embedding-ada-002", 1536);

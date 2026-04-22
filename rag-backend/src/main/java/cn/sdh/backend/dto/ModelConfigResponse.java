@@ -51,6 +51,7 @@ public class ModelConfigResponse {
         response.setIcon(entity.getIcon());
         response.setCreateTime(entity.getCreateTime());
         response.setUpdateTime(entity.getUpdateTime());
+        response.setEmbeddingDimension(entity.getEmbeddingDimension());
         return response;
     }
     

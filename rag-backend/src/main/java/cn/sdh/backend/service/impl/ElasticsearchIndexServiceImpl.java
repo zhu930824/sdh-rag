@@ -24,7 +24,6 @@ import java.util.Map;
 public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService {
 
     private static final String INDEX_PREFIX = "sdh-rag-kb-";
-    private static final String SIMILARITY = "cosine";
 
     private final ElasticsearchClient elasticsearchClient;
 
@@ -119,7 +118,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         properties.put("embedding", Property.of(p -> p.denseVector(DenseVectorProperty.of(dv -> dv
                 .dims(dimensions)
                 .index(true)
-                .similarity(DenseVectorSimilarity.valueOf(SIMILARITY))))));
+                .similarity(DenseVectorSimilarity.Cosine)))));
         properties.put("embedding_model", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
         properties.put("create_time", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
 
