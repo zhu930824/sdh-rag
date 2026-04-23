@@ -1,21 +1,28 @@
 # 多阶段构建：构建阶段
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 # 设置工作目录
 WORKDIR /app
 
-# 复制 pom.xml 并下载依赖（利用 Docker 缓存）
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+# 设置编码环境变量
+ENV MAVEN_OPTS="-Dfile.encoding=UTF-8"
+
+# 先复制父 POM 并安装到本地仓库
+COPY pom.xml ./pom.xml
+RUN mvn install -N -B -Dproject.build.sourceEncoding=UTF-8
+
+# 复制子模块 POM 并下载依赖（利用 Docker 缓存）
+COPY rag-backend/pom.xml ./rag-backend/pom.xml
+RUN mvn -f rag-backend dependency:go-offline -B -Dproject.build.sourceEncoding=UTF-8
 
 # 复制源代码
-COPY src ./src
+COPY rag-backend/src ./rag-backend/src
 
 # 构建应用
-RUN mvn clean package -DskipTests -B
+RUN mvn -f rag-backend clean package -DskipTests -B -Dproject.build.sourceEncoding=UTF-8
 
 # 运行阶段
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:21-jre-alpine
 
 # 安装必要的工具
 RUN apk add --no-cache curl
@@ -27,7 +34,7 @@ RUN addgroup -S spring && adduser -S spring -G spring
 WORKDIR /app
 
 # 从构建阶段复制 JAR 文件
-COPY --from=builder /app/target/rag-backend-*.jar app.jar
+COPY --from=builder /app/rag-backend/target/rag-backend-*.jar app.jar
 
 # 更改文件所有者
 RUN chown -R spring:spring /app

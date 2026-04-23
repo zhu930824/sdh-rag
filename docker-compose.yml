@@ -74,8 +74,8 @@ services:
   # 后端服务
   rag-backend:
     build:
-      context: ./rag-backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: rag-backend/Dockerfile
     container_name: sdh-rag-backend
     restart: unless-stopped
     depends_on:

@@ -35,8 +35,8 @@ spring:
     uris: 192.168.1.196:9200
   datasource:
     username: root
-    password: root
-    url: jdbc:mysql://localhost:3306/sdh_rag?serverTimezone=UTC
+    password: u876mhpd
+    url: jdbc:mysql://192.168.1.196:3306/sdh_rag?serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
 
