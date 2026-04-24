@@ -22,9 +22,9 @@ spring:
     active: dev
   ai:
     openai:
-      api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
+      api-key: ${DASHSCOPE_API_KEY}
     dashscope:
-      api-key: sk-d9e4ff14ddc1428ea34311e3423ee000
+      api-key: ${DASHSCOPE_API_KEY}
     vectorstore:
       elasticsearch:
         initialize-schema: true

@@ -159,8 +159,8 @@ function handleUserAction({ key }: { key: string }): void {
         okText: '退出',
         cancelText: '取消',
         centered: true,
-        onOk() {
-          userStore.logout()
+        async onOk() {
+          await userStore.logout()
           router.push('/login')
         },
       })
