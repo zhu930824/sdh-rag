@@ -188,6 +188,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/evaluation/index.vue'),
         meta: { title: '检索评估', icon: 'DataAnalysis', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
       },
+      {
+        path: 'memory',
+        name: 'Memory',
+        component: () => import('@/views/memory/index.vue'),
+        meta: { title: '记忆中心', icon: 'Bulb', requiresAuth: true, permission: '/memory' } as RouteMeta,
+      },
     ],
   },
   {
