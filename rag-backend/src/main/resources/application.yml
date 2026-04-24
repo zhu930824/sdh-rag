@@ -104,3 +104,18 @@ knowledge:
 rag:
   use-advisor: true  # true: 使用 Spring AI Advisor 机制; false: 使用原有手动 RAG 流程
   memory-window-size: 10  # 对话记忆窗口大小
+
+# 记忆系统配置
+memory:
+  enabled: true
+  working-window-size: 10
+  working-memory-ttl-hours: 1
+  semantic-similarity-threshold: 0.75
+  semantic-dedup-threshold: 0.9
+  pattern-min-observations: 3
+  preference-importance-threshold: 5
+  boundary-detection-window-size: 3
+  summary-max-messages: 20
+  decay-cron: "0 0 3 * * ?"
+  memory-index-name: "sdh-memory-index"
+  working-memory-key-prefix: "memory:working:"
