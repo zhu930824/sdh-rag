@@ -38,6 +38,18 @@
         </div>
 
         <div class="toolbar-right">
+          <!-- 记忆增强开关 -->
+          <a-tooltip title="记忆增强：AI会记住您的偏好和历史对话">
+            <div class="memory-toggle">
+              <BulbOutlined :style="{ color: localMemoryEnabled ? '#faad14' : '#999' }" />
+              <a-switch
+                v-model:checked="localMemoryEnabled"
+                size="small"
+                @change="handleMemoryChange"
+              />
+            </div>
+          </a-tooltip>
+
           <!-- 模型选择 -->
           <a-select
             v-model:value="selectedModelId"
@@ -96,6 +108,7 @@ import { ref, computed, nextTick, onMounted } from 'vue'
 import {
   ArrowUpOutlined,
   PauseOutlined,
+  BulbOutlined,
 } from '@ant-design/icons-vue'
 import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
 import { getActiveChatModels } from '@/api/model'
@@ -109,6 +122,7 @@ const props = withDefaults(
     isGenerating?: boolean
     knowledgeId?: number | null
     modelId?: number | null
+    memoryEnabled?: boolean
   }>(),
   {
     disabled: false,
@@ -117,6 +131,7 @@ const props = withDefaults(
     isGenerating: false,
     knowledgeId: null,
     modelId: null,
+    memoryEnabled: true,
   }
 )
 
@@ -125,12 +140,14 @@ const emit = defineEmits<{
   (e: 'stop'): void
   (e: 'knowledgeChange', knowledgeId: number | null): void
   (e: 'modelChange', modelId: number | null): void
+  (e: 'memoryChange', enabled: boolean): void
 }>()
 
 const textareaRef = ref()
 const inputText = ref('')
 const selectedKnowledgeId = ref<number | null>(props.knowledgeId)
 const selectedModelId = ref<number | null>(props.modelId)
+const localMemoryEnabled = ref(props.memoryEnabled)
 const knowledgeList = ref<KnowledgeBase[]>([])
 const modelList = ref<ModelConfig[]>([])
 const knowledgeLoading = ref(false)
@@ -175,6 +192,10 @@ function handleKnowledgeChange(value: number | null): void {
 
 function handleModelChange(value: number | null): void {
   emit('modelChange', value)
+}
+
+function handleMemoryChange(value: boolean): void {
+  emit('memoryChange', value)
 }
 
 function adjustHeight(): void {
@@ -311,6 +332,17 @@ defineExpose({
         display: flex;
         align-items: center;
         gap: 8px;
+
+        .memory-toggle {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 0 4px;
+
+          :deep(.anticon) {
+            font-size: 14px;
+          }
+        }
 
         .model-select {
           min-width: 100px;

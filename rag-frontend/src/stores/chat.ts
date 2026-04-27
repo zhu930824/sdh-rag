@@ -13,6 +13,9 @@ export const useChatStore = defineStore('chat', () => {
   // 当前选择的模型ID
   const selectedModelId = ref<number | null>(null)
 
+  // 记忆增强开关（默认开启）
+  const memoryEnabled = ref(true)
+
   // 消息列表
   const messages = ref<ChatMessage[]>([])
 
@@ -179,6 +182,7 @@ export const useChatStore = defineStore('chat', () => {
           sessionId,
           knowledgeId: selectedKnowledgeId.value,
           modelId: selectedModelId.value,
+          memoryEnabled: memoryEnabled.value,
         },
         (event) => {
           // 处理流式事件
@@ -267,6 +271,11 @@ export const useChatStore = defineStore('chat', () => {
     selectedModelId.value = modelId
   }
 
+  // 设置记忆增强开关
+  function setMemoryEnabled(enabled: boolean): void {
+    memoryEnabled.value = enabled
+  }
+
   return {
     // 状态
     currentSessionId,
@@ -281,6 +290,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionTotal,
     selectedKnowledgeId,
     selectedModelId,
+    memoryEnabled,
 
     // 计算属性
     hasMoreSessions,
@@ -297,5 +307,6 @@ export const useChatStore = defineStore('chat', () => {
     reset,
     setKnowledgeId,
     setModelId,
+    setMemoryEnabled,
   }
 })

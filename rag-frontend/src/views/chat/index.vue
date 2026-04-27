@@ -69,10 +69,12 @@
             :is-generating="chatStore.isGenerating"
             :knowledge-id="chatStore.selectedKnowledgeId"
             :model-id="chatStore.selectedModelId"
+            :memory-enabled="chatStore.memoryEnabled"
             @send="handleSendMessage"
             @stop="handleStopGeneration"
             @knowledge-change="handleKnowledgeChange"
             @model-change="handleModelChange"
+            @memory-change="handleMemoryChange"
           />
         </div>
       </a-card>
@@ -198,6 +200,10 @@ function handleKnowledgeChange(knowledgeId: number | null): void {
 
 function handleModelChange(modelId: number | null): void {
   chatStore.setModelId(modelId)
+}
+
+function handleMemoryChange(enabled: boolean): void {
+  chatStore.setMemoryEnabled(enabled)
 }
 
 function goToDocument(): void {

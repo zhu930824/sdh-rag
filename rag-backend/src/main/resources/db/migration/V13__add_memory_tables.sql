@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS `memory_abstract` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '记忆摘要表';
 
--- 为 chat_history 表添加语义分块字段 (如果不存在)
--- ALTER TABLE `chat_history`
---   ADD COLUMN IF NOT EXISTS `topic_tag` VARCHAR(200) COMMENT '话题标签' AFTER `sources`,
---   ADD COLUMN IF NOT EXISTS `episode_id` VARCHAR(100) COMMENT '情景块ID' AFTER `topic_tag`;
+-- 为 chat_history 表添加语义分块字段
+ALTER TABLE `chat_history` 
+  ADD COLUMN IF NOT EXISTS `topic_tag` VARCHAR(200) COMMENT '话题标签' AFTER `sources`,
+  ADD COLUMN IF NOT EXISTS `episode_id` VARCHAR(100) COMMENT '情景块ID' AFTER `topic_tag`;
+
+-- 添加索引
+CREATE INDEX IF NOT EXISTS `idx_chat_history_episode` ON `chat_history` (`episode_id`);

@@ -45,6 +45,8 @@ export interface AskRequest {
   sessionId?: string
   knowledgeId?: number | null
   modelId?: number | null
+  /** 是否启用记忆增强，默认true */
+  memoryEnabled?: boolean
 }
 
 // 发起问答（流式响应）
