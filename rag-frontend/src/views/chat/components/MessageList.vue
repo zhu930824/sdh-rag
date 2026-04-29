@@ -49,6 +49,35 @@
           <span v-if="isGenerating && message === lastAssistantMessage" class="typing-cursor"></span>
         </div>
 
+        <!-- 在 message-sources 之前添加 -->
+        <div
+          v-if="message.routerInfo && message.routerInfo.used"
+          class="message-router-info"
+        >
+          <div class="router-header">
+            <BulbOutlined />
+            <span>智能路由</span>
+          </div>
+          <div class="router-detail">
+            <div class="router-item">
+              <span class="label">决策:</span>
+              <span>{{ message.routerInfo.reason }}</span>
+            </div>
+            <div v-if="message.routerInfo.needRetrieval" class="router-item">
+              <span class="label">已选择:</span>
+              <a-tag color="blue">{{ message.routerInfo.selectedKnowledgeBaseName }}</a-tag>
+            </div>
+            <div v-if="message.routerInfo.candidates && message.routerInfo.candidates.length > 1" class="router-item">
+              <span class="label">候选:</span>
+              <span class="candidates">
+                <span v-for="(c, idx) in message.routerInfo.candidates" :key="c.knowledgeBaseId">
+                  {{ c.knowledgeBaseName }}({{ (c.score * 100).toFixed(0) }}%){{ idx < message.routerInfo.candidates!.length - 1 ? ', ' : '' }}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="message.sources && message.sources.length > 0" class="message-sources">
           <div class="sources-header">
             <LinkOutlined />
@@ -125,6 +154,7 @@ import {
   DislikeOutlined,
   LikeFilled,
   DislikeFilled,
+  BulbOutlined,
 } from '@ant-design/icons-vue'
 import type { ChatMessage, Source } from '@/api/chat'
 import SourceCard from './SourceCard.vue'
@@ -632,6 +662,45 @@ defineExpose({
     gap: 8px;
     padding: 20px;
     color: var(--text-secondary);
+  }
+
+  .message-router-info {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background-color: var(--bg-page);
+    border-radius: 8px;
+    border: 1px solid var(--border-lighter);
+    font-size: 13px;
+
+    .router-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+      color: var(--primary-color);
+      margin-bottom: 6px;
+    }
+
+    .router-detail {
+      color: var(--text-secondary);
+
+      .router-item {
+        margin-top: 4px;
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+
+        .label {
+          color: var(--text-secondary);
+          font-weight: 500;
+          flex-shrink: 0;
+        }
+
+        .candidates {
+          color: var(--text-secondary);
+        }
+      }
+    }
   }
 }
 </style>
