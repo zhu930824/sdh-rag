@@ -195,6 +195,7 @@ public class ChatServiceImpl implements ChatService {
 
         StringBuilder json = new StringBuilder();
         json.append("{\"type\":\"router\",");
+        json.append("\"used\":true,");
         json.append("\"needRetrieval\":").append(routeResult.isNeedRetrieval()).append(",");
         json.append("\"reason\":\"").append(escapeJson(routeResult.getReason())).append("\"");
 
