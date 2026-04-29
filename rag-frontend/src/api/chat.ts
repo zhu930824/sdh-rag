@@ -11,6 +11,7 @@ export interface ChatMessage {
   createTime: string
   historyId?: number // 聊天历史ID，用于评价
   userRating?: number // 用户评价：1-点赞，0-点踩，undefined-未评价
+  routerInfo?: RouterInfo // 路由信息
 }
 
 // 引用来源类型
@@ -19,6 +20,23 @@ export interface Source {
   documentTitle: string
   content: string
   score: number
+}
+
+// 知识库评分
+export interface KnowledgeBaseScore {
+  knowledgeBaseId: number
+  knowledgeBaseName: string
+  score: number
+}
+
+// 路由信息
+export interface RouterInfo {
+  used: boolean
+  needRetrieval: boolean
+  reason: string
+  selectedKnowledgeBaseId?: number
+  selectedKnowledgeBaseName?: string
+  candidates?: KnowledgeBaseScore[]
 }
 
 // 会话类型
@@ -32,11 +50,12 @@ export interface ChatSession {
 
 // 流式响应事件类型
 export interface StreamEvent {
-  type: 'content' | 'sources' | 'done' | 'error'
+  type: 'content' | 'sources' | 'done' | 'error' | 'routerInfo'
   content?: string
   sources?: Source[]
   message?: string
   historyId?: number // 聊天历史ID，用于评价
+  routerInfo?: RouterInfo // 路由信息
 }
 
 // 问答请求参数
