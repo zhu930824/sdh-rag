@@ -1,6 +1,8 @@
 package cn.sdh.backend.service.impl;
 
+import cn.sdh.backend.config.IntentRouterConfig;
 import cn.sdh.backend.config.RagConfig;
+import cn.sdh.backend.dto.IntentRouterResponse;
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.ModelConfig;
@@ -66,26 +68,156 @@ public class ChatServiceImpl implements ChatService {
     private final ChatModelFactory chatModelFactory;
     private final TokenUsageAdvisor tokenUsageAdvisor;
     private final HotwordAdvisor hotwordAdvisor;
+    // 智能路由相关依赖
+    private final IntentRouterService intentRouterService;
+    private final IntentRouterConfig intentRouterConfig;
 
     @Override
     public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
         log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}, 使用Advisor模式: {}",
                 userId, knowledgeId, modelId, sessionId, ragConfig.isUseAdvisor());
+
         ModelConfig modelConfig = modelConfigService.getById(modelId);
 
+        // 智能路由：当knowledgeId为null且路由功能启用时，进行意图判断
+        if (knowledgeId == null && intentRouterConfig.isEnabled()) {
+            log.info("智能路由启用，开始分析用户意图: {}", question);
+            try {
+                IntentRouterResponse routeResult = intentRouterService.route(question, userId);
+
+                if (!routeResult.isNeedRetrieval()) {
+                    // 不需要检索，直接对话
+                    log.info("智能路由决策: 无需检索知识库，原因: {}", routeResult.getReason());
+                    return askDirect(question, sessionId, userId, modelConfig.getModelId(), routeResult);
+                }
+
+                // 需要检索，使用推荐的知识库
+                Long routedKnowledgeId = routeResult.getTopKnowledgeBaseId();
+                if (routedKnowledgeId != null) {
+                    log.info("智能路由决策: 推荐知识库ID: {}, 原因: {}", routedKnowledgeId, routeResult.getReason());
+                    knowledgeId = routedKnowledgeId;
+                } else {
+                    // 需要检索但没有推荐的知识库，降级为直接对话
+                    log.info("智能路由决策: 需要检索但无推荐知识库，降级为直接对话");
+                    return askDirect(question, sessionId, userId, modelConfig.getModelId(), routeResult);
+                }
+
+                // 根据配置选择使用 Advisor 模式还是手动 RAG 模式，并携带路由信息
+                if (ragConfig.isUseAdvisor()) {
+                    return askWithAdvisor(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), routeResult);
+                } else {
+                    return askManual(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), routeResult);
+                }
+
+            } catch (Exception e) {
+                log.warn("智能路由失败，降级为原有逻辑: {}", e.getMessage());
+                // 路由失败，继续原有逻辑
+            }
+        }
 
         // 根据配置选择使用 Advisor 模式还是手动 RAG 模式
         if (ragConfig.isUseAdvisor()) {
-            return askWithAdvisor(question, sessionId, userId, knowledgeId, modelConfig.getModelId());
+            return askWithAdvisor(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), null);
         } else {
-            return askManual(question, sessionId, userId, knowledgeId, modelConfig.getModelId());
+            return askManual(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), null);
         }
+    }
+
+    /**
+     * 直接对话（不使用知识库检索）
+     */
+    private Flux<String> askDirect(String question, String sessionId, Long userId, String modelId, IntentRouterResponse routeResult) {
+        // 生成或使用现有的会话ID
+        String currentSessionId = (sessionId != null && !sessionId.isEmpty())
+                ? sessionId
+                : UUID.randomUUID().toString();
+
+        // 获取聊天模型
+        ChatModel chatModel = getChatModel(modelId);
+        if (chatModel == null) {
+            log.error("无法获取聊天模型，modelId: {}", modelId);
+            return Flux.just("{\"type\":\"error\",\"message\":\"模型配置错误，请检查模型设置\"}");
+        }
+
+        // 保存用户问题
+        Long historyId = saveUserQuestion(question, currentSessionId, userId, null);
+
+        // 用于收集AI回复
+        AtomicReference<StringBuilder> answerBuilder = new AtomicReference<>(new StringBuilder());
+
+        // 构建简单的系统提示词
+        String systemPrompt = "你是一个智能助手，请根据用户的问题给出准确、有帮助的回答。请用中文回答，保持回答简洁明了。";
+
+        Prompt prompt = new Prompt(List.of(
+                new SystemMessage(systemPrompt),
+                new UserMessage(question)
+        ));
+
+        // 构建路由信息JSON
+        String routerInfoJson = buildRouterInfoJson(routeResult);
+
+        // 发送路由信息作为第一个消息
+        Flux<String> routerInfoFlux = routerInfoJson != null
+                ? Flux.just(routerInfoJson)
+                : Flux.empty();
+
+        // 流式调用 AI
+        return routerInfoFlux.concatWith(
+                chatModel.stream(prompt)
+                        .map(this::extractContent)
+                        .filter(content -> content != null && !content.isEmpty())
+                        .map(content -> {
+                            answerBuilder.get().append(content);
+                            return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
+                        })
+                        .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
+                        .doOnNext(data -> {
+                            if (data.contains("\"type\":\"done\"")) {
+                                String answer = answerBuilder.get().toString();
+                                saveAiAnswer(historyId, answer);
+                                log.debug("会话 {} AI响应完成(直接对话)", currentSessionId);
+                            }
+                        })
+                        .onErrorResume(e -> {
+                            log.error("AI调用失败", e);
+                            return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                        })
+        );
+    }
+
+    /**
+     * 构建路由信息JSON
+     */
+    private String buildRouterInfoJson(IntentRouterResponse routeResult) {
+        if (routeResult == null || !intentRouterConfig.isShowRouterInfo()) {
+            return null;
+        }
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"type\":\"router\",");
+        json.append("\"needRetrieval\":").append(routeResult.isNeedRetrieval()).append(",");
+        json.append("\"reason\":\"").append(escapeJson(routeResult.getReason())).append("\"");
+
+        if (routeResult.getRecommendedBases() != null && !routeResult.getRecommendedBases().isEmpty()) {
+            json.append(",\"recommendedBases\":[");
+            List<String> bases = routeResult.getRecommendedBases().stream()
+                    .map(b -> String.format("{\"id\":%d,\"name\":\"%s\",\"score\":%.2f}",
+                            b.getKnowledgeBaseId(),
+                            escapeJson(b.getKnowledgeBaseName()),
+                            b.getScore()))
+                    .collect(Collectors.toList());
+            json.append(String.join(",", bases));
+            json.append("]");
+        }
+
+        json.append("}");
+        return json.toString();
     }
 
     /**
      * 使用 Spring AI Advisor 机制的问答
      */
-    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId, String modelId) {
+    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId, String modelId, IntentRouterResponse routeResult) {
         // 生成或使用现有的会话ID
         String currentSessionId = (sessionId != null && !sessionId.isEmpty())
                 ? sessionId
@@ -153,43 +285,51 @@ public class ChatServiceImpl implements ChatService {
                 .build();
         requestSpec = requestSpec.advisors(spec -> spec.advisors(loggingAdvisor));
 
+        // 构建路由信息JSON
+        String routerInfoJson = buildRouterInfoJson(routeResult);
+        Flux<String> routerInfoFlux = routerInfoJson != null
+                ? Flux.just(routerInfoJson)
+                : Flux.empty();
+
         // 流式调用
-        return requestSpec.stream()
-                .chatResponse()
-                .map(response -> {
-                    if (response.getResult() != null) {
-                        response.getResult();
-                        return response.getResult().getOutput().getText();
-                    }
-                    return null;
-                })
-                .filter(content -> content != null && !content.isEmpty())
-                .map(content -> {
-                    answerBuilder.get().append(content);
-                    return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
-                })
-                .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
-                .doOnNext(data -> {
-                    if (data.contains("\"type\":\"done\"")) {
-                        String answer = answerBuilder.get().toString();
-                        saveAiAnswer(historyId, answer);
-                        log.debug("会话 {} AI响应完成", currentSessionId);
-                    }
-                })
-                .onErrorResume(SensitiveWordException.class, e -> {
-                    log.warn("敏感词拦截: {}", e.getSensitiveWords());
-                    return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
-                })
-                .onErrorResume(e -> {
-                    log.error("AI调用失败", e);
-                    return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
-                });
+        return routerInfoFlux.concatWith(
+                requestSpec.stream()
+                        .chatResponse()
+                        .map(response -> {
+                            if (response.getResult() != null) {
+                                response.getResult();
+                                return response.getResult().getOutput().getText();
+                            }
+                            return null;
+                        })
+                        .filter(content -> content != null && !content.isEmpty())
+                        .map(content -> {
+                            answerBuilder.get().append(content);
+                            return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
+                        })
+                        .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
+                        .doOnNext(data -> {
+                            if (data.contains("\"type\":\"done\"")) {
+                                String answer = answerBuilder.get().toString();
+                                saveAiAnswer(historyId, answer);
+                                log.debug("会话 {} AI响应完成", currentSessionId);
+                            }
+                        })
+                        .onErrorResume(SensitiveWordException.class, e -> {
+                            log.warn("敏感词拦截: {}", e.getSensitiveWords());
+                            return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                        })
+                        .onErrorResume(e -> {
+                            log.error("AI调用失败", e);
+                            return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                        })
+        );
     }
 
     /**
      * 使用手动 RAG 流程的问答（原有实现）
      */
-    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId, String modelId) {
+    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId, String modelId, IntentRouterResponse routeResult) {
 
         // 检测敏感词
         List<String> sensitiveWords = sensitiveWordService.findSensitiveWords(question);
@@ -248,33 +388,41 @@ public class ChatServiceImpl implements ChatService {
             prompt = new Prompt(question);
         }
 
-        // 流式调用 AI
-        return chatModel.stream(prompt)
-                .map(this::extractContent)
-                .filter(content -> content != null && !content.isEmpty())
-                .map(content -> {
-                    answerBuilder.get().append(content);
-                    chunkCount.incrementAndGet();
-                    return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
-                })
-                .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
-                .doOnNext(data -> {
-                    if (data.contains("\"type\":\"done\"")) {
-                        String answer = answerBuilder.get().toString();
-                        saveAiAnswer(historyId, answer);
+        // 构建路由信息JSON
+        String routerInfoJson = buildRouterInfoJson(routeResult);
+        Flux<String> routerInfoFlux = routerInfoJson != null
+                ? Flux.just(routerInfoJson)
+                : Flux.empty();
 
-                        // 记录完成日志
-                        Duration duration = Duration.between(startTime, Instant.now());
-                        log.info("[{}] 聊天请求完成(手动RAG) - 耗时: {}ms, chunks: {}, 内容长度: {}",
-                                requestId, duration.toMillis(), chunkCount.get(), answer.length());
-                    }
-                })
-                .onErrorResume(e -> {
-                    Duration duration = Duration.between(startTime, Instant.now());
-                    log.error("[{}] 聊天请求失败(手动RAG) - 耗时: {}ms, 错误: {}",
-                            requestId, duration.toMillis(), e.getMessage());
-                    return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
-                });
+        // 流式调用 AI
+        return routerInfoFlux.concatWith(
+                chatModel.stream(prompt)
+                        .map(this::extractContent)
+                        .filter(content -> content != null && !content.isEmpty())
+                        .map(content -> {
+                            answerBuilder.get().append(content);
+                            chunkCount.incrementAndGet();
+                            return "{\"type\":\"content\",\"content\":\"" + escapeJson(content) + "\"}";
+                        })
+                        .concatWithValues("{\"type\":\"done\",\"historyId\":" + historyId + "}")
+                        .doOnNext(data -> {
+                            if (data.contains("\"type\":\"done\"")) {
+                                String answer = answerBuilder.get().toString();
+                                saveAiAnswer(historyId, answer);
+
+                                // 记录完成日志
+                                Duration duration = Duration.between(startTime, Instant.now());
+                                log.info("[{}] 聊天请求完成(手动RAG) - 耗时: {}ms, chunks: {}, 内容长度: {}",
+                                        requestId, duration.toMillis(), chunkCount.get(), answer.length());
+                            }
+                        })
+                        .onErrorResume(e -> {
+                            Duration duration = Duration.between(startTime, Instant.now());
+                            log.error("[{}] 聊天请求失败(手动RAG) - 耗时: {}ms, 错误: {}",
+                                    requestId, duration.toMillis(), e.getMessage());
+                            return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                        })
+        );
     }
 
     /**
