@@ -24,10 +24,49 @@ CREATE TABLE IF NOT EXISTS `memory_abstract` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '记忆摘要表';
 
--- 为 chat_history 表添加语义分块字段
-ALTER TABLE `chat_history` 
-  ADD COLUMN IF NOT EXISTS `topic_tag` VARCHAR(200) COMMENT '话题标签' AFTER `sources`,
-  ADD COLUMN IF NOT EXISTS `episode_id` VARCHAR(100) COMMENT '情景块ID' AFTER `topic_tag`;
+-- 为 chat_history 表添加语义分块字段（使用存储过程处理 IF NOT EXISTS）
+DELIMITER //
+CREATE PROCEDURE add_memory_columns()
+BEGIN
+  -- 添加 topic_tag 列
+  IF NOT EXISTS (
+    SELECT * FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'chat_history'
+    AND COLUMN_NAME = 'topic_tag'
+  ) THEN
+    ALTER TABLE `chat_history` ADD COLUMN `topic_tag` VARCHAR(200) COMMENT '话题标签' AFTER `sources`;
+  END IF;
 
--- 添加索引
-CREATE INDEX IF NOT EXISTS `idx_chat_history_episode` ON `chat_history` (`episode_id`);
+  -- 添加 episode_id 列
+  IF NOT EXISTS (
+    SELECT * FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'chat_history'
+    AND COLUMN_NAME = 'episode_id'
+  ) THEN
+    ALTER TABLE `chat_history` ADD COLUMN `episode_id` VARCHAR(100) COMMENT '情景块ID' AFTER `topic_tag`;
+  END IF;
+END //
+DELIMITER ;
+
+CALL add_memory_columns();
+DROP PROCEDURE IF EXISTS add_memory_columns;
+
+-- 添加索引（使用存储过程处理 IF NOT EXISTS）
+DELIMITER //
+CREATE PROCEDURE add_episode_index()
+BEGIN
+  IF NOT EXISTS (
+    SELECT * FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'chat_history'
+    AND INDEX_NAME = 'idx_chat_history_episode'
+  ) THEN
+    CREATE INDEX `idx_chat_history_episode` ON `chat_history` (`episode_id`);
+  END IF;
+END //
+DELIMITER ;
+
+CALL add_episode_index();
+DROP PROCEDURE IF EXISTS add_episode_index;
