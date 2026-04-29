@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ChatSession, Source } from '@/api/chat'
+import type { ChatMessage, ChatSession, Source, RouterInfo } from '@/api/chat'
 import { askQuestion, getChatSessions, getSessionMessages, deleteSession, createSession } from '@/api/chat'
 
 export const useChatStore = defineStore('chat', () => {
@@ -33,6 +33,9 @@ export const useChatStore = defineStore('chat', () => {
 
   // 当前正在生成的消息来源
   const generatingSources = ref<Source[]>([])
+
+  // 最后的路由信息
+  const lastRouterInfo = ref<RouterInfo | null>(null)
 
   // AbortController 用于取消请求
   let abortController: AbortController | null = null
@@ -208,6 +211,12 @@ export const useChatStore = defineStore('chat', () => {
               }
               isGenerating.value = false
               break
+            case 'routerInfo':
+              if (event.routerInfo) {
+                lastRouterInfo.value = event.routerInfo
+                targetMessage.routerInfo = event.routerInfo
+              }
+              break
             case 'error':
               console.error('流式响应错误:', event.message)
               targetMessage.content = event.message || '生成回复时发生错误'
@@ -285,6 +294,7 @@ export const useChatStore = defineStore('chat', () => {
     isGenerating,
     generatingContent,
     generatingSources,
+    lastRouterInfo,
     sessionPage,
     sessionPageSize,
     sessionTotal,
