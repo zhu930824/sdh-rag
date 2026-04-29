@@ -26,7 +26,7 @@
             :loading="knowledgeLoading"
             @change="handleKnowledgeChange"
           >
-            <a-select-option :value="null">全部知识库</a-select-option>
+            <a-select-option :value="null">自动选择(推荐)</a-select-option>
             <a-select-option
               v-for="kb in knowledgeList"
               :key="kb.id"
