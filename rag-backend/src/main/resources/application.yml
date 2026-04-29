@@ -119,3 +119,12 @@ memory:
   decay-cron: "0 0 3 * * ?"
   memory-index-name: "sdh-memory-index"
   working-memory-key-prefix: "memory:working:"
+
+# 智能路由配置
+intent-router:
+  enabled: true
+  min-relevance-score: 0.3
+  max-recommended-bases: 3
+  show-router-info: true
+  cache-enabled: true
+  cache-ttl-minutes: 10
