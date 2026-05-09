@@ -75,9 +75,8 @@ export async function askQuestion(
   signal?: AbortSignal
 ): Promise<void> {
   const userStore = useUserStore()
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
 
-  const response = await fetch(`${baseUrl}/api/chat/ask`, {
+  const response = await fetch('/api/chat/ask', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
