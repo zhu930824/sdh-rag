@@ -1,5 +1,5 @@
 # 多阶段构建：构建阶段
-FROM maven:3.9-eclipse-temurin-21 AS builder
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/maven:3.9-eclipse-temurin-21 AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -38,7 +38,7 @@ COPY rag-backend/src ./rag-backend/src
 RUN mvn -f rag-backend package -DskipTests -B -q
 
 # 运行阶段
-FROM eclipse-temurin:21-jre-alpine
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/eclipse-temurin:21-jre-alpine
 
 # 安装必要的工具
 RUN apk add --no-cache curl
