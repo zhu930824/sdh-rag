@@ -25,17 +25,6 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # 从构建阶段复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# nginx:alpine 镜像已包含 nginx 用户，直接修改权限
-RUN chown -R nginx:nginx /usr/share/nginx/html \
-    && chown -R nginx:nginx /var/cache/nginx \
-    && chown -R nginx:nginx /var/log/nginx \
-    && chown -R nginx:nginx /etc/nginx/conf.d \
-    && touch /var/run/nginx.pid \
-    && chown nginx:nginx /var/run/nginx.pid
-
-# 切换到非 root 用户
-USER nginx
-
 # 暴露端口
 EXPOSE 80
 

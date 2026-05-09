@@ -2,6 +2,15 @@ server:
   address: 0.0.0.0
   port: 8989
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 
 spring:
   application:
