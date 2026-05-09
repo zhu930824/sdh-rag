@@ -19,7 +19,7 @@
                   @click="toggleRecording"
                 >
                   <template #icon>
-                    <mic-outlined v-if="!isRecording" />
+                    <audio-outlined v-if="!isRecording" />
                     <stop-outlined v-else />
                   </template>
                 </a-button>
@@ -101,7 +101,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { MicOutlined, StopOutlined, SoundOutlined } from '@ant-design/icons-vue'
+import { AudioOutlined, StopOutlined, SoundOutlined } from '@ant-design/icons-vue'
 import { getVoiceRecords, textToVoice, deleteVoiceRecord, type VoiceRecord } from '@/api/voice'
 
 const loading = ref(false)

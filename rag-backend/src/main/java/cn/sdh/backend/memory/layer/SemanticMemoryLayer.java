@@ -4,6 +4,7 @@ import cn.sdh.backend.memory.config.MemoryConfig;
 import cn.sdh.backend.memory.core.*;
 import cn.sdh.backend.service.EmbeddingService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.mapping.DenseVectorSimilarity;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
@@ -302,7 +303,7 @@ public class SemanticMemoryLayer implements MemoryLayer {
                     .properties(CONTENT_FIELD, p -> p.text(t -> t.analyzer("ik_max_word")))
                     .properties(EMBEDDING_FIELD, p -> p.denseVector(d -> d
                         .dims(1536)
-                        .similarity("cosine")
+                        .similarity(DenseVectorSimilarity.Cosine)
                     ))
                     .properties(IMPORTANCE_FIELD, p -> p.integer(i -> i))
                     .properties(ACCESS_COUNT_FIELD, p -> p.integer(i -> i))

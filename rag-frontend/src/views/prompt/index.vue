@@ -56,7 +56,7 @@
           </div>
         </a-form-item>
         <a-form-item label="变量说明">
-          <a-textarea v-model:value="formData.variables" :rows="3" placeholder="JSON格式，如：[{\"name\":\"question\",\"desc\":\"用户问题\"}]" />
+          <a-textarea v-model:value="formData.variables" :rows="3" placeholder='JSON格式，如：[{"name":"question","desc":"用户问题"}]' />
         </a-form-item>
         <a-form-item label="描述">
           <a-textarea v-model:value="formData.description" :rows="2" placeholder="模板描述" />

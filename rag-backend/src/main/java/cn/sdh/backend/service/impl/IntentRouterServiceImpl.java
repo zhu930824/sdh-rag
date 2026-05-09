@@ -28,33 +28,33 @@ public class IntentRouterServiceImpl implements IntentRouterService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String INTENT_ROUTER_PROMPT = """
-你是一个意图分析助手。请分析用户问题，判断是否需要从知识库检索信息。
-
-## 用户问题
-%s
-
-## 可用知识库列表
-%s
-
-## 分析要求
-1. 判断问题是否需要检索知识库：
-   - 需要检索：问题涉及具体业务知识、技术文档、公司政策、产品信息等
-   - 不需要检索：闲聊、通用常识、代码生成、创意写作、数学计算等
-
-2. 如果需要检索，评估每个知识库的相关性（0-1分）：
-   - 0.8-1.0：高度相关，问题直接对应知识库内容
-   - 0.5-0.8：中度相关，问题可能涉及知识库内容
-   - 0.0-0.5：低相关，问题与知识库内容关联不大
-
-## 输出格式（仅输出JSON，不要其他内容）
-{
-  "needRetrieval": true,
-  "reason": "判断理由",
-  "recommendedBases": [
-    {"knowledgeBaseId": 1, "knowledgeBaseName": "知识库名", "score": 0.92}
-  ]
-}
-""";
+            你是一个意图分析助手。请分析用户问题，判断是否需要从知识库检索信息。
+            
+            ## 用户问题
+            %s
+            
+            ## 可用知识库列表
+            %s
+            
+            ## 分析要求
+            1. 判断问题是否需要检索知识库：
+               - 需要检索：问题涉及具体业务知识、技术文档、公司政策、产品信息等
+               - 不需要检索：闲聊、通用常识、代码生成、创意写作、数学计算等
+            
+            2. 如果需要检索，评估每个知识库的相关性（0-1分）：
+               - 0.8-1.0：高度相关，问题直接对应知识库内容
+               - 0.5-0.8：中度相关，问题可能涉及知识库内容
+               - 0.0-0.5：低相关，问题与知识库内容关联不大
+            
+            ## 输出格式（仅输出JSON，不要其他内容）
+            {
+              "needRetrieval": true,
+              "reason": "判断理由",
+              "recommendedBases": [
+                {"knowledgeBaseId": 1, "knowledgeBaseName": "知识库名", "score": 0.92}
+              ]
+            }
+         """;
 
     @Override
     public IntentRouterResponse route(IntentRouterRequest request) {

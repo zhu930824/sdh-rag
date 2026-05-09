@@ -153,7 +153,6 @@ import {
   createWorkflow,
   updateWorkflow,
   executeWorkflow,
-  type WorkflowExecution,
 } from '@/api/workflow'
 
 import NodePanel from './components/NodePanel.vue'
@@ -184,8 +183,9 @@ const currentWorkflowId = computed(() => workflowStore.currentWorkflowId)
 const inputVariables = computed(() => {
   const variables: { name: string; type: string; defaultValue: string }[] = []
   workflowStore.nodes.forEach((node) => {
-    if (node.data.type === 'input' && node.data.variables) {
-      node.data.variables.forEach((v) => {
+    const nodeData = node.data
+    if (nodeData?.type === 'input' && nodeData.variables) {
+      nodeData.variables.forEach((v) => {
         if (v.name) {
           variables.push({
             name: v.name,
@@ -255,7 +255,7 @@ function getDefaultConfig(type: string): Partial<WorkflowNodeData> {
     input: { variables: [{ name: 'query', type: 'string', defaultValue: '' }] },
     output: { outputParams: [], responseContent: '' },
     llm: { model: '', temperature: 0.7, maxTokens: 2000, inputParams: [], prompt: '' },
-    retrieval: { topK: 5, scoreThreshold: 0.7, knowledgeBaseId: null },
+    retrieval: { topK: 5, scoreThreshold: 0.7, knowledgeBaseId: undefined },
     rerank: { model: '', topK: 5 },
     condition: { conditions: [{ expression: 'true', label: '默认' }] },
     http: { method: 'GET', url: '', headers: '{}', body: '' },
@@ -294,7 +294,6 @@ function handleAutoLayout() {
 
   // 计算每个节点的层级
   const levels: Map<string, number> = new Map()
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]))
 
   // 找到输入节点作为起始
   const startNodes = nodes.filter((n) => n.type === 'input')

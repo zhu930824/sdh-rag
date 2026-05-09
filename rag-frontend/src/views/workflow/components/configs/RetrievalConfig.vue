@@ -51,8 +51,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useWorkflowStore, type WorkflowNodeData } from '@/stores/workflow'
+import type { WorkflowNodeData } from '@/stores/workflow'
 import type { Node } from '@vue-flow/core'
+import type { SelectValue } from 'ant-design-vue/es/select'
 import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
 
 const props = defineProps<{
@@ -65,18 +66,20 @@ const emit = defineEmits<{
 
 const knowledgeBases = ref<KnowledgeBase[]>([])
 
+const nodeData = computed(() => props.node.data)
+
 const knowledgeBaseId = computed({
-  get: () => props.node.data.knowledgeBaseId,
-  set: (val) => emit('update', { knowledgeBaseId: val }),
+  get: () => nodeData.value?.knowledgeBaseId as number | undefined,
+  set: (val) => emit('update', { knowledgeBaseId: val as number | undefined }),
 })
 
 const topK = computed({
-  get: () => props.node.data.topK || 5,
+  get: () => nodeData.value?.topK ?? 5,
   set: (val) => emit('update', { topK: val }),
 })
 
 const scoreThreshold = computed({
-  get: () => props.node.data.scoreThreshold || 0.7,
+  get: () => nodeData.value?.scoreThreshold ?? 0.7,
   set: (val) => emit('update', { scoreThreshold: val }),
 })
 
@@ -84,18 +87,19 @@ function filterOption(input: string, option: any) {
   return option.children?.[0]?.children?.toLowerCase().includes(input.toLowerCase())
 }
 
-function handleKbChange(kbId: number) {
-  const kb = knowledgeBases.value.find((k) => k.id === kbId)
+function handleKbChange(kbId: SelectValue) {
+  const id = kbId as number
+  const kb = knowledgeBases.value.find((k) => k.id === id)
   if (kb) {
-    emit('update', { knowledgeBaseId: kbId, knowledgeBaseName: kb.name })
+    emit('update', { knowledgeBaseId: id, knowledgeBaseName: kb.name })
   }
 }
 
 async function loadKnowledgeBases() {
   try {
     const res = await getKnowledgeBaseList({ page: 1, pageSize: 100 })
-    if (res.data?.records) {
-      knowledgeBases.value = res.data.records
+    if (res?.records) {
+      knowledgeBases.value = res.records
     }
   } catch (error) {
     console.error('加载知识库失败:', error)

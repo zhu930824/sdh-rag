@@ -7,19 +7,35 @@ WORKDIR /app
 # 设置编码环境变量
 ENV MAVEN_OPTS="-Dfile.encoding=UTF-8"
 
-# 先复制父 POM 并安装到本地仓库
-COPY pom.xml ./pom.xml
-RUN mvn install -N -B -Dproject.build.sourceEncoding=UTF-8
+# 配置 Maven 阿里云镜像
+RUN mkdir -p /root/.m2 && \
+    echo '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" \
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" \
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd"> \
+          <mirrors> \
+            <mirror> \
+              <id>aliyunmaven</id> \
+              <name>aliyun maven</name> \
+              <url>https://maven.aliyun.com/repository/public</url> \
+              <mirrorOf>*</mirrorOf> \
+            </mirror> \
+          </mirrors> \
+        </settings>' > /root/.m2/settings.xml
 
-# 复制子模块 POM 并下载依赖（利用 Docker 缓存）
+# 先复制所有 POM 文件（利用 Docker 缓存层）
+COPY pom.xml ./pom.xml
 COPY rag-backend/pom.xml ./rag-backend/pom.xml
-RUN mvn -f rag-backend dependency:go-offline -B -Dproject.build.sourceEncoding=UTF-8
+
+# 安装父 POM 并下载依赖（合并为一步，避免重复解析）
+RUN mvn install -N -B -q && \
+    mvn -f rag-backend dependency:go-offline -B || \
+    mvn -f rag-backend dependency:go-offline -B
 
 # 复制源代码
 COPY rag-backend/src ./rag-backend/src
 
-# 构建应用
-RUN mvn -f rag-backend clean package -DskipTests -B -Dproject.build.sourceEncoding=UTF-8
+# 构建应用（依赖已缓存，仅编译打包）
+RUN mvn -f rag-backend package -DskipTests -B -q
 
 # 运行阶段
 FROM eclipse-temurin:21-jre-alpine

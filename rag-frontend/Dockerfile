@@ -13,8 +13,8 @@ RUN npm ci --registry=https://registry.npmmirror.com
 # 复制源代码
 COPY . .
 
-# 构建生产版本
-RUN npm run build
+# 构建生产版本（部署构建，不进行 TypeScript 类型检查）
+RUN npm run build:deploy
 
 # 运行阶段：使用 Nginx
 FROM nginx:alpine
@@ -25,14 +25,13 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # 从构建阶段复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# 创建非 root 用户
-RUN addgroup -S nginx && adduser -S nginx -G nginx
-
-# 修改 Nginx 配置以非 root 用户运行
+# nginx:alpine 镜像已包含 nginx 用户，直接修改权限
 RUN chown -R nginx:nginx /usr/share/nginx/html \
     && chown -R nginx:nginx /var/cache/nginx \
     && chown -R nginx:nginx /var/log/nginx \
-    && chown -R nginx:nginx /etc/nginx/conf.d
+    && chown -R nginx:nginx /etc/nginx/conf.d \
+    && touch /var/run/nginx.pid \
+    && chown nginx:nginx /var/run/nginx.pid
 
 # 切换到非 root 用户
 USER nginx

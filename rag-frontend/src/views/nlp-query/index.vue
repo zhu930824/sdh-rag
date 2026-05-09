@@ -53,7 +53,7 @@
             />
           </div>
           <div v-else-if="sqlResult && !loading" class="no-result">
-            <EmptyOutlined />
+            <InboxOutlined />
             <span>暂无查询结果</span>
           </div>
         </div>
@@ -81,7 +81,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { SearchOutlined, DatabaseOutlined, TableOutlined, EmptyOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, DatabaseOutlined, TableOutlined, InboxOutlined } from '@ant-design/icons-vue'
 import { getTables, getTableSchema, executeQuery } from '@/api/nlp-query'
 
 interface TableInfo {

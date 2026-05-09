@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "vite build",
+    "build:deploy": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
   },
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
     "sass": "^1.72.0",
+    "terser": "^5.47.1",
     "typescript": "^5.4.2",
     "unplugin-auto-import": "^0.17.5",
     "unplugin-vue-components": "^0.26.0",

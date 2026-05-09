@@ -34,3 +34,4 @@ build/
 /rag-frontend/node_modules/
 /.mvn/
 /rag-frontend/.claude/
+/rag-frontend/dist/

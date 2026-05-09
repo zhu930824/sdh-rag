@@ -109,8 +109,8 @@
           <div class="theme-switch">
             <a-tooltip :title="isDark ? '切换浅色模式' : '切换深色模式'">
               <a-switch v-model:checked="isDark" @change="toggleDark">
-                <template #checkedChildren><MoonOutlined /></template>
-                <template #unCheckedChildren><SunOutlined /></template>
+                <template #checkedChildren><BulbFilled /></template>
+                <template #unCheckedChildren><BulbOutlined /></template>
               </a-switch>
             </a-tooltip>
           </div>
@@ -131,7 +131,7 @@ import {
   ReadOutlined,
   ApiOutlined,
   BulbOutlined,
-  SunOutlined,
+  BulbFilled,
 } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
