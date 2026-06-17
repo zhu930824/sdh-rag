@@ -43,18 +43,36 @@
           </p>
         </a-upload-dragger>
       </a-form-item>
+      <a-form-item label="文档类型">
+        <a-select v-model:value="uploadForm.docType"
+          placeholder="选择文档类型" allow-clear>
+          <a-select-option v-for="t in DOC_TYPES" :key="t.value" :value="t.value">
+            {{ t.label }}
+          </a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="所属部门">
+        <a-input v-model:value="uploadForm.department"
+          placeholder="如：技术部" allow-clear />
+      </a-form-item>
+      <a-form-item label="文档日期">
+        <a-date-picker v-model:value="uploadForm.docDate"
+          style="width: 100%" placeholder="选择日期" />
+      </a-form-item>
     </a-form>
   </a-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { InboxOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { UploadProps } from 'ant-design-vue'
 import { useDocumentStore } from '@/stores/document'
 import { uploadDocument } from '@/api/document'
 import type { DocumentCategory } from '@/api/document'
+import { DOC_TYPES } from '@/types/search'
+import dayjs from 'dayjs'
 
 const props = defineProps<{
   open: boolean
@@ -74,12 +92,21 @@ const uploading = ref(false)
 
 const categoryTree = computed(() => documentStore.categoryTree)
 
+const uploadForm = reactive({
+  docType: undefined as string | undefined,
+  department: '',
+  docDate: undefined as string | undefined,
+})
+
 // 监听弹窗打开，重置表单
 watch(() => props.open, (val) => {
   if (val) {
     categoryId.value = null
     title.value = ''
     fileList.value = []
+    uploadForm.docType = undefined
+    uploadForm.department = ''
+    uploadForm.docDate = undefined
   }
 })
 
@@ -131,6 +158,15 @@ async function handleUpload() {
     }
     if (title.value) {
       formData.append('title', title.value)
+    }
+    if (uploadForm.docType) {
+      formData.append('docType', uploadForm.docType)
+    }
+    if (uploadForm.department) {
+      formData.append('department', uploadForm.department)
+    }
+    if (uploadForm.docDate) {
+      formData.append('docDate', dayjs(uploadForm.docDate).format('YYYY-MM-DD'))
     }
 
     await uploadDocument(formData)
