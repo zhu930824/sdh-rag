@@ -4,6 +4,8 @@ import cn.sdh.backend.entity.KnowledgeChunk;
 import org.springframework.ai.document.Document;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 向量存储服务接口
@@ -213,4 +215,39 @@ public interface VectorStoreService {
      */
     List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK, int keywordTopK,
                                 double vectorWeight, double keywordWeight, String embeddingModelName, Double minScore);
+
+    // ==================== RAG 优化新增方法 ====================
+
+    /**
+     * 按文档ID列表检索 chunks（用于二级精排，仅搜索指定文档的chunks）
+     * @param queries 查询文本列表
+     * @param documentIds 候选文档ID集合
+     * @param knowledgeId 知识库ID
+     * @param topKPerDoc 每个文档最多返回的chunk数
+     * @param embeddingModel 嵌入模型
+     * @return 候选chunk列表
+     */
+    List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
+        Long knowledgeId, int topKPerDoc, String embeddingModel);
+
+    /**
+     * 混合检索（带元数据过滤和相似度阈值）
+     * @param metadataFilters 元数据过滤条件（department, doc_type等）
+     */
+    List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK,
+        int keywordTopK, double vectorWeight, double keywordWeight,
+        String embeddingModelName, Double minScore,
+        Map<String, Object> metadataFilters);
+
+    /**
+     * 冷库检索（仅在热库结果不足时调用）
+     * @param query 查询文本
+     * @param knowledgeId 知识库ID
+     * @param topK 返回数量
+     * @param embeddingModelName 嵌入模型
+     * @param metadataFilters 元数据过滤条件
+     * @return 冷库检索结果
+     */
+    List<Document> coldSearch(String query, Long knowledgeId, int topK,
+        String embeddingModelName, Map<String, Object> metadataFilters);
 }

@@ -570,4 +570,177 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         }
         return documents;
     }
+
+    // ==================== RAG optimization new methods ====================
+
+    @Override
+    public List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
+            Long knowledgeId, int topKPerDoc, String embeddingModel) {
+        String indexName = getIndexName(knowledgeId);
+        List<Document> allResults = new ArrayList<>();
+        try {
+            List<String> docIdStrings = documentIds.stream().map(String::valueOf).collect(Collectors.toList());
+            for (String query : queries) {
+                float[] embedding = embeddingService.getEmbeddingByModel(query, embeddingModel);
+                List<Float> queryVector = new ArrayList<>();
+                for (float v : embedding) queryVector.add(v);
+
+                var docIdFilter = new co.elastic.clients.elasticsearch._types.query_dsl.TermsQueryField.Builder()
+                    .value(docIdStrings.stream()
+                        .map(d -> new co.elastic.clients.elasticsearch._types.query_dsl.FieldValue.Builder().stringValue(d).build())
+                        .collect(Collectors.toList()))
+                    .build();
+
+                var boolQuery = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
+                    .must(m -> m.terms(t -> t.field("document_id").terms(docIdFilter)));
+
+                var knn = co.elastic.clients.elasticsearch._types.KnnQuery.of(k -> k
+                    .field("embedding")
+                    .queryVector(queryVector)
+                    .k(topKPerDoc * documentIds.size())
+                    .numCandidates(topKPerDoc * documentIds.size() * 10)
+                    .filter(boolQuery.build()._toQuery())
+                );
+
+                var response = esClient.search(s -> s
+                    .index(indexName).knn(knn).size(topKPerDoc * documentIds.size()), Map.class);
+                allResults.addAll(convertHitsToDocuments(response.hits().hits()));
+            }
+        } catch (Exception e) {
+            log.error("searchByDocumentIds failed: kbId={}", knowledgeId, e);
+        }
+        return allResults;
+    }
+
+    @Override
+    public List<Document> hybridSearch(String query, Long knowledgeId, int vectorTopK,
+            int keywordTopK, double vectorWeight, double keywordWeight,
+            String embeddingModelName, Double minScore,
+            Map<String, Object> metadataFilters) {
+        List<Document> vectorResults = similaritySearchWithFilter(
+            query, knowledgeId, vectorTopK, embeddingModelName, minScore, metadataFilters);
+        List<Document> keywordResults = keywordSearchWithFilter(
+            query, knowledgeId, keywordTopK, metadataFilters);
+        return rrfMerge(vectorResults, keywordResults, vectorWeight, keywordWeight);
+    }
+
+    @Override
+    public List<Document> coldSearch(String query, Long knowledgeId, int topK,
+            String embeddingModelName, Map<String, Object> metadataFilters) {
+        try {
+            String indexName = getColdIndexName(knowledgeId);
+            float[] embedding = embeddingService.getEmbeddingByModel(query, embeddingModelName);
+            List<Float> queryVector = new ArrayList<>();
+            for (float v : embedding) queryVector.add(v);
+
+            var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder();
+            if (metadataFilters != null && !metadataFilters.isEmpty()) {
+                for (var entry : metadataFilters.entrySet()) {
+                    boolBuilder.must(m -> m.term(
+                        t -> t.field(entry.getKey()).value(entry.getValue().toString())));
+                }
+            }
+
+            var knn = co.elastic.clients.elasticsearch._types.KnnQuery.of(k -> k
+                .field("embedding").queryVector(queryVector)
+                .k(topK).numCandidates(topK * 10)
+                .filter(boolBuilder.build()._toQuery())
+            );
+
+            var response = esClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
+            return convertHitsToDocuments(response.hits().hits());
+        } catch (Exception e) {
+            log.warn("coldSearch failed: kbId={}, error={}", knowledgeId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Document> similaritySearchWithFilter(String query, Long knowledgeId,
+            int topK, String embeddingModelName, Double minScore,
+            Map<String, Object> metadataFilters) {
+        try {
+            String indexName = getIndexName(knowledgeId);
+            float[] embedding = embeddingService.getEmbeddingByModel(query, embeddingModelName);
+            List<Float> queryVector = new ArrayList<>();
+            for (float v : embedding) queryVector.add(v);
+
+            var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder();
+            if (metadataFilters != null && !metadataFilters.isEmpty()) {
+                for (var entry : metadataFilters.entrySet()) {
+                    boolBuilder.must(m -> m.term(
+                        t -> t.field(entry.getKey()).value(entry.getValue().toString())));
+                }
+            }
+
+            var knn = co.elastic.clients.elasticsearch._types.KnnQuery.of(k -> k
+                .field("embedding").queryVector(queryVector)
+                .k(topK).numCandidates(topK * 10)
+                .filter(boolBuilder.build()._toQuery())
+            );
+
+            var response = esClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
+            List<Document> results = convertHitsToDocuments(response.hits().hits());
+            if (minScore != null && minScore > 0) {
+                results = results.stream()
+                    .filter(d -> (double) d.getMetadata().getOrDefault("score", 0.0) >= minScore)
+                    .collect(Collectors.toList());
+            }
+            return results;
+        } catch (Exception e) {
+            log.error("similaritySearchWithFilter failed: kbId={}", knowledgeId, e);
+            return List.of();
+        }
+    }
+
+    private List<Document> keywordSearchWithFilter(String query, Long knowledgeId,
+            int topK, Map<String, Object> metadataFilters) {
+        try {
+            String indexName = getIndexName(knowledgeId);
+            var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
+                .must(m -> m.match(mm -> mm.field("content").query(query)));
+            if (metadataFilters != null && !metadataFilters.isEmpty()) {
+                for (var entry : metadataFilters.entrySet()) {
+                    boolBuilder.must(m -> m.term(
+                        t -> t.field(entry.getKey()).value(entry.getValue().toString())));
+                }
+            }
+            var response = esClient.search(s -> s
+                .index(indexName).query(q -> q.bool(boolBuilder.build())).size(topK), Map.class);
+            return convertHitsToDocuments(response.hits().hits());
+        } catch (Exception e) {
+            log.error("keywordSearchWithFilter failed: kbId={}", knowledgeId, e);
+            return List.of();
+        }
+    }
+
+    private List<Document> rrfMerge(List<Document> vectorResults, List<Document> keywordResults,
+            double vectorWeight, double keywordWeight) {
+        int k = 60;
+        Map<String, Double> scoreMap = new LinkedHashMap<>();
+        Map<String, Document> docMap = new LinkedHashMap<>();
+        for (int i = 0; i < vectorResults.size(); i++) {
+            String id = (String) vectorResults.get(i).getMetadata().get("id");
+            if (id == null) id = "v_" + i;
+            scoreMap.merge(id, vectorWeight / (k + i + 1), Double::sum);
+            docMap.putIfAbsent(id, vectorResults.get(i));
+        }
+        for (int i = 0; i < keywordResults.size(); i++) {
+            String id = (String) keywordResults.get(i).getMetadata().get("id");
+            if (id == null) id = "k_" + i;
+            scoreMap.merge(id, keywordWeight / (k + i + 1), Double::sum);
+            docMap.putIfAbsent(id, keywordResults.get(i));
+        }
+        return scoreMap.entrySet().stream()
+            .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+            .map(e -> {
+                Document doc = docMap.get(e.getKey());
+                doc.getMetadata().put("score", e.getValue());
+                return doc;
+            })
+            .collect(Collectors.toList());
+    }
+
+    private String getColdIndexName(Long knowledgeId) {
+        return "sdh-rag-kb-" + knowledgeId + "-cold";
+    }
 }
