@@ -108,6 +108,18 @@ knowledge:
     chunk-overlap: 50
     embeddingModel: text-embedding-v2
     rankModel: qwen3-rerank
+  retrieval:
+    hot-min-results: 3
+    cold-score-penalty: 0.9
+    hard-threshold: 0.6
+    mmr-lambda: 0.7
+    recency-alpha: 0.3
+    coarse-top-k: 50
+    fine-top-k: 20
+    final-top-k: 5
+    enable-cold-archive: true
+    enable-summary-index: true
+    fallback-strategy: keyword
 
 # RAG Advisor 配置
 rag:
