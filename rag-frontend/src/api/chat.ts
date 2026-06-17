@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { ApiResponse, PageResult } from '@/types'
+import type { MetadataFilter } from '@/types/search'
 import { useUserStore } from '@/stores/user'
 
 // 聊天消息类型
@@ -66,6 +67,8 @@ export interface AskRequest {
   modelId?: number | null
   /** 是否启用记忆增强，默认true */
   memoryEnabled?: boolean
+  /** 元数据筛选条件 */
+  metadataFilter?: MetadataFilter
 }
 
 // 发起问答（流式响应）

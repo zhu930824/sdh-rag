@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ChatSession, Source, RouterInfo } from '@/api/chat'
+import type { ChatMessage, ChatSession, Source, RouterInfo, AskRequest } from '@/api/chat'
 import { askQuestion, getChatSessions, getSessionMessages, deleteSession, createSession } from '@/api/chat'
 
 export const useChatStore = defineStore('chat', () => {
@@ -139,8 +139,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // 发送消息
-  async function sendMessage(question: string): Promise<void> {
-    if (!question.trim() || isGenerating.value) return
+  async function sendMessage(questionOrPayload: string | { message: string; metadataFilter?: import('@/types/search').MetadataFilter }): Promise<void> {
+    const question = typeof questionOrPayload === 'string' ? questionOrPayload.trim() : questionOrPayload.message.trim()
+    const metadataFilter = typeof questionOrPayload === 'object' ? questionOrPayload.metadataFilter : undefined
+    if (!question || isGenerating.value) return
 
     // 如果没有当前会话，先创建一个
     let sessionId = currentSessionId.value
@@ -154,7 +156,7 @@ export const useChatStore = defineStore('chat', () => {
     const userMessage: ChatMessage = {
       id: Date.now(),
       role: 'user',
-      content: question.trim(),
+      content: question,
       createTime: new Date().toISOString(),
     }
     messages.value.push(userMessage)
@@ -179,14 +181,17 @@ export const useChatStore = defineStore('chat', () => {
     abortController = new AbortController()
 
     try {
-      await askQuestion(
-        {
-          question: question.trim(),
-          sessionId,
-          knowledgeId: selectedKnowledgeId.value,
-          modelId: selectedModelId.value,
-          memoryEnabled: memoryEnabled.value,
-        },
+      const askRequest: AskRequest = {
+        question,
+        sessionId,
+        knowledgeId: selectedKnowledgeId.value,
+        modelId: selectedModelId.value,
+        memoryEnabled: memoryEnabled.value,
+      }
+      if (metadataFilter) {
+        askRequest.metadataFilter = metadataFilter
+      }
+      await askQuestion(askRequest,
         (event) => {
           // 处理流式事件
           const targetMessage = messages.value.find((m) => m.id === aiMessageId)

@@ -170,8 +170,8 @@ function handleLoadMore(): void {
   chatStore.loadMoreSessions()
 }
 
-async function handleSendMessage(message: string): Promise<void> {
-  await chatStore.sendMessage(message)
+async function handleSendMessage(payload: string | { message: string; metadataFilter?: import('@/types/search').MetadataFilter }): Promise<void> {
+  await chatStore.sendMessage(payload)
 }
 
 function handleStopGeneration(): void {
