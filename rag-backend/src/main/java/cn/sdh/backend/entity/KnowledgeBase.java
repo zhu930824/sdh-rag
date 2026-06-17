@@ -131,6 +131,40 @@ public class KnowledgeBase implements Serializable {
     @TableField("hyde_model")
     private String hydeModel;
 
+    // ==================== RAG 优化新增配置 ====================
+
+    /** 是否启用摘要索引 */
+    @TableField("enable_summary_index")
+    private Boolean enableSummaryIndex;
+
+    /** 摘要粗筛返回文档数 */
+    @TableField("summary_coarse_top_k")
+    private Integer summaryCoarseTopK;
+
+    /** 是否启用冷热分离 */
+    @TableField("enable_cold_archive")
+    private Boolean enableColdArchive;
+
+    /** 热库最低结果数（不足触发冷库） */
+    @TableField("hot_min_results")
+    private Integer hotMinResults;
+
+    /** MMR 相关性权重（0-1，越大越偏向相关性） */
+    @TableField("mmr_lambda")
+    private Double mmrLambda;
+
+    /** 时间衰减系数（0-1，越大新鲜度影响越大） */
+    @TableField("recency_alpha")
+    private Double recencyAlpha;
+
+    /** 粗筛返回文档数 */
+    @TableField("coarse_top_k")
+    private Integer coarseTopK;
+
+    /** 精排返回 chunk 数 */
+    @TableField("fine_top_k")
+    private Integer fineTopK;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 
