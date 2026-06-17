@@ -3,8 +3,11 @@ package cn.sdh.backend.service.impl;
 import cn.sdh.backend.config.IntentRouterConfig;
 import cn.sdh.backend.config.RagConfig;
 import cn.sdh.backend.dto.IntentRouterResponse;
+import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.entity.ChatHistory;
+import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.entity.KnowledgeBase;
+import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.common.context.UserContext;
@@ -460,11 +463,34 @@ public class ChatServiceImpl implements ChatService {
                 return "";
             }
 
-            // 拼接召回内容
+            // 拼接召回内容（层级上下文）
             String context = documents.stream()
                     .map(doc -> {
-                        String content = doc.getText();
-                        return content;
+                        StringBuilder sb = new StringBuilder();
+                        // Add document metadata if available
+                        Object title = doc.getMetadata().get("document_title");
+                        Object chunkIdx = doc.getMetadata().get("chunk_index");
+                        Object totalChunks = doc.getMetadata().get("total_chunks");
+                        Object score = doc.getMetadata().get("score");
+                        Object summary = doc.getMetadata().get("document_summary");
+                        Object dept = doc.getMetadata().get("department");
+                        Object docType = doc.getMetadata().get("doc_type");
+
+                        if (title != null) {
+                            sb.append("Doc: ").append(title);
+                            if (dept != null) sb.append(" (").append(dept);
+                            if (docType != null) sb.append(" - ").append(docType);
+                            if (dept != null) sb.append(")");
+                            sb.append("\n");
+                            if (summary != null) sb.append("Summary: ").append(summary).append("\n");
+                            if (chunkIdx != null && totalChunks != null)
+                                sb.append("Chunk [").append(chunkIdx).append("/").append(totalChunks).append("]");
+                            if (score != null)
+                                sb.append(" (relevance: ").append(String.format("%.2f", score)).append(")");
+                            sb.append(":\n");
+                        }
+                        sb.append(doc.getText());
+                        return sb.toString();
                     })
                     .filter(text -> text != null && !text.trim().isEmpty())
                     .collect(Collectors.joining("\n\n---\n\n"));
@@ -521,6 +547,44 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 构建系统提示词
      */
+    /**
+     * Build hierarchical document context from ranked chunks (RAG optimization)
+     */
+    private String buildHierarchicalContext(SearchResult result) {
+        if (result == null || result.getChunks() == null || result.getChunks().isEmpty()) return "";
+
+        Map<Long, List<SearchResult.RankedChunk>> groupedByDoc = new LinkedHashMap<>();
+        for (SearchResult.RankedChunk chunk : result.getChunks()) {
+            groupedByDoc.computeIfAbsent(chunk.getDocumentId(), k -> new ArrayList<>()).add(chunk);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("[Retrieval Context]\n\n");
+        for (var entry : groupedByDoc.entrySet()) {
+            SearchResult.RankedChunk first = entry.getValue().get(0);
+            String docDate = first.getDocDate() != null ? first.getDocDate().toString() : "unknown date";
+            String department = first.getDepartment() != null ? first.getDepartment() : "unknown dept";
+            String docType = first.getDocType() != null ? first.getDocType() : "unknown type";
+
+            sb.append(String.format("Document: %s (%s / %s / %s)\n",
+                first.getDocumentTitle(), department, docType, docDate));
+            if (first.getDocumentSummary() != null && !first.getDocumentSummary().isEmpty()) {
+                sb.append("Summary: ").append(first.getDocumentSummary()).append("\n");
+            }
+            for (SearchResult.RankedChunk chunk : entry.getValue()) {
+                double score = chunk.getFinalScore() != null ? chunk.getFinalScore() :
+                    (chunk.getRelevanceScore() != null ? chunk.getRelevanceScore() : 0);
+                sb.append(String.format("  [Chunk %d/%d] (score: %.2f):\n  %s\n",
+                    chunk.getChunkIndex() != null ? chunk.getChunkIndex() : 0,
+                    chunk.getTotalChunks() != null ? chunk.getTotalChunks() : 0,
+                    score,
+                    chunk.getContent() != null ? chunk.getContent().trim() : ""));
+            }
+            sb.append("\n---\n\n");
+        }
+        return sb.toString();
+    }
+
     private String buildSystemPrompt(Long knowledgeId, String context) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是一个智能助手，请根据用户的问题给出准确、有帮助的回答。");

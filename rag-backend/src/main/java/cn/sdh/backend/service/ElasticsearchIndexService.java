@@ -40,4 +40,15 @@ public interface ElasticsearchIndexService {
      * @param embeddingModelName 嵌入模型名称
      */
     void ensureIndexExists(Long knowledgeId, String embeddingModelName);
+
+    // ==================== RAG 优化：摘要索引和冷归档索引 ====================
+
+    /** 为知识库创建摘要索引（sdh-rag-summary-{knowledgeId}） */
+    void createSummaryIndexForKnowledgeBase(Long knowledgeId, String embeddingModelName);
+
+    /** 为知识库创建冷归档块索引（sdh-rag-kb-{knowledgeId}-cold） */
+    void createColdIndexForKnowledgeBase(Long knowledgeId, String embeddingModelName);
+
+    /** 为知识库创建冷归档摘要索引（sdh-rag-summary-cold-{knowledgeId}） */
+    void createColdSummaryIndexForKnowledgeBase(Long knowledgeId, String embeddingModelName);
 }

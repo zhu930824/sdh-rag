@@ -1,6 +1,7 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.KnowledgeBase;
+import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -23,6 +24,9 @@ public class RagSearchServiceImpl implements RagSearchService {
     private final VectorStoreService vectorStoreService;
     private final RerankService rerankService;
     private final ChatService chatService;
+    private final SummaryIndexService summaryIndexService;
+    private final DiversityRankingService diversityRankingService;
+    private final PostProcessingService postProcessingService;
 
     private static final String QUERY_EXPANSION_PROMPT = """
             你是一个查询扩展助手。请根据用户的原始查询，生成%d个语义相关但表述不同的查询变体。
@@ -60,11 +64,17 @@ public class RagSearchServiceImpl implements RagSearchService {
             KnowledgeBaseService knowledgeBaseService,
             VectorStoreService vectorStoreService,
             RerankService rerankService,
-            @Lazy ChatService chatService) {
+            @Lazy ChatService chatService,
+            SummaryIndexService summaryIndexService,
+            DiversityRankingService diversityRankingService,
+            PostProcessingService postProcessingService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.vectorStoreService = vectorStoreService;
         this.rerankService = rerankService;
         this.chatService = chatService;
+        this.summaryIndexService = summaryIndexService;
+        this.diversityRankingService = diversityRankingService;
+        this.postProcessingService = postProcessingService;
     }
 
 
@@ -348,5 +358,118 @@ public class RagSearchServiceImpl implements RagSearchService {
             log.error("HyDE 生成失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    // ==================== RAG optimization: 3-stage cascade retrieval ====================
+
+    /**
+     * 级联检索（三级漏斗）
+     */
+    public SearchResult searchWithCascade(String query, KnowledgeBase kb,
+            List<ChatMessage> chatHistory, Map<String, Object> metadataFilters) {
+
+        // Stage 0: Query rewrite + expansion + HyDE (reuse existing logic)
+        List<String> queries = new ArrayList<>();
+        queries.add(query);
+        if (Boolean.TRUE.equals(kb.getEnableQueryExpansion())) {
+            int count = kb.getQueryExpansionCount() != null ? kb.getQueryExpansionCount() : 3;
+            List<String> expanded = expandQuery(query, count);
+            if (expanded != null) queries.addAll(expanded);
+        }
+        if (Boolean.TRUE.equals(kb.getEnableHyde())) {
+            String hydeDoc = generateHypotheticalDocument(query);
+            if (hydeDoc != null) queries.add(hydeDoc);
+        }
+
+        // Stage 1: Coarse retrieval via summary index
+        Map<Long, Double> candidateDocs;
+        if (Boolean.TRUE.equals(kb.getEnableSummaryIndex())) {
+            int coarseTopK = kb.getCoarseTopK() != null ? kb.getCoarseTopK() : 50;
+            candidateDocs = summaryIndexService.coarseRetrieval(
+                query, kb.getId(), coarseTopK, kb.getEmbeddingModel(), metadataFilters);
+        } else {
+            candidateDocs = new LinkedHashMap<>();
+        }
+
+        if (candidateDocs.isEmpty()) {
+            log.info("Summary index returned no results for query: {}", query);
+            return SearchResult.empty("摘要索引粗筛无结果");
+        }
+
+        // Stage 2: Fine ranking - hybrid search on candidate doc chunks + rerank
+        Set<Long> docIdSet = candidateDocs.keySet();
+        List<Document> candidateChunks = vectorStoreService.searchByDocumentIds(
+            queries, docIdSet, kb.getId(), 3, kb.getEmbeddingModel());
+
+        int fineTopK = kb.getFineTopK() != null ? kb.getFineTopK() : 20;
+        double threshold = kb.getSimilarityThreshold() != null ? kb.getSimilarityThreshold() : 0.6;
+        List<Document> reranked = rerankService.rerank(query, candidateChunks, fineTopK);
+
+        List<SearchResult.RankedChunk> rankedChunks = reranked.stream().map(doc -> {
+            var meta = doc.getMetadata();
+            return SearchResult.RankedChunk.builder()
+                .documentId(parseLong(meta.get("document_id")))
+                .documentTitle((String) meta.getOrDefault("document_title", ""))
+                .content(doc.getContent())
+                .chunkIndex(parseInt(meta.get("chunk_index")))
+                .totalChunks(parseInt(meta.get("total_chunks")))
+                .relevanceScore((Double) meta.getOrDefault("score", 0.5))
+                .freshnessScore((Double) meta.getOrDefault("freshness_score", 0.5))
+                .department((String) meta.get("department"))
+                .docType((String) meta.get("doc_type"))
+                .build();
+        }).collect(Collectors.toList());
+
+        if (rankedChunks.isEmpty()) {
+            return SearchResult.empty("精排后无合格结果");
+        }
+
+        // Stage 3: MMR diversity fine-ranking
+        double mmrLambda = kb.getMmrLambda() != null ? kb.getMmrLambda() : 0.7;
+        List<SearchResult.RankedChunk> diversified = diversityRankingService.mmrSelect(
+            rankedChunks, 5, mmrLambda);
+
+        // Stage 4: Post-processing (threshold cutoff + recency decay)
+        double recencyAlpha = kb.getRecencyAlpha() != null ? kb.getRecencyAlpha() : 0.3;
+        List<SearchResult.RankedChunk> finalChunks = postProcessingService.process(
+            diversified, threshold, recencyAlpha, 5);
+
+        // Stage 5: Cold archive fallback
+        if (finalChunks.size() < (kb.getHotMinResults() != null ? kb.getHotMinResults() : 3)
+                && Boolean.TRUE.equals(kb.getEnableColdArchive())) {
+            log.info("Hot results insufficient ({}), triggering cold archive", finalChunks.size());
+            List<Document> coldResults = vectorStoreService.coldSearch(
+                query, kb.getId(), 5 - finalChunks.size(), kb.getEmbeddingModel(), metadataFilters);
+            List<SearchResult.RankedChunk> coldChunks = coldResults.stream().map(doc -> {
+                var meta = doc.getMetadata();
+                return SearchResult.RankedChunk.builder()
+                    .documentId(parseLong(meta.get("document_id")))
+                    .documentTitle((String) meta.getOrDefault("document_title", ""))
+                    .content(doc.getContent())
+                    .chunkIndex(parseInt(meta.get("chunk_index")))
+                    .relevanceScore((Double) meta.getOrDefault("score", 0.3) * 0.9)
+                    .freshnessScore(0.3)
+                    .build();
+            }).collect(Collectors.toList());
+            finalChunks.addAll(coldChunks);
+        }
+
+        if (finalChunks.isEmpty()) {
+            return SearchResult.empty("所有结果低于相似度阈值");
+        }
+
+        return SearchResult.of(finalChunks, query);
+    }
+
+    private Long parseLong(Object val) {
+        if (val == null) return null;
+        if (val instanceof Number) return ((Number) val).longValue();
+        try { return Long.valueOf(val.toString()); } catch (Exception e) { return null; }
+    }
+
+    private Integer parseInt(Object val) {
+        if (val == null) return 0;
+        if (val instanceof Number) return ((Number) val).intValue();
+        try { return Integer.valueOf(val.toString()); } catch (Exception e) { return 0; }
     }
 }

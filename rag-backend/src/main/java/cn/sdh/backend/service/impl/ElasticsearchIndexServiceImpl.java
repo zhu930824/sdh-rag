@@ -124,4 +124,66 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
 
         return properties;
     }
+
+    // ==================== RAG optimization: summary and cold indices ====================
+
+    @Override
+    public void createSummaryIndexForKnowledgeBase(Long knowledgeId, String embeddingModelName) {
+        String indexName = "sdh-rag-summary-" + knowledgeId;
+        int dims = EmbeddingDimensionMapping.getDimension(embeddingModelName);
+        try {
+            elasticsearchClient.indices().create(c -> c
+                .index(indexName)
+                .mappings(m -> m.properties(buildSummaryMappingProperties(dims)))
+            );
+            log.info("Created summary index: {}", indexName);
+        } catch (Exception e) {
+            log.error("Failed to create summary index: {}", indexName, e);
+        }
+    }
+
+    @Override
+    public void createColdIndexForKnowledgeBase(Long knowledgeId, String embeddingModelName) {
+        String indexName = getIndexName(knowledgeId) + "-cold";
+        int dims = EmbeddingDimensionMapping.getDimension(embeddingModelName);
+        try {
+            elasticsearchClient.indices().create(c -> c
+                .index(indexName)
+                .mappings(m -> m.properties(buildMappingProperties(dims)))
+            );
+            log.info("Created cold chunk index: {}", indexName);
+        } catch (Exception e) {
+            log.error("Failed to create cold index: {}", indexName, e);
+        }
+    }
+
+    @Override
+    public void createColdSummaryIndexForKnowledgeBase(Long knowledgeId, String embeddingModelName) {
+        String indexName = "sdh-rag-summary-cold-" + knowledgeId;
+        int dims = EmbeddingDimensionMapping.getDimension(embeddingModelName);
+        try {
+            elasticsearchClient.indices().create(c -> c
+                .index(indexName)
+                .mappings(m -> m.properties(buildSummaryMappingProperties(dims)))
+            );
+            log.info("Created cold summary index: {}", indexName);
+        } catch (Exception e) {
+            log.error("Failed to create cold summary index: {}", indexName, e);
+        }
+    }
+
+    private Map<String, Property> buildSummaryMappingProperties(int dimensions) {
+        Map<String, Property> properties = new HashMap<>();
+        properties.put("doc_id", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("summary_text", Property.of(p -> p.text(TextProperty.of(t -> t
+                .analyzer("ik_max_word").searchAnalyzer("ik_smart")))));
+        properties.put("summary_embedding", Property.of(p -> p.denseVector(DenseVectorProperty.of(dv -> dv
+                .dims(dimensions).index(true).similarity(DenseVectorSimilarity.Cosine)))));
+        properties.put("department", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("doc_type", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("doc_date", Property.of(p -> p.date(DateProperty.of(d -> d))));
+        properties.put("freshness_score", Property.of(p -> p.float_(FloatNumberProperty.of(f -> f))));
+        properties.put("create_time", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        return properties;
+    }
 }
