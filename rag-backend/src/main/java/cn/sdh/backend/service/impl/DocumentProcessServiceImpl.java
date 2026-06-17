@@ -1,6 +1,7 @@
 package cn.sdh.backend.service.impl;
 
 import cn.hutool.json.JSONUtil;
+import cn.sdh.backend.config.FreshnessConfig;
 import cn.sdh.backend.dto.DocumentLinkConfig;
 import cn.sdh.backend.entity.KnowledgeBase;
 import cn.sdh.backend.entity.KnowledgeChunk;
@@ -9,8 +10,10 @@ import cn.sdh.backend.entity.KnowledgeDocumentRelation;
 import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentRelationMapper;
+import cn.sdh.backend.service.DocumentDedupService;
 import cn.sdh.backend.service.DocumentProcessService;
 import cn.sdh.backend.service.MinioService;
+import cn.sdh.backend.service.SummaryIndexService;
 import cn.sdh.backend.service.VectorStoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +24,10 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.DigestUtils;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +49,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final MinioService minioService;
     private final VectorStoreService vectorStoreService;
+    private final DocumentDedupService documentDedupService;
+    private final SummaryIndexService summaryIndexService;
 
     @Override
     @Async
@@ -82,6 +89,67 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 relation.setProcessTime(LocalDateTime.now());
                 relationMapper.updateById(relation);
                 return;
+            }
+
+            // === RAG优化：文档去重 ===
+            String contentMd5 = DigestUtils.md5DigestAsHex(content.getBytes(StandardCharsets.UTF_8));
+            Long duplicateDocId = documentDedupService.checkMd5Duplicate(knowledgeId, contentMd5);
+            if (duplicateDocId != null) {
+                document.setContentMd5(contentMd5);
+                document.setQualityStatus(2);
+                documentMapper.updateById(document);
+                documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
+                log.warn("文档 [{}] 与 [{}] MD5完全重复，跳过索引", documentId, duplicateDocId);
+                relation.setProcessStatus(2);
+                relation.setChunkCount(0);
+                relation.setProcessTime(LocalDateTime.now());
+                relationMapper.updateById(relation);
+                return;
+            }
+
+            DocumentDedupService.SimilarDocResult similar = documentDedupService.checkMinHashSimilarity(knowledgeId, content, 0.85);
+            if (similar != null) {
+                document.setContentMd5(contentMd5);
+                document.setQualityStatus(2);
+                documentMapper.updateById(document);
+                documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
+                log.warn("文档 [{}] 与 [{}] 近似重复, 跳过索引", documentId, similar.documentId());
+                relation.setProcessStatus(2);
+                relation.setChunkCount(0);
+                relation.setProcessTime(LocalDateTime.now());
+                relationMapper.updateById(relation);
+                return;
+            }
+
+            // 保存文档哈希
+            document.setContentMd5(contentMd5);
+            documentMapper.updateById(document);
+            documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
+
+            // === RAG优化：质量过滤 ===
+            if (content.trim().length() < 50) {
+                markDocumentLowQuality(document, "文档内容过短");
+                relation.setProcessStatus(2);
+                relation.setChunkCount(0);
+                relation.setProcessTime(LocalDateTime.now());
+                relationMapper.updateById(relation);
+                return;
+            }
+
+            if (isTabularNoise(content)) {
+                markDocumentLowQuality(document, "文档主要为结构化表格数据");
+                relation.setProcessStatus(2);
+                relation.setChunkCount(0);
+                relation.setProcessTime(LocalDateTime.now());
+                relationMapper.updateById(relation);
+                return;
+            }
+
+            // === RAG优化：新鲜度计算 ===
+            if (document.getDocDate() != null) {
+                double freshness = FreshnessConfig.calculateFreshness(document.getDocDate());
+                document.setFreshnessScore(freshness);
+                documentMapper.updateById(document);
             }
 
             // 根据切分模式选择分块策略
@@ -168,6 +236,17 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             relationMapper.updateById(relation);
 
             log.info("文档处理完成: documentId={}, knowledgeId={}, chunkCount={}", documentId, knowledgeId, successCount);
+
+            // === RAG优化：异步生成摘要 ===
+            try {
+                KnowledgeBase kb = knowledgeBaseMapper.selectById(knowledgeId);
+                if (kb != null && Boolean.TRUE.equals(kb.getEnableSummaryIndex())) {
+                    summaryIndexService.indexDocumentSummary(documentId, knowledgeId,
+                        document.getTitle(), content, getEmbeddingModelName(knowledgeId, config));
+                }
+            } catch (Exception e) {
+                log.warn("摘要生成调度失败: documentId={}, error={}", documentId, e.getMessage());
+            }
 
         } catch (Exception e) {
             log.error("文档处理失败: documentId={}, knowledgeId={}, error={}", documentId, knowledgeId, e.getMessage(), e);
@@ -643,5 +722,23 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
         // 3. 返回默认值（null表示使用系统默认配置）
         return null;
+    }
+
+    // ==================== RAG 优化辅助方法 ====================
+
+    private boolean isTabularNoise(String text) {
+        if (text == null || text.isEmpty()) return false;
+        int totalChars = text.replaceAll("\s+", "").length();
+        if (totalChars == 0) return false;
+        long numericAndTabular = text.chars()
+            .filter(c -> Character.isDigit(c) || c == '|' || c == '	' || c == ',')
+            .count();
+        return (double) numericAndTabular / totalChars > 0.8;
+    }
+
+    private void markDocumentLowQuality(KnowledgeDocument doc, String reason) {
+        doc.setQualityStatus(1);
+        documentMapper.updateById(doc);
+        log.warn("文档 [{}] 标记为低质: {}", doc.getId(), reason);
     }
 }

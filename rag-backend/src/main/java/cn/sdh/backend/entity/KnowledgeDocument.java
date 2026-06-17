@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -58,6 +59,31 @@ public class KnowledgeDocument implements Serializable {
      * 状态：0-处理中，1-成功，2-失败
      */
     private Integer status;
+
+    // ==================== RAG 优化新增元数据字段 ====================
+
+    /** 部门 */
+    private String department;
+
+    /** 文档类型: policy/manual/contract/report/faq */
+    @TableField("doc_type")
+    private String docType;
+
+    /** 文档日期 */
+    @TableField("doc_date")
+    private LocalDate docDate;
+
+    /** 新鲜度评分 0-1（入库时自动计算） */
+    @TableField("freshness_score")
+    private Double freshnessScore;
+
+    /** 内容 MD5 哈希 */
+    @TableField("content_md5")
+    private String contentMd5;
+
+    /** 质量状态: 0=正常 1=低质 2=疑似重复 */
+    @TableField("quality_status")
+    private Integer qualityStatus;
 
     @TableField("create_time")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
