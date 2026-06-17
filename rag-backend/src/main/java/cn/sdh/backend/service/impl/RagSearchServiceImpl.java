@@ -377,7 +377,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             if (expanded != null) queries.addAll(expanded);
         }
         if (Boolean.TRUE.equals(kb.getEnableHyde())) {
-            String hydeDoc = generateHypotheticalDocument(query);
+            String hydeDoc = generateHypotheticalDocument(query, null);
             if (hydeDoc != null) queries.add(hydeDoc);
         }
 
@@ -403,14 +403,27 @@ public class RagSearchServiceImpl implements RagSearchService {
 
         int fineTopK = kb.getFineTopK() != null ? kb.getFineTopK() : 20;
         double threshold = kb.getSimilarityThreshold() != null ? kb.getSimilarityThreshold() : 0.6;
-        List<Document> reranked = rerankService.rerank(query, candidateChunks, fineTopK);
+        List<String> candidateTexts = candidateChunks.stream()
+                .map(Document::getText)
+                .collect(Collectors.toList());
+        String rerankModel = kb.getRankModel();
+        List<RerankService.RerankResult> rerankResults = rerankService.rerank(
+                query, candidateTexts, fineTopK, rerankModel);
+        List<Document> reranked = new ArrayList<>();
+        for (RerankService.RerankResult rr : rerankResults) {
+            if (rr.getIndex() >= 0 && rr.getIndex() < candidateChunks.size()) {
+                Document doc = candidateChunks.get(rr.getIndex());
+                doc.getMetadata().put("rerank_score", rr.getScore());
+                reranked.add(doc);
+            }
+        }
 
         List<SearchResult.RankedChunk> rankedChunks = reranked.stream().map(doc -> {
             var meta = doc.getMetadata();
             return SearchResult.RankedChunk.builder()
                 .documentId(parseLong(meta.get("document_id")))
                 .documentTitle((String) meta.getOrDefault("document_title", ""))
-                .content(doc.getContent())
+                .content(doc.getText())
                 .chunkIndex(parseInt(meta.get("chunk_index")))
                 .totalChunks(parseInt(meta.get("total_chunks")))
                 .relevanceScore((Double) meta.getOrDefault("score", 0.5))
@@ -445,7 +458,7 @@ public class RagSearchServiceImpl implements RagSearchService {
                 return SearchResult.RankedChunk.builder()
                     .documentId(parseLong(meta.get("document_id")))
                     .documentTitle((String) meta.getOrDefault("document_title", ""))
-                    .content(doc.getContent())
+                    .content(doc.getText())
                     .chunkIndex(parseInt(meta.get("chunk_index")))
                     .relevanceScore((Double) meta.getOrDefault("score", 0.3) * 0.9)
                     .freshnessScore(0.3)

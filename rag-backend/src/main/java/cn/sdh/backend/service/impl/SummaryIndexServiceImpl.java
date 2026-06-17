@@ -4,7 +4,7 @@ import cn.sdh.backend.service.ChatService;
 import cn.sdh.backend.service.EmbeddingService;
 import cn.sdh.backend.service.SummaryIndexService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.KnnQuery;
+import co.elastic.clients.elasticsearch._types.KnnSearch;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.TermQuery;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
@@ -65,7 +65,7 @@ public class SummaryIndexServiceImpl implements SummaryIndexService {
                 }
             }
 
-            KnnQuery knn = KnnQuery.of(k -> k
+            KnnSearch knn = KnnSearch.of(k -> k
                 .field("summary_embedding")
                 .queryVector(Arrays.asList(toFloatList(queryEmbedding)))
                 .k(topK)

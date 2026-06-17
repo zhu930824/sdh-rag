@@ -576,7 +576,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
             Long knowledgeId, int topKPerDoc, String embeddingModel) {
-        String indexName = getIndexName(knowledgeId);
+        String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
         List<Document> allResults = new ArrayList<>();
         try {
             List<String> docIdStrings = documentIds.stream().map(String::valueOf).collect(Collectors.toList());
@@ -587,14 +587,14 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
                 var docIdFilter = new co.elastic.clients.elasticsearch._types.query_dsl.TermsQueryField.Builder()
                     .value(docIdStrings.stream()
-                        .map(d -> new co.elastic.clients.elasticsearch._types.query_dsl.FieldValue.Builder().stringValue(d).build())
+                        .map(d -> FieldValue.of(d))
                         .collect(Collectors.toList()))
                     .build();
 
                 var boolQuery = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
                     .must(m -> m.terms(t -> t.field("document_id").terms(docIdFilter)));
 
-                var knn = co.elastic.clients.elasticsearch._types.KnnQuery.of(k -> k
+                var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                     .field("embedding")
                     .queryVector(queryVector)
                     .k(topKPerDoc * documentIds.size())
@@ -602,7 +602,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                     .filter(boolQuery.build()._toQuery())
                 );
 
-                var response = esClient.search(s -> s
+                var response = elasticsearchClient.search(s -> s
                     .index(indexName).knn(knn).size(topKPerDoc * documentIds.size()), Map.class);
                 allResults.addAll(convertHitsToDocuments(response.hits().hits()));
             }
@@ -641,13 +641,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 }
             }
 
-            var knn = co.elastic.clients.elasticsearch._types.KnnQuery.of(k -> k
+            var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                 .field("embedding").queryVector(queryVector)
                 .k(topK).numCandidates(topK * 10)
                 .filter(boolBuilder.build()._toQuery())
             );
 
-            var response = esClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
+            var response = elasticsearchClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
             return convertHitsToDocuments(response.hits().hits());
         } catch (Exception e) {
             log.warn("coldSearch failed: kbId={}, error={}", knowledgeId, e.getMessage());
@@ -659,7 +659,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             int topK, String embeddingModelName, Double minScore,
             Map<String, Object> metadataFilters) {
         try {
-            String indexName = getIndexName(knowledgeId);
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
             float[] embedding = embeddingService.getEmbeddingByModel(query, embeddingModelName);
             List<Float> queryVector = new ArrayList<>();
             for (float v : embedding) queryVector.add(v);
@@ -672,13 +672,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 }
             }
 
-            var knn = co.elastic.clients.elasticsearch._types.KnnQuery.of(k -> k
+            var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                 .field("embedding").queryVector(queryVector)
                 .k(topK).numCandidates(topK * 10)
                 .filter(boolBuilder.build()._toQuery())
             );
 
-            var response = esClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
+            var response = elasticsearchClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
             List<Document> results = convertHitsToDocuments(response.hits().hits());
             if (minScore != null && minScore > 0) {
                 results = results.stream()
@@ -695,7 +695,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     private List<Document> keywordSearchWithFilter(String query, Long knowledgeId,
             int topK, Map<String, Object> metadataFilters) {
         try {
-            String indexName = getIndexName(knowledgeId);
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
                 .must(m -> m.match(mm -> mm.field("content").query(query)));
             if (metadataFilters != null && !metadataFilters.isEmpty()) {
@@ -704,7 +704,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                         t -> t.field(entry.getKey()).value(entry.getValue().toString())));
                 }
             }
-            var response = esClient.search(s -> s
+            var response = elasticsearchClient.search(s -> s
                 .index(indexName).query(q -> q.bool(boolBuilder.build())).size(topK), Map.class);
             return convertHitsToDocuments(response.hits().hits());
         } catch (Exception e) {
