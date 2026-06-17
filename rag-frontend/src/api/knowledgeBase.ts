@@ -22,6 +22,13 @@ export interface KnowledgeBase {
   vectorTopK: number
   keywordWeight: number
   vectorWeight: number
+  // 高级检索优化配置
+  enableSummaryIndex: boolean
+  summaryCoarseTopK: number
+  enableColdArchive: boolean
+  hotMinResults: number
+  mmrLambda: number
+  recencyAlpha: number
   // 统计数据
   documentCount: number
   chunkCount: number
@@ -122,6 +129,13 @@ export interface KnowledgeBaseConfigRequest {
   vectorTopK?: number
   keywordWeight?: number
   vectorWeight?: number
+  // 高级检索优化配置
+  enableSummaryIndex?: boolean
+  summaryCoarseTopK?: number
+  enableColdArchive?: boolean
+  hotMinResults?: number
+  mmrLambda?: number
+  recencyAlpha?: number
 }
 
 export interface LinkDocumentsRequest {

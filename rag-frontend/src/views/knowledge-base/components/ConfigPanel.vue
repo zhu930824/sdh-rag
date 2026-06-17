@@ -119,6 +119,52 @@
             <span class="form-hint">用于生成假设性文档的模型</span>
           </a-form-item>
 
+          <a-divider />
+          <a-collapse ghost>
+            <a-collapse-panel key="advanced" header="🔧 高级检索优化">
+              <a-space direction="vertical" style="width: 100%">
+                <!-- 摘要索引 -->
+                <a-form-item label="摘要索引">
+                  <a-switch v-model:checked="form.enableSummaryIndex" />
+                  <span class="form-hint">入库时自动生成文档摘要，用于快速粗筛</span>
+                </a-form-item>
+
+                <a-form-item v-if="form.enableSummaryIndex" label="粗筛文档数">
+                  <a-slider v-model:value="form.summaryCoarseTopK"
+                    :min="10" :max="200" :step="10" style="width: 200px" />
+                  <span class="form-hint">{{ form.summaryCoarseTopK }} 个文档</span>
+                </a-form-item>
+
+                <!-- 冷热分离 -->
+                <a-form-item label="冷热分离">
+                  <a-switch v-model:checked="form.enableColdArchive" />
+                  <span class="form-hint">6个月前的文档自动归档冷库，热库不足时触发检索</span>
+                </a-form-item>
+
+                <a-form-item v-if="form.enableColdArchive" label="热库最低结果数">
+                  <a-input-number v-model:value="form.hotMinResults"
+                    :min="1" :max="10" />
+                  <span class="form-hint">热库结果少于此数自动触发冷库检索</span>
+                </a-form-item>
+
+                <!-- MMR 配置 -->
+                <a-form-item label="MMR 多样性">
+                  <a-slider v-model:value="form.mmrLambda"
+                    :min="0.1" :max="1.0" :step="0.05" style="width: 200px" />
+                  <span class="form-hint">λ={{ form.mmrLambda }}（越大越偏向相关性）</span>
+                </a-form-item>
+
+                <!-- 时间衰减 -->
+                <a-form-item label="时间衰减系数">
+                  <a-slider v-model:value="form.recencyAlpha"
+                    :min="0.0" :max="0.5" :step="0.05" style="width: 200px" />
+                  <span class="form-hint">α={{ form.recencyAlpha }}（越大新文档权重越高）</span>
+                </a-form-item>
+
+              </a-space>
+            </a-collapse-panel>
+          </a-collapse>
+
           <a-form-item label="相似度阈值" name="similarityThreshold">
             <a-slider
               v-model:value="form.similarityThreshold"
@@ -202,6 +248,7 @@ import { reactive, watch, ref, onMounted, computed } from 'vue'
 import type { KnowledgeBase } from '@/api/knowledgeBase'
 import { getActiveModels } from '@/api/model'
 import type { ModelConfig } from '@/types'
+import { DOC_TYPES } from '@/types/search'
 
 const props = defineProps<{
   knowledgeBase: KnowledgeBase | null
@@ -223,6 +270,12 @@ const emit = defineEmits<{
     vectorTopK?: number
     keywordWeight?: number
     vectorWeight?: number
+    enableSummaryIndex?: boolean
+    summaryCoarseTopK?: number
+    enableColdArchive?: boolean
+    hotMinResults?: number
+    mmrLambda?: number
+    recencyAlpha?: number
   }): void
 }>()
 
@@ -261,6 +314,12 @@ const form = reactive({
   vectorTopK: 10,
   keywordWeight: 0.3,
   vectorWeight: 0.7,
+  enableSummaryIndex: true,
+  summaryCoarseTopK: 50,
+  enableColdArchive: true,
+  hotMinResults: 3,
+  mmrLambda: 0.7,
+  recencyAlpha: 0.3,
 })
 
 // 加载模型列表
@@ -294,6 +353,12 @@ watch(() => props.knowledgeBase, (kb) => {
     form.vectorTopK = kb.vectorTopK || 10
     form.keywordWeight = kb.keywordWeight || 0.3
     form.vectorWeight = kb.vectorWeight || 0.7
+    form.enableSummaryIndex = kb.enableSummaryIndex ?? true
+    form.summaryCoarseTopK = kb.summaryCoarseTopK || 50
+    form.enableColdArchive = kb.enableColdArchive ?? true
+    form.hotMinResults = kb.hotMinResults || 3
+    form.mmrLambda = kb.mmrLambda || 0.7
+    form.recencyAlpha = kb.recencyAlpha || 0.3
   }
 }, { immediate: true })
 
@@ -313,6 +378,12 @@ function handleSave() {
     vectorTopK: form.vectorTopK,
     keywordWeight: form.keywordWeight,
     vectorWeight: form.vectorWeight,
+    enableSummaryIndex: form.enableSummaryIndex,
+    summaryCoarseTopK: form.summaryCoarseTopK,
+    enableColdArchive: form.enableColdArchive,
+    hotMinResults: form.hotMinResults,
+    mmrLambda: form.mmrLambda,
+    recencyAlpha: form.recencyAlpha,
   })
 }
 
@@ -332,6 +403,12 @@ function handleReset() {
     form.vectorTopK = props.knowledgeBase.vectorTopK || 10
     form.keywordWeight = props.knowledgeBase.keywordWeight || 0.3
     form.vectorWeight = props.knowledgeBase.vectorWeight || 0.7
+    form.enableSummaryIndex = props.knowledgeBase.enableSummaryIndex ?? true
+    form.summaryCoarseTopK = props.knowledgeBase.summaryCoarseTopK || 50
+    form.enableColdArchive = props.knowledgeBase.enableColdArchive ?? true
+    form.hotMinResults = props.knowledgeBase.hotMinResults || 3
+    form.mmrLambda = props.knowledgeBase.mmrLambda || 0.7
+    form.recencyAlpha = props.knowledgeBase.recencyAlpha || 0.3
   }
 }
 
