@@ -27,6 +27,12 @@ export interface WorkflowNodeData {
   url?: string
   headers?: string
   body?: string
+  // 受控业务工具节点配置
+  toolId?: number
+  toolName?: string
+  parameters?: string
+  evidenceKey?: string
+  idempotencyKey?: string
   // 代码节点配置
   language?: string
   code?: string
@@ -298,6 +304,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
         return ['documents', 'context']
       case 'http':
         return ['response', 'status']
+      case 'tool':
+        return ['actionId', 'actionStatus', 'result', 'responseCode']
       default:
         return ['output']
     }

@@ -62,6 +62,18 @@ public class EvaluationQa implements Serializable {
     @TableField("external_id")
     private String externalId;
 
+    @TableField("issue_status")
+    private String issueStatus;
+
+    @TableField("issue_note")
+    private String issueNote;
+
+    @TableField("resolved_by")
+    private Long resolvedBy;
+
+    @TableField("resolved_time")
+    private LocalDateTime resolvedTime;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 }

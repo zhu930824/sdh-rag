@@ -41,6 +41,16 @@ public class MemoryContext {
         StringBuilder sb = new StringBuilder();
         sb.append("你是一个智能助手。\n\n");
 
+        if (recentMessages != null && !recentMessages.isEmpty()) {
+            sb.append("## 最近对话\n");
+            for (MemoryEntry message : recentMessages) {
+                if (message.getContent() != null && !message.getContent().isBlank()) {
+                    sb.append("- ").append(message.getContent()).append("\n");
+                }
+            }
+            sb.append("\n");
+        }
+
         if (preferences != null && !preferences.isEmpty()) {
             sb.append("## 用户偏好\n");
             for (String pref : preferences) {
@@ -79,7 +89,8 @@ public class MemoryContext {
      * 是否有有效记忆
      */
     public boolean hasMemory() {
-        return (preferences != null && !preferences.isEmpty())
+        return (recentMessages != null && !recentMessages.isEmpty())
+            || (preferences != null && !preferences.isEmpty())
             || (facts != null && !facts.isEmpty())
             || (patterns != null && !patterns.isEmpty())
             || (relevantSummaries != null && !relevantSummaries.isEmpty());

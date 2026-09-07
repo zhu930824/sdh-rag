@@ -8,6 +8,7 @@ import cn.sdh.backend.entity.DocumentCategory;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.entity.Tag;
 import cn.sdh.backend.service.KnowledgeService;
+import cn.sdh.backend.service.KnowledgeAccessService;
 import cn.sdh.backend.service.MinioService;
 import cn.sdh.backend.service.TagService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 public class DocumentController {
 
     private final KnowledgeService knowledgeService;
+    private final KnowledgeAccessService access;
     private final MinioService minioService;
     private final TagService tagService;
 
@@ -87,6 +89,7 @@ public class DocumentController {
      */
     @GetMapping("/{id}/preview")
     public Result<String> getDocumentPreviewUrl(@PathVariable Long id) {
+        access.requireDocumentRead(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -190,6 +193,7 @@ public class DocumentController {
      */
     @PostMapping("/delete/{id}")
     public Result<Void> deleteDocument(@PathVariable Long id) {
+        access.requireDocumentOwner(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();

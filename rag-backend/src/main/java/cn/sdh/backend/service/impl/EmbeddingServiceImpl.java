@@ -1,8 +1,8 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.KnowledgeBase;
+import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.service.EmbeddingService;
-import cn.sdh.backend.service.KnowledgeBaseService;
 import cn.sdh.backend.service.factory.EmbeddingModelFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +23,7 @@ import java.util.List;
 public class EmbeddingServiceImpl implements EmbeddingService {
 
     private final EmbeddingModelFactory embeddingModelFactory;
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
 
     @Override
     public float[] getEmbedding(String text) {
@@ -125,7 +125,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             return embeddingModelFactory.getModel(null);
         }
 
-        KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
+        KnowledgeBase knowledgeBase = knowledgeBaseMapper.selectById(knowledgeId);
         if (knowledgeBase != null && knowledgeBase.getEmbeddingModel() != null) {
             return embeddingModelFactory.getModel(knowledgeBase.getEmbeddingModel());
         }

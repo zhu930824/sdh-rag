@@ -12,6 +12,8 @@
         <a-tag v-if="currentWorkflowId" color="blue">ID: {{ currentWorkflowId }}</a-tag>
       </div>
       <div class="toolbar-right">
+        <a-button @click="router.push('/agent-tools')">工具中心</a-button>
+        <a-button @click="router.push('/agent-actions')">审批中心</a-button>
         <a-button @click="handleAutoLayout">
           <template #icon><ApartmentOutlined /></template>
           自动布局
@@ -100,8 +102,8 @@
     >
       <div v-if="executionResult" class="execution-result">
         <a-alert
-          :type="executionResult.status?.toUpperCase() === 'SUCCESS' ? 'success' : 'error'"
-          :message="executionResult.status?.toUpperCase() === 'SUCCESS' ? '执行成功' : '执行失败'"
+          :type="executionResult.status?.toUpperCase() === 'SUCCESS' ? 'success' : executionResult.status?.toUpperCase() === 'WAITING_APPROVAL' ? 'warning' : 'error'"
+          :message="executionResult.status?.toUpperCase() === 'SUCCESS' ? '执行成功' : executionResult.status?.toUpperCase() === 'WAITING_APPROVAL' ? '等待人工审批，后续节点已暂停' : '执行失败'"
           show-icon
           style="margin-bottom: 16px"
         />
@@ -259,6 +261,7 @@ function getDefaultConfig(type: string): Partial<WorkflowNodeData> {
     rerank: { model: '', topK: 5 },
     condition: { conditions: [{ expression: 'true', label: '默认' }] },
     http: { method: 'GET', url: '', headers: '{}', body: '' },
+    tool: { toolId: undefined, toolName: '', parameters: '{}', evidenceKey: 'documents', idempotencyKey: '' },
     code: { language: 'javascript', code: '' },
   }
   return defaults[type] || {}

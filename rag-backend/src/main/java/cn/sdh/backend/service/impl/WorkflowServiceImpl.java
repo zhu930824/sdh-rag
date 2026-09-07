@@ -1,6 +1,8 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.Workflow;
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.mapper.WorkflowMapper;
 import cn.sdh.backend.service.WorkflowService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -17,6 +19,9 @@ public class WorkflowServiceImpl extends ServiceImpl<WorkflowMapper, Workflow> i
     public IPage<Workflow> getPage(Integer page, Integer pageSize, String keyword) {
         Page<Workflow> pageParam = new Page<>(page, pageSize);
         LambdaQueryWrapper<Workflow> wrapper = new LambdaQueryWrapper<>();
+        Long actor = UserContext.getCurrentUserId();
+        if (actor == null) throw new BusinessException(401, "请先登录");
+        wrapper.eq(Workflow::getUserId, actor);
         
         if (StringUtils.hasText(keyword)) {
             wrapper.like(Workflow::getName, keyword);

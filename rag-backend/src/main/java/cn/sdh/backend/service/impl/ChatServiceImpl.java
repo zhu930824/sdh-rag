@@ -5,15 +5,13 @@ import cn.sdh.backend.config.RagConfig;
 import cn.sdh.backend.dto.IntentRouterResponse;
 import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.entity.ChatHistory;
-import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.entity.KnowledgeBase;
-import cn.sdh.backend.dto.SearchResult;
 import cn.sdh.backend.entity.ModelConfig;
+import cn.sdh.backend.memory.core.MemoryContext;
+import cn.sdh.backend.memory.orchestrator.MemoryOrchestrator;
 import cn.sdh.backend.mapper.ChatHistoryMapper;
-import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.advisor.common.ContextSettingAdvisor;
 import cn.sdh.backend.advisor.common.LoggingAdvisor;
-import cn.sdh.backend.advisor.rag.RagAdvisorFactory;
 import cn.sdh.backend.advisor.common.SensitiveWordAdvisor;
 import cn.sdh.backend.advisor.common.SensitiveWordAdvisor.SensitiveWordException;
 import cn.sdh.backend.advisor.common.TokenUsageAdvisor;
@@ -22,6 +20,8 @@ import cn.sdh.backend.service.*;
 import cn.sdh.backend.service.RagSearchService.ChatMessage;
 import cn.sdh.backend.service.RagSearchService.RagSearchResult;
 import cn.sdh.backend.service.factory.ChatModelFactory;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.alibaba.cloud.ai.dashscope.rerank.DashScopeRerankModel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -36,7 +36,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -68,21 +67,29 @@ public class ChatServiceImpl implements ChatService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final RagSearchService ragSearchService;
     private final RagConfig ragConfig;
-    private final RagAdvisorFactory ragAdvisorFactory;
     private final ChatMemory chatMemory;
     private final ChatModelFactory chatModelFactory;
     private final TokenUsageAdvisor tokenUsageAdvisor;
     private final HotwordAdvisor hotwordAdvisor;
+    private final MemoryOrchestrator memoryOrchestrator;
+    private final ObjectMapper objectMapper;
+    private final KnowledgeAccessService knowledgeAccessService;
     // 智能路由相关依赖
     private final IntentRouterService intentRouterService;
     private final IntentRouterConfig intentRouterConfig;
 
     @Override
-    public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
+    public Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId,
+                            boolean memoryEnabled, Map<String, Object> metadataFilters) {
         log.info("用户 {} 发起问答，知识库ID: {}, 模型ID: {}, 会话ID: {}, 使用Advisor模式: {}",
                 userId, knowledgeId, modelId, sessionId, ragConfig.isUseAdvisor());
 
-        ModelConfig modelConfig = modelConfigService.getById(modelId);
+        ModelConfig modelConfig = modelId == null
+                ? modelConfigService.getDefault()
+                : modelConfigService.getById(modelId);
+        if (modelConfig == null) {
+            return Flux.just(errorEvent("模型配置错误，请检查模型设置"));
+        }
 
         // 智能路由：当knowledgeId为null且路由功能启用时，进行意图判断
         if (knowledgeId == null && intentRouterConfig.isEnabled()) {
@@ -93,7 +100,8 @@ public class ChatServiceImpl implements ChatService {
                 if (!routeResult.isNeedRetrieval()) {
                     // 不需要检索，直接对话
                     log.info("智能路由决策: 无需检索知识库，原因: {}", routeResult.getReason());
-                    return askDirect(question, sessionId, userId, modelConfig.getModelId(), routeResult);
+                    return askDirect(question, sessionId, userId, modelConfig.getModelId(), routeResult,
+                            memoryEnabled);
                 }
 
                 // 需要检索，使用推荐的知识库
@@ -104,14 +112,17 @@ public class ChatServiceImpl implements ChatService {
                 } else {
                     // 需要检索但没有推荐的知识库，降级为直接对话
                     log.info("智能路由决策: 需要检索但无推荐知识库，降级为直接对话");
-                    return askDirect(question, sessionId, userId, modelConfig.getModelId(), routeResult);
+                    return askDirect(question, sessionId, userId, modelConfig.getModelId(), routeResult,
+                            memoryEnabled);
                 }
 
                 // 根据配置选择使用 Advisor 模式还是手动 RAG 模式，并携带路由信息
                 if (ragConfig.isUseAdvisor()) {
-                    return askWithAdvisor(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), routeResult);
+                    return askWithAdvisor(question, sessionId, userId, knowledgeId,
+                            modelConfig.getModelId(), routeResult, memoryEnabled, metadataFilters);
                 } else {
-                    return askManual(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), routeResult);
+                    return askManual(question, sessionId, userId, knowledgeId,
+                            modelConfig.getModelId(), routeResult, memoryEnabled, metadataFilters);
                 }
 
             } catch (Exception e) {
@@ -122,16 +133,19 @@ public class ChatServiceImpl implements ChatService {
 
         // 根据配置选择使用 Advisor 模式还是手动 RAG 模式
         if (ragConfig.isUseAdvisor()) {
-            return askWithAdvisor(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), null);
+            return askWithAdvisor(question, sessionId, userId, knowledgeId,
+                    modelConfig.getModelId(), null, memoryEnabled, metadataFilters);
         } else {
-            return askManual(question, sessionId, userId, knowledgeId, modelConfig.getModelId(), null);
+            return askManual(question, sessionId, userId, knowledgeId,
+                    modelConfig.getModelId(), null, memoryEnabled, metadataFilters);
         }
     }
 
     /**
      * 直接对话（不使用知识库检索）
      */
-    private Flux<String> askDirect(String question, String sessionId, Long userId, String modelId, IntentRouterResponse routeResult) {
+    private Flux<String> askDirect(String question, String sessionId, Long userId, String modelId,
+                                   IntentRouterResponse routeResult, boolean memoryEnabled) {
         // 生成或使用现有的会话ID
         String currentSessionId = (sessionId != null && !sessionId.isEmpty())
                 ? sessionId
@@ -151,7 +165,9 @@ public class ChatServiceImpl implements ChatService {
         AtomicReference<StringBuilder> answerBuilder = new AtomicReference<>(new StringBuilder());
 
         // 构建简单的系统提示词
-        String systemPrompt = "你是一个智能助手，请根据用户的问题给出准确、有帮助的回答。请用中文回答，保持回答简洁明了。";
+        String systemPrompt = withMemoryContext(
+                "你是一个智能助手，请根据用户的问题给出准确、有帮助的回答。请用中文回答，保持回答简洁明了。",
+                userId, currentSessionId, question, memoryEnabled);
 
         Prompt prompt = new Prompt(List.of(
                 new SystemMessage(systemPrompt),
@@ -180,6 +196,7 @@ public class ChatServiceImpl implements ChatService {
                             if (data.contains("\"type\":\"done\"")) {
                                 String answer = answerBuilder.get().toString();
                                 saveAiAnswer(historyId, answer);
+                                storeMemory(userId, currentSessionId, question, answer, memoryEnabled);
                                 log.debug("会话 {} AI响应完成(直接对话)", currentSessionId);
                             }
                         })
@@ -198,32 +215,25 @@ public class ChatServiceImpl implements ChatService {
             return null;
         }
 
-        StringBuilder json = new StringBuilder();
-        json.append("{\"type\":\"router\",");
-        json.append("\"used\":true,");
-        json.append("\"needRetrieval\":").append(routeResult.isNeedRetrieval()).append(",");
-        json.append("\"reason\":\"").append(escapeJson(routeResult.getReason())).append("\"");
-
+        Map<String, Object> routerInfo = new LinkedHashMap<>();
+        routerInfo.put("used", true);
+        routerInfo.put("needRetrieval", routeResult.isNeedRetrieval());
+        routerInfo.put("reason", routeResult.getReason());
         if (routeResult.getRecommendedBases() != null && !routeResult.getRecommendedBases().isEmpty()) {
-            json.append(",\"recommendedBases\":[");
-            List<String> bases = routeResult.getRecommendedBases().stream()
-                    .map(b -> String.format("{\"id\":%d,\"name\":\"%s\",\"score\":%.2f}",
-                            b.getKnowledgeBaseId(),
-                            escapeJson(b.getKnowledgeBaseName()),
-                            b.getScore()))
-                    .collect(Collectors.toList());
-            json.append(String.join(",", bases));
-            json.append("]");
+            IntentRouterResponse.KnowledgeBaseScore selected = routeResult.getRecommendedBases().get(0);
+            routerInfo.put("selectedKnowledgeBaseId", selected.getKnowledgeBaseId());
+            routerInfo.put("selectedKnowledgeBaseName", selected.getKnowledgeBaseName());
+            routerInfo.put("candidates", routeResult.getRecommendedBases());
         }
-
-        json.append("}");
-        return json.toString();
+        return jsonEvent("routerInfo", "routerInfo", routerInfo);
     }
 
     /**
      * 使用 Spring AI Advisor 机制的问答
      */
-    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId, String modelId, IntentRouterResponse routeResult) {
+    private Flux<String> askWithAdvisor(String question, String sessionId, Long userId, Long knowledgeId,
+                                        String modelId, IntentRouterResponse routeResult,
+                                        boolean memoryEnabled, Map<String, Object> metadataFilters) {
         // 生成或使用现有的会话ID
         String currentSessionId = (sessionId != null && !sessionId.isEmpty())
                 ? sessionId
@@ -231,6 +241,18 @@ public class ChatServiceImpl implements ChatService {
 
         // 获取模型配置
         ChatModel chatModel = getChatModel(modelId);
+        if (chatModel == null) {
+            return Flux.just(errorEvent("模型配置错误，请检查模型设置"));
+        }
+
+        RetrievalPayload retrieval = retrieveContext(
+                question, knowledgeId, userId, currentSessionId, metadataFilters);
+        if (retrieval.forbidden()) {
+            return Flux.just(errorEvent("无权访问该知识库"));
+        }
+        String systemPrompt = withMemoryContext(
+                buildSystemPrompt(knowledgeId, retrieval.context()),
+                userId, currentSessionId, question, memoryEnabled);
 
         // 保存用户问题
         Long historyId = saveUserQuestion(question, currentSessionId, userId, knowledgeId);
@@ -242,7 +264,7 @@ public class ChatServiceImpl implements ChatService {
         ChatClient.Builder clientBuilder = ChatClient.builder(chatModel);
         ChatClient.ChatClientRequestSpec requestSpec = clientBuilder.build()
                 .prompt()
-                .system(ragConfig.getSystemPrompt())
+                .system(systemPrompt)
                 .user(question);
 
         // 添加敏感词检测 Advisor（最先执行）
@@ -251,25 +273,18 @@ public class ChatServiceImpl implements ChatService {
                 .build();
         requestSpec = requestSpec.advisors(spec -> spec.advisors(sensitiveWordAdvisor));
 
-        // 如果指定了知识库，添加 RAG Advisor
-        if (knowledgeId != null) {
-            KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
-            if (knowledgeBase != null) {
-                RetrievalAugmentationAdvisor ragAdvisor = ragAdvisorFactory.createAdvisor(knowledgeBase);
-                requestSpec = requestSpec.advisors(spec -> spec.advisors(ragAdvisor));
-            }
+        // 添加对话窗口记忆 Advisor。跨会话记忆通过 system prompt 注入。
+        if (memoryEnabled) {
+            MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory)
+                    .conversationId(currentSessionId)
+                    .build();
+            requestSpec = requestSpec.advisors(spec -> spec.advisors(memoryAdvisor));
         }
-
-        // 添加对话记忆 Advisor
-        MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory)
-                .conversationId(currentSessionId)
-                .build();
-        requestSpec = requestSpec.advisors(spec -> spec.advisors(memoryAdvisor));
 
         // 添加 Token 使用量统计 Advisor
         // 利用 Spring AI 的 Usage 接口获取模型用量信息
         // 注意：必须在 HTTP 请求线程中获取 userId，因为 advisor 可能在线程池中执行
-        Long currentUserId = UserContext.getCurrentUserId();
+        Long currentUserId = userId;
 
         // 使用 ContextSettingAdvisor 传递上下文信息（解决线程切换导致 ThreadLocal 丢失的问题）
         ContextSettingAdvisor contextAdvisor = ContextSettingAdvisor.create()
@@ -296,9 +311,12 @@ public class ChatServiceImpl implements ChatService {
         Flux<String> routerInfoFlux = routerInfoJson != null
                 ? Flux.just(routerInfoJson)
                 : Flux.empty();
+        Flux<String> sourcesFlux = retrieval.sourcesEvent() != null
+                ? Flux.just(retrieval.sourcesEvent())
+                : Flux.empty();
 
         // 流式调用
-        return routerInfoFlux.concatWith(
+        return routerInfoFlux.concatWith(sourcesFlux).concatWith(
                 requestSpec.stream()
                         .chatResponse()
                         .map(response -> {
@@ -318,6 +336,7 @@ public class ChatServiceImpl implements ChatService {
                             if (data.contains("\"type\":\"done\"")) {
                                 String answer = answerBuilder.get().toString();
                                 saveAiAnswer(historyId, answer);
+                                storeMemory(userId, currentSessionId, question, answer, memoryEnabled);
                                 log.debug("会话 {} AI响应完成", currentSessionId);
                             }
                         })
@@ -335,7 +354,9 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 使用手动 RAG 流程的问答（原有实现）
      */
-    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId, String modelId, IntentRouterResponse routeResult) {
+    private Flux<String> askManual(String question, String sessionId, Long userId, Long knowledgeId,
+                                   String modelId, IntentRouterResponse routeResult,
+                                   boolean memoryEnabled, Map<String, Object> metadataFilters) {
 
         // 检测敏感词
         List<String> sensitiveWords = sensitiveWordService.findSensitiveWords(question);
@@ -362,15 +383,16 @@ public class ChatServiceImpl implements ChatService {
         }
 
         // RAG召回：如果指定了知识库，从知识库召回相关内容
-        String context = "";
-        if (knowledgeId != null) {
-            // 获取多轮对话历史（用于查询改写）
-            List<ChatMessage> chatHistory = getRecentChatHistory(sessionId, userId);
-            context = retrieveContext(question, knowledgeId, chatHistory);
+        RetrievalPayload retrieval = retrieveContext(
+                question, knowledgeId, userId, currentSessionId, metadataFilters);
+        if (retrieval.forbidden()) {
+            return Flux.just(errorEvent("无权访问该知识库"));
         }
 
         // 构建系统提示词
-        String systemPrompt = buildSystemPrompt(knowledgeId, context);
+        String systemPrompt = withMemoryContext(
+                buildSystemPrompt(knowledgeId, retrieval.context()),
+                userId, currentSessionId, question, memoryEnabled);
 
         // 记录请求信息
         log.info("[{}] 聊天请求开始(手动RAG) - 用户问题: {}", requestId,
@@ -399,9 +421,12 @@ public class ChatServiceImpl implements ChatService {
         Flux<String> routerInfoFlux = routerInfoJson != null
                 ? Flux.just(routerInfoJson)
                 : Flux.empty();
+        Flux<String> sourcesFlux = retrieval.sourcesEvent() != null
+                ? Flux.just(retrieval.sourcesEvent())
+                : Flux.empty();
 
         // 流式调用 AI
-        return routerInfoFlux.concatWith(
+        return routerInfoFlux.concatWith(sourcesFlux).concatWith(
                 chatModel.stream(prompt)
                         .map(this::extractContent)
                         .filter(content -> content != null && !content.isEmpty())
@@ -415,6 +440,7 @@ public class ChatServiceImpl implements ChatService {
                             if (data.contains("\"type\":\"done\"")) {
                                 String answer = answerBuilder.get().toString();
                                 saveAiAnswer(historyId, answer);
+                                storeMemory(userId, currentSessionId, question, answer, memoryEnabled);
 
                                 // 记录完成日志
                                 Duration duration = Duration.between(startTime, Instant.now());
@@ -444,68 +470,79 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 从知识库召回相关上下文（使用优化的RAG检索）
      */
-    private String retrieveContext(String question, Long knowledgeId, List<ChatMessage> chatHistory) {
+    private RetrievalPayload retrieveContext(String question, Long knowledgeId, Long userId,
+                                             String sessionId, Map<String, Object> metadataFilters) {
+        if (knowledgeId == null) {
+            return RetrievalPayload.empty();
+        }
         try {
             KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
             if (knowledgeBase == null) {
                 log.warn("知识库不存在: {}", knowledgeId);
-                return "";
+                return RetrievalPayload.empty();
+            }
+            if (!canAccessKnowledgeBase(knowledgeBase, userId)) {
+                log.warn("用户 {} 尝试访问无权限知识库 {}", userId, knowledgeId);
+                return RetrievalPayload.forbiddenPayload();
             }
 
-            log.info("RAG检索开始: knowledgeId={}, embeddingModel={}, rankModel={}, enableRewrite={}",
+            log.info("级联RAG检索开始: knowledgeId={}, embeddingModel={}, rankModel={}, enableRewrite={}, filters={}",
                     knowledgeId, knowledgeBase.getEmbeddingModel(), knowledgeBase.getRankModel(),
-                    knowledgeBase.getEnableRewrite());
+                    knowledgeBase.getEnableRewrite(), metadataFilters);
 
-            // 使用优化的 RAG 检索服务
-            RagSearchResult searchResult = ragSearchService.search(question, knowledgeBase, chatHistory);
+            List<ChatMessage> chatHistory = getRecentChatHistory(sessionId, userId);
+            SearchResult searchResult = ragSearchService.searchWithCascade(
+                    question, knowledgeBase, chatHistory,
+                    metadataFilters == null ? Map.of() : metadataFilters);
 
-            List<Document> documents = searchResult.getDocuments();
-            if (documents == null || documents.isEmpty()) {
+            if (searchResult == null || searchResult.getChunks() == null
+                    || searchResult.getChunks().isEmpty()) {
                 log.info("知识库 {} 未召回相关内容", knowledgeId);
-                return "";
+                return RetrievalPayload.empty();
             }
 
-            // 拼接召回内容（层级上下文）
-            String context = documents.stream()
-                    .map(doc -> {
-                        StringBuilder sb = new StringBuilder();
-                        // Add document metadata if available
-                        Object title = doc.getMetadata().get("document_title");
-                        Object chunkIdx = doc.getMetadata().get("chunk_index");
-                        Object totalChunks = doc.getMetadata().get("total_chunks");
-                        Object score = doc.getMetadata().get("score");
-                        Object summary = doc.getMetadata().get("document_summary");
-                        Object dept = doc.getMetadata().get("department");
-                        Object docType = doc.getMetadata().get("doc_type");
+            String context = buildHierarchicalContext(searchResult);
+            String sourcesEvent = buildSourcesEvent(searchResult.getChunks());
 
-                        if (title != null) {
-                            sb.append("Doc: ").append(title);
-                            if (dept != null) sb.append(" (").append(dept);
-                            if (docType != null) sb.append(" - ").append(docType);
-                            if (dept != null) sb.append(")");
-                            sb.append("\n");
-                            if (summary != null) sb.append("Summary: ").append(summary).append("\n");
-                            if (chunkIdx != null && totalChunks != null)
-                                sb.append("Chunk [").append(chunkIdx).append("/").append(totalChunks).append("]");
-                            if (score != null)
-                                sb.append(" (relevance: ").append(String.format("%.2f", score)).append(")");
-                            sb.append(":\n");
-                        }
-                        sb.append(doc.getText());
-                        return sb.toString();
-                    })
-                    .filter(text -> text != null && !text.trim().isEmpty())
-                    .collect(Collectors.joining("\n\n---\n\n"));
+            log.info("级联RAG检索完成: knowledgeId={}, 召回片段数={}, 总长度={}",
+                    knowledgeId, searchResult.getChunks().size(), context.length());
 
-            log.info("RAG检索完成: knowledgeId={}, 召回文档数={}, 总长度={}, 改写查询={}",
-                    knowledgeId, documents.size(), context.length(), searchResult.getRewrittenQuery());
-
-            return context;
+            return new RetrievalPayload(context, sourcesEvent, false);
 
         } catch (Exception e) {
             log.error("RAG检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
-            return "";
+            return RetrievalPayload.empty();
         }
+    }
+
+    private boolean canAccessKnowledgeBase(KnowledgeBase knowledgeBase, Long userId) {
+        return knowledgeAccessService.canRead(knowledgeBase, userId);
+    }
+
+    private String buildSourcesEvent(List<SearchResult.RankedChunk> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return null;
+        }
+        Map<String, SearchResult.RankedChunk> topChunkByDocument = new LinkedHashMap<>();
+        for (SearchResult.RankedChunk chunk : chunks) {
+            String key = chunk.getDocumentId() != null
+                    ? chunk.getDocumentId().toString()
+                    : String.valueOf(chunk.getDocumentTitle());
+            topChunkByDocument.putIfAbsent(key, chunk);
+        }
+        List<Map<String, Object>> sources = topChunkByDocument.values().stream().map(chunk -> {
+            Map<String, Object> source = new LinkedHashMap<>();
+            source.put("documentId", chunk.getDocumentId());
+            source.put("documentTitle", chunk.getDocumentTitle());
+            source.put("content", chunk.getContent());
+            source.put("score", chunk.getFinalScore() != null
+                    ? chunk.getFinalScore()
+                    : chunk.getRelevanceScore());
+            source.put("chunkIndex", chunk.getChunkIndex());
+            source.put("totalChunks", chunk.getTotalChunks());
+            return source;
+        }).toList();
+        return jsonEvent("sources", "sources", sources);
     }
 
     /**
@@ -604,6 +641,60 @@ public class ChatServiceImpl implements ChatService {
         prompt.append("\n请用中文回答，保持回答简洁明了。");
 
         return prompt.toString();
+    }
+
+    private String withMemoryContext(String basePrompt, Long userId, String sessionId,
+                                     String question, boolean memoryEnabled) {
+        if (!memoryEnabled) {
+            return basePrompt;
+        }
+        try {
+            MemoryContext memoryContext = memoryOrchestrator.assembleContext(userId, sessionId, question);
+            if (memoryContext != null && memoryContext.hasMemory()) {
+                return basePrompt + "\n\n【用户记忆上下文】\n" + memoryContext.buildSystemPrompt();
+            }
+        } catch (Exception e) {
+            log.warn("读取用户记忆失败，继续无记忆问答: userId={}, error={}", userId, e.getMessage());
+        }
+        return basePrompt;
+    }
+
+    private void storeMemory(Long userId, String sessionId, String question,
+                             String answer, boolean memoryEnabled) {
+        if (!memoryEnabled || answer == null || answer.isBlank()) {
+            return;
+        }
+        try {
+            memoryOrchestrator.processAndStore(userId, sessionId, question, answer);
+        } catch (Exception e) {
+            log.warn("写入用户记忆失败，不影响本次回答: userId={}, error={}", userId, e.getMessage());
+        }
+    }
+
+    private String jsonEvent(String type, String payloadName, Object payload) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", type);
+        event.put(payloadName, payload);
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            log.error("序列化流式事件失败: type={}", type, e);
+            return "{\"type\":\"error\",\"message\":\"流式事件序列化失败\"}";
+        }
+    }
+
+    private String errorEvent(String message) {
+        return jsonEvent("error", "message", message);
+    }
+
+    private record RetrievalPayload(String context, String sourcesEvent, boolean forbidden) {
+        private static RetrievalPayload empty() {
+            return new RetrievalPayload("", null, false);
+        }
+
+        private static RetrievalPayload forbiddenPayload() {
+            return new RetrievalPayload("", null, true);
+        }
     }
 
     /**

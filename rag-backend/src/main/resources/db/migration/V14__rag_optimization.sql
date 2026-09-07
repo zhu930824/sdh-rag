@@ -1,4 +1,4 @@
--- V2: RAG 企业级检索优化
+-- V14: RAG 企业级检索优化
 -- 1. 新增去重表
 CREATE TABLE IF NOT EXISTS document_hash (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

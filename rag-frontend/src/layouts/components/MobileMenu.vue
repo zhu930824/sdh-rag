@@ -41,6 +41,16 @@
         <span>工作流编排</span>
       </a-menu-item>
 
+      <a-menu-item key="/agent-tools">
+        <template #icon><ApiOutlined /></template>
+        <span>业务工具中心</span>
+      </a-menu-item>
+
+      <a-menu-item key="/agent-actions">
+        <template #icon><SafetyCertificateOutlined /></template>
+        <span>Agent审批与执行</span>
+      </a-menu-item>
+
       <a-menu-item key="/model">
         <template #icon><ApiOutlined /></template>
         <span>大模型管理</span>
@@ -128,6 +138,7 @@ import {
   NotificationOutlined,
   TagsOutlined,
   AudioOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons-vue'
 
 const emit = defineEmits<{

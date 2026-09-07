@@ -95,14 +95,14 @@
                 </a-button>
                 <template #overlay>
                   <a-menu>
-                    <a-menu-item key="edit" @click="handleEdit(kb)">
+                    <a-menu-item v-if="kb.accessRole === 'owner'" key="edit" @click="handleEdit(kb)">
                       <EditOutlined /> 编辑
                     </a-menu-item>
                     <a-menu-item key="documents" @click="handleViewDocuments(kb)">
                       <FileTextOutlined /> 查看文档
                     </a-menu-item>
-                    <a-menu-divider />
-                    <a-menu-item key="delete" danger @click="handleDelete(kb)">
+                    <a-menu-divider v-if="kb.accessRole === 'owner'" />
+                    <a-menu-item v-if="kb.accessRole === 'owner'" key="delete" danger @click="handleDelete(kb)">
                       <DeleteOutlined /> 删除
                     </a-menu-item>
                   </a-menu>

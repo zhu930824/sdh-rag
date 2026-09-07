@@ -177,6 +177,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   ReloadOutlined,
@@ -203,6 +204,7 @@ import {
 } from '@/api/graph'
 import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
 
+const route = useRoute()
 const graphContainerRef = ref<HTMLElement>()
 const searchKeyword = ref('')
 const selectedNode = ref<NodeData | null>(null)
@@ -289,6 +291,13 @@ async function loadKnowledgeBases() {
     const res = await getKnowledgeBaseList({ page: 1, pageSize: 100 })
     if (res.code === 200) {
       knowledgeBases.value = res.data?.records || []
+      const requestedId = Number(route.query.knowledgeBaseId)
+      if (Number.isFinite(requestedId) && knowledgeBases.value.some(kb => kb.id === requestedId)) {
+        selectedKnowledgeBaseId.value = requestedId
+      }
+      if (!selectedKnowledgeBaseId.value && knowledgeBases.value.length > 0) {
+        selectedKnowledgeBaseId.value = knowledgeBases.value[0].id
+      }
     }
   } catch (error) {
     console.error('加载知识库列表失败', error)
@@ -304,6 +313,7 @@ function handleKnowledgeBaseChange() {
 
 // 加载图谱数据
 async function loadGraphData(centerNodeId?: number) {
+  if (!selectedKnowledgeBaseId.value) return
   try {
     const res = await getGraphData(centerNodeId, 2, selectedKnowledgeBaseId.value)
     if (res.code === 200) {
@@ -316,6 +326,7 @@ async function loadGraphData(centerNodeId?: number) {
 
 // 加载统计信息
 async function loadStats() {
+  if (!selectedKnowledgeBaseId.value) return
   statsLoading.value = true
   try {
     const res = await getGraphStats(selectedKnowledgeBaseId.value)
@@ -555,7 +566,8 @@ async function handlePathSearch() {
   }
 
   try {
-    const res = await getShortestPath(pathStartNode.value, pathEndNode.value)
+    if (!selectedKnowledgeBaseId.value) return
+    const res = await getShortestPath(pathStartNode.value, pathEndNode.value, selectedKnowledgeBaseId.value)
     if (res.code === 200 && res.data) {
       pathModalVisible.value = false
       highlightPath(res.data)

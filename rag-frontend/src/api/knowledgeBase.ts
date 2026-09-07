@@ -5,6 +5,7 @@ export interface KnowledgeBase {
   name: string
   description: string
   userId: number
+  accessRole?: KnowledgeRole
   chunkSize: number
   chunkOverlap: number
   embeddingModel: string
@@ -145,7 +146,7 @@ export interface LinkDocumentsRequest {
 
 // 获取知识库列表
 export function getKnowledgeBaseList(params: KnowledgeBaseQuery) {
-  return request.get<KnowledgeBaseListResult>('/api/knowledge-base/list', { params })
+  return request.get<ApiResponse<KnowledgeBaseListResult>>('/api/knowledge-base/list', { params })
 }
 
 // 获取知识库详情
@@ -155,7 +156,7 @@ export function getKnowledgeBaseDetail(id: number) {
 
 // 获取知识库完整详情（包含统计和标签）
 export function getKnowledgeBaseFullDetail(id: number) {
-  return request.get<KnowledgeBaseDetail>(`/api/knowledge-base/${id}/detail`)
+  return request.get<ApiResponse<KnowledgeBaseDetail>>(`/api/knowledge-base/${id}/detail`)
 }
 
 // 创建知识库
@@ -201,6 +202,21 @@ export interface ApiResponse<T> {
 }
 
 // 分页结果
+export type KnowledgeRole = 'owner' | 'editor' | 'reader' | 'none'
+export interface KnowledgeMember { userId: number; username: string; permission: 'reader' | 'editor' }
+export function getKnowledgeAccess(id: number) {
+  return request.get<ApiResponse<{ role: KnowledgeRole }>>(`/api/knowledge-base/${id}/access`)
+}
+export function getKnowledgeMembers(id: number) {
+  return request.get<ApiResponse<KnowledgeMember[]>>(`/api/knowledge-base/${id}/members`)
+}
+export function grantKnowledgeMember(id: number, username: string, permission: 'reader' | 'editor') {
+  return request.post<ApiResponse<void>>(`/api/knowledge-base/${id}/members`, { username, permission })
+}
+export function revokeKnowledgeMember(id: number, userId: number) {
+  return request.delete<ApiResponse<void>>(`/api/knowledge-base/${id}/members/${userId}`)
+}
+
 export interface PageResult<T> {
   records: T[]
   total: number

@@ -55,6 +55,7 @@ public class WorkflowController {
     @GetMapping("/{id}")
     public Result<Workflow> getById(@PathVariable Long id) {
         Workflow workflow = workflowService.getById(id);
+        workflowEngine.requireOwner(workflow, UserContext.getCurrentUserId());
         if (workflow == null) {
             return Result.notFound("工作流不存在");
         }
@@ -139,6 +140,7 @@ public class WorkflowController {
             ? request.get("inputs").toString()
             : "";
 
+        workflowEngine.requireOwner(workflow, UserContext.getCurrentUserId());
         ExecutionResponse response = workflowEngine.execute(workflow, inputData);
         return Result.success(response);
     }
@@ -152,6 +154,8 @@ public class WorkflowController {
             @RequestParam(required = false, defaultValue = "") String inputData) {
 
         Workflow workflow = workflowService.getById(id);
+        Long actor = UserContext.getCurrentUserId();
+        workflowEngine.requireOwner(workflow, actor);
         SseEmitter emitter = new SseEmitter(300000L); // 5分钟超时
 
         if (workflow == null) {
@@ -189,7 +193,7 @@ public class WorkflowController {
                         } catch (Exception e) {
                             log.error("SSE 发送事件失败", e);
                         }
-                    }
+                    }, actor
                 );
 
                 // 发送最终结果
@@ -238,6 +242,7 @@ public class WorkflowController {
             @RequestParam(defaultValue = "10") Integer pageSize) {
 
         if (pageSize > 100) pageSize = 100;
+        workflowEngine.requireOwner(workflowService.getById(id), UserContext.getCurrentUserId());
         IPage<WorkflowExecution> result = workflowExecutionService.getPage(id, page, pageSize);
         return Result.success(result);
     }
@@ -251,6 +256,7 @@ public class WorkflowController {
         if (execution == null) {
             return Result.notFound("执行记录不存在");
         }
+        workflowEngine.requireOwner(workflowService.getById(execution.getWorkflowId()), UserContext.getCurrentUserId());
         return Result.success(execution);
     }
 

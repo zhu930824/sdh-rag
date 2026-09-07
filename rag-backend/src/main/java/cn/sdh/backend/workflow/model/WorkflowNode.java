@@ -15,7 +15,7 @@ public class WorkflowNode {
     private String id;
 
     /**
-     * 节点类型: input, output, llm, retrieval, condition, http, code
+     * 节点类型: input, output, llm, retrieval, condition, tool, http, code
      */
     private String type;
 

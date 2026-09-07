@@ -30,6 +30,12 @@ public interface VectorStoreService {
     String addVector(KnowledgeChunk chunk, Long knowledgeId, String embeddingModelName);
 
     /**
+     * 添加向量并写入可检索的文档元数据。
+     */
+    String addVector(KnowledgeChunk chunk, Long knowledgeId, String embeddingModelName,
+                     Map<String, Object> documentMetadata);
+
+    /**
      * 批量添加向量（使用知识库配置的嵌入模型）
      * @param chunks 分块列表
      * @param knowledgeId 知识库ID
@@ -229,6 +235,13 @@ public interface VectorStoreService {
      */
     List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
         Long knowledgeId, int topKPerDoc, String embeddingModel);
+
+    /**
+     * 按候选文档检索 chunks，并强制应用元数据过滤。
+     */
+    List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
+        Long knowledgeId, int topKPerDoc, String embeddingModel,
+        Map<String, Object> metadataFilters);
 
     /**
      * 混合检索（带元数据过滤和相似度阈值）

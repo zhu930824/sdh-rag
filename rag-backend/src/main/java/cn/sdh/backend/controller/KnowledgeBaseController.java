@@ -10,6 +10,7 @@ import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.entity.KnowledgeDocumentRelation;
 import cn.sdh.backend.entity.Tag;
 import cn.sdh.backend.service.KnowledgeBaseService;
+import cn.sdh.backend.service.KnowledgeAccessService;
 import cn.sdh.backend.service.KnowledgeBaseTagService;
 import cn.sdh.backend.service.TagService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -35,6 +36,7 @@ import java.util.UUID;
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeAccessService access;
     private final KnowledgeBaseTagService knowledgeBaseTagService;
     private final TagService tagService;
 
@@ -86,6 +88,7 @@ public class KnowledgeBaseController {
      */
     @GetMapping("/{id}")
     public Result<KnowledgeBase> getKnowledgeBase(@PathVariable Long id) {
+        access.requireRead(id, UserContext.getCurrentUserId());
         KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(id);
         return Result.success(knowledgeBase);
     }
@@ -95,6 +98,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/update/{id}")
     public Result<Void> updateKnowledgeBase(@PathVariable Long id, @RequestBody KnowledgeBaseRequest request) {
+        access.requireOwner(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -111,6 +115,9 @@ public class KnowledgeBaseController {
 
         knowledgeBase.setName(request.getName());
         knowledgeBase.setDescription(request.getDescription());
+        knowledgeBase.setIsPublic(request.getIsPublic());
+        knowledgeBase.setIcon(request.getIcon());
+        knowledgeBase.setColor(request.getColor());
         knowledgeBaseService.updateKnowledgeBase(knowledgeBase);
 
         return Result.success("更新成功", null);
@@ -121,6 +128,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/delete/{id}")
     public Result<Void> deleteKnowledgeBase(@PathVariable Long id) {
+        access.requireOwner(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -139,6 +147,7 @@ public class KnowledgeBaseController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
 
+        access.requireRead(id, UserContext.getCurrentUserId());
         Page<KnowledgeDocument> result = knowledgeBaseService.getDocumentsByKnowledgeId(id, page, size);
         return Result.success(result);
     }
@@ -152,6 +161,7 @@ public class KnowledgeBaseController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
 
+        access.requireRead(id, UserContext.getCurrentUserId());
         Page<KnowledgeDocumentVO> result = knowledgeBaseService.getDocumentDetailsByKnowledgeId(id, page, size);
         return Result.success(result);
     }
@@ -165,6 +175,7 @@ public class KnowledgeBaseController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "categoryId", required = false) Long categoryId,
             @RequestParam(value = "title", required = false) String title) throws IOException {
+        access.requireEdit(id, UserContext.getCurrentUserId());
 
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
@@ -205,6 +216,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/{id}/documents/link")
     public Result<Void> linkDocuments(@PathVariable Long id, @RequestBody LinkDocumentsRequest request) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -227,6 +239,7 @@ public class KnowledgeBaseController {
             @PathVariable Long id,
             @PathVariable Long documentId,
             @RequestBody DocumentLinkConfig config) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -243,6 +256,7 @@ public class KnowledgeBaseController {
     public Result<KnowledgeDocumentRelation> getDocumentRelation(
             @PathVariable Long id,
             @PathVariable Long documentId) {
+        access.requireRead(id, UserContext.getCurrentUserId());
         KnowledgeDocumentRelation relation = knowledgeBaseService.getDocumentProcessStatus(id, documentId);
         return Result.success(relation);
     }
@@ -252,6 +266,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/{id}/documents/{documentId}/unlink")
     public Result<Void> unlinkDocument(@PathVariable Long id, @PathVariable Long documentId) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -266,6 +281,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/{id}/documents/{documentId}/reprocess")
     public Result<Void> reprocessDocument(@PathVariable Long id, @PathVariable Long documentId) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -314,6 +330,7 @@ public class KnowledgeBaseController {
      */
     @GetMapping("/{id}/detail")
     public Result<KnowledgeBaseDetailDTO> getKnowledgeBaseDetail(@PathVariable Long id) {
+        access.requireRead(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -345,6 +362,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/{id}/config")
     public Result<Void> updateConfig(@PathVariable Long id, @RequestBody KnowledgeBaseConfigRequest request) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             return Result.unauthorized();
@@ -353,10 +371,6 @@ public class KnowledgeBaseController {
         KnowledgeBase kb = knowledgeBaseService.getKnowledgeBaseById(id);
         if (kb == null) {
             return Result.notFound("知识库不存在");
-        }
-
-        if (!kb.getUserId().equals(userId)) {
-            return Result.error("无权修改该知识库");
         }
 
         // 更新配置（使用完整配置更新方法）
@@ -396,6 +410,7 @@ public class KnowledgeBaseController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
 
+        access.requireRead(id, UserContext.getCurrentUserId());
         Page<KnowledgeChunkVO> result = knowledgeBaseService.getChunksByKnowledgeId(id, page, size);
         return Result.success(result);
     }
@@ -405,6 +420,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/{id}/tags")
     public Result<Void> addTag(@PathVariable Long id, @RequestParam Long tagId) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         knowledgeBaseTagService.addTagToKnowledgeBase(id, tagId);
         return Result.success("添加成功", null);
     }
@@ -414,6 +430,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping("/{id}/tags/{tagId}/remove")
     public Result<Void> removeTag(@PathVariable Long id, @PathVariable Long tagId) {
+        access.requireEdit(id, UserContext.getCurrentUserId());
         knowledgeBaseTagService.removeTagFromKnowledgeBase(id, tagId);
         return Result.success("移除成功", null);
     }
@@ -423,6 +440,7 @@ public class KnowledgeBaseController {
      */
     @GetMapping("/{id}/tags")
     public Result<List<Tag>> getTags(@PathVariable Long id) {
+        access.requireRead(id, UserContext.getCurrentUserId());
         List<Long> tagIds = knowledgeBaseTagService.getTagIdsByKnowledgeBaseId(id);
         if (tagIds.isEmpty()) {
             return Result.success(List.of());

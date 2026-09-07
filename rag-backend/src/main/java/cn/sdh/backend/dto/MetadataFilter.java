@@ -4,13 +4,14 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 元数据过滤条件
+ * 问答检索的文档元数据过滤条件。
  */
 @Data
 @Builder
@@ -18,36 +19,50 @@ import java.util.Map;
 @AllArgsConstructor
 public class MetadataFilter {
 
-    /** 部门 */
     private String department;
 
-    /** 文档类型 */
     private String docType;
 
-    /** 文档日期起始 */
+    /** ISO-8601 日期，例如 2026-01-01。 */
     private LocalDate dateFrom;
 
-    /** 文档日期截止 */
+    /** ISO-8601 日期，例如 2026-12-31。 */
     private LocalDate dateTo;
 
-    /** 自定义过滤条件 */
+    /** 预留的安全自定义过滤条件。 */
     private Map<String, Object> customFilters;
 
     /**
-     * 转换为 ES term query 的 Map
+     * 转换为检索层使用的字段名，避免把前端字段约定泄漏到 ES 查询实现。
      */
-    public Map<String, Object> toEsFilters() {
-        Map<String, Object> filters = new HashMap<>();
-        if (department != null && !department.isEmpty()) {
-            filters.put("department", department);
-        }
-        if (docType != null && !docType.isEmpty()) {
-            filters.put("doc_type", docType);
-        }
+    public Map<String, Object> toSearchFilters() {
+        Map<String, Object> filters = new LinkedHashMap<>();
         if (customFilters != null) {
-            filters.putAll(customFilters);
+            customFilters.forEach((key, value) -> {
+                if (StringUtils.hasText(key) && value != null
+                        && !"doc_date_gte".equals(key) && !"doc_date_lte".equals(key)) {
+                    filters.put(key, value);
+                }
+            });
+        }
+        if (StringUtils.hasText(department)) {
+            filters.put("department", department.trim());
+        }
+        if (StringUtils.hasText(docType)) {
+            filters.put("doc_type", docType.trim());
+        }
+        if (dateFrom != null) {
+            filters.put("doc_date_gte", dateFrom.toString());
+        }
+        if (dateTo != null) {
+            filters.put("doc_date_lte", dateTo.toString());
         }
         return filters;
+    }
+
+    /** 向后兼容原有调用名称。 */
+    public Map<String, Object> toEsFilters() {
+        return toSearchFilters();
     }
 
     public boolean hasDateRange() {

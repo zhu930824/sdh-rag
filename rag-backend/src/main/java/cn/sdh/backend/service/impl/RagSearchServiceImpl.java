@@ -229,6 +229,15 @@ public class RagSearchServiceImpl implements RagSearchService {
                                             int vectorTopK, int keywordTopK,
                                             double vectorWeight, double keywordWeight,
                                             String embeddingModel, Double minScore) {
+        return multiQuerySearch(queries, knowledgeId, vectorTopK, keywordTopK,
+            vectorWeight, keywordWeight, embeddingModel, minScore, Map.of());
+    }
+
+    private List<Document> multiQuerySearch(List<String> queries, Long knowledgeId,
+                                            int vectorTopK, int keywordTopK,
+                                            double vectorWeight, double keywordWeight,
+                                            String embeddingModel, Double minScore,
+                                            Map<String, Object> metadataFilters) {
         Map<String, Document> docMap = new HashMap<>();
         Map<String, Double> scoreMap = new HashMap<>();
 
@@ -236,7 +245,8 @@ public class RagSearchServiceImpl implements RagSearchService {
             try {
                 List<Document> queryResults = vectorStoreService.hybridSearch(
                         queries.get(q), knowledgeId, vectorTopK, keywordTopK,
-                        vectorWeight, keywordWeight, embeddingModel, minScore
+                        vectorWeight, keywordWeight, embeddingModel, minScore,
+                        metadataFilters
                 );
 
                 double queryWeight = (q == 0) ? 2.0 : 1.0;
@@ -365,19 +375,25 @@ public class RagSearchServiceImpl implements RagSearchService {
     /**
      * 级联检索（三级漏斗）
      */
+    @Override
     public SearchResult searchWithCascade(String query, KnowledgeBase kb,
             List<ChatMessage> chatHistory, Map<String, Object> metadataFilters) {
 
         // Stage 0: Query rewrite + expansion + HyDE (reuse existing logic)
+        String searchQuery = query;
+        if (Boolean.TRUE.equals(kb.getEnableRewrite())
+                && chatHistory != null && !chatHistory.isEmpty()) {
+            searchQuery = rewriteQuery(query, chatHistory, null);
+        }
         List<String> queries = new ArrayList<>();
-        queries.add(query);
+        queries.add(searchQuery);
         if (Boolean.TRUE.equals(kb.getEnableQueryExpansion())) {
             int count = kb.getQueryExpansionCount() != null ? kb.getQueryExpansionCount() : 3;
-            List<String> expanded = expandQuery(query, count);
+            List<String> expanded = expandQuery(searchQuery, count);
             if (expanded != null) queries.addAll(expanded);
         }
         if (Boolean.TRUE.equals(kb.getEnableHyde())) {
-            String hydeDoc = generateHypotheticalDocument(query, null);
+            String hydeDoc = generateHypotheticalDocument(searchQuery, null);
             if (hydeDoc != null) queries.add(hydeDoc);
         }
 
@@ -386,20 +402,32 @@ public class RagSearchServiceImpl implements RagSearchService {
         if (Boolean.TRUE.equals(kb.getEnableSummaryIndex())) {
             int coarseTopK = kb.getCoarseTopK() != null ? kb.getCoarseTopK() : 50;
             candidateDocs = summaryIndexService.coarseRetrieval(
-                query, kb.getId(), coarseTopK, kb.getEmbeddingModel(), metadataFilters);
+                searchQuery, kb.getId(), coarseTopK, kb.getEmbeddingModel(), metadataFilters);
         } else {
             candidateDocs = new LinkedHashMap<>();
         }
 
-        if (candidateDocs.isEmpty()) {
-            log.info("Summary index returned no results for query: {}", query);
-            return SearchResult.empty("摘要索引粗筛无结果");
+        // Stage 2: Fine ranking - hybrid search on candidate doc chunks + rerank
+        List<Document> candidateChunks;
+        if (!candidateDocs.isEmpty()) {
+            Set<Long> docIdSet = candidateDocs.keySet();
+            candidateChunks = vectorStoreService.searchByDocumentIds(
+                queries, docIdSet, kb.getId(), 3, kb.getEmbeddingModel(), metadataFilters);
+        } else {
+            // 摘要索引尚未建立、被禁用或没有命中时，回退到受过滤条件约束的混合检索。
+            log.info("Summary coarse retrieval unavailable, falling back to hybrid search: query={}",
+                searchQuery);
+            int vectorTopK = kb.getVectorTopK() != null ? kb.getVectorTopK() : 10;
+            int keywordTopK = kb.getKeywordTopK() != null ? kb.getKeywordTopK() : 10;
+            candidateChunks = multiQuerySearch(queries, kb.getId(), vectorTopK, keywordTopK,
+                kb.getVectorWeight() != null ? kb.getVectorWeight() : 0.7,
+                kb.getKeywordWeight() != null ? kb.getKeywordWeight() : 0.3,
+                kb.getEmbeddingModel(), kb.getSimilarityThreshold(), metadataFilters);
         }
 
-        // Stage 2: Fine ranking - hybrid search on candidate doc chunks + rerank
-        Set<Long> docIdSet = candidateDocs.keySet();
-        List<Document> candidateChunks = vectorStoreService.searchByDocumentIds(
-            queries, docIdSet, kb.getId(), 3, kb.getEmbeddingModel());
+        if (candidateChunks.isEmpty()) {
+            return SearchResult.empty("级联检索未召回候选片段");
+        }
 
         int fineTopK = kb.getFineTopK() != null ? kb.getFineTopK() : 20;
         double threshold = kb.getSimilarityThreshold() != null ? kb.getSimilarityThreshold() : 0.6;
@@ -407,15 +435,19 @@ public class RagSearchServiceImpl implements RagSearchService {
                 .map(Document::getText)
                 .collect(Collectors.toList());
         String rerankModel = kb.getRankModel();
-        List<RerankService.RerankResult> rerankResults = rerankService.rerank(
-                query, candidateTexts, fineTopK, rerankModel);
         List<Document> reranked = new ArrayList<>();
-        for (RerankService.RerankResult rr : rerankResults) {
-            if (rr.getIndex() >= 0 && rr.getIndex() < candidateChunks.size()) {
-                Document doc = candidateChunks.get(rr.getIndex());
-                doc.getMetadata().put("rerank_score", rr.getScore());
-                reranked.add(doc);
+        if (rerankModel != null && !rerankModel.isBlank()) {
+            List<RerankService.RerankResult> rerankResults = rerankService.rerank(
+                    searchQuery, candidateTexts, fineTopK, rerankModel);
+            for (RerankService.RerankResult rr : rerankResults) {
+                if (rr.getIndex() >= 0 && rr.getIndex() < candidateChunks.size()) {
+                    Document doc = candidateChunks.get(rr.getIndex());
+                    doc.getMetadata().put("rerank_score", rr.getScore());
+                    reranked.add(doc);
+                }
             }
+        } else {
+            reranked.addAll(candidateChunks.stream().limit(fineTopK).toList());
         }
 
         List<SearchResult.RankedChunk> rankedChunks = reranked.stream().map(doc -> {
@@ -423,13 +455,16 @@ public class RagSearchServiceImpl implements RagSearchService {
             return SearchResult.RankedChunk.builder()
                 .documentId(parseLong(meta.get("document_id")))
                 .documentTitle((String) meta.getOrDefault("document_title", ""))
+                .documentSummary((String) meta.get("document_summary"))
                 .content(doc.getText())
                 .chunkIndex(parseInt(meta.get("chunk_index")))
                 .totalChunks(parseInt(meta.get("total_chunks")))
-                .relevanceScore((Double) meta.getOrDefault("score", 0.5))
-                .freshnessScore((Double) meta.getOrDefault("freshness_score", 0.5))
+                .relevanceScore(parseDouble(meta.get("rerank_score"),
+                    parseDouble(meta.get("score"), 0.5)))
+                .freshnessScore(parseDouble(meta.get("freshness_score"), 0.5))
                 .department((String) meta.get("department"))
                 .docType((String) meta.get("doc_type"))
+                .docDate(parseDate(meta.get("doc_date")))
                 .build();
         }).collect(Collectors.toList());
 
@@ -452,7 +487,7 @@ public class RagSearchServiceImpl implements RagSearchService {
                 && Boolean.TRUE.equals(kb.getEnableColdArchive())) {
             log.info("Hot results insufficient ({}), triggering cold archive", finalChunks.size());
             List<Document> coldResults = vectorStoreService.coldSearch(
-                query, kb.getId(), 5 - finalChunks.size(), kb.getEmbeddingModel(), metadataFilters);
+                searchQuery, kb.getId(), 5 - finalChunks.size(), kb.getEmbeddingModel(), metadataFilters);
             List<SearchResult.RankedChunk> coldChunks = coldResults.stream().map(doc -> {
                 var meta = doc.getMetadata();
                 return SearchResult.RankedChunk.builder()
@@ -460,7 +495,7 @@ public class RagSearchServiceImpl implements RagSearchService {
                     .documentTitle((String) meta.getOrDefault("document_title", ""))
                     .content(doc.getText())
                     .chunkIndex(parseInt(meta.get("chunk_index")))
-                    .relevanceScore((Double) meta.getOrDefault("score", 0.3) * 0.9)
+                    .relevanceScore(parseDouble(meta.get("score"), 0.3) * 0.9)
                     .freshnessScore(0.3)
                     .build();
             }).collect(Collectors.toList());
@@ -484,5 +519,17 @@ public class RagSearchServiceImpl implements RagSearchService {
         if (val == null) return 0;
         if (val instanceof Number) return ((Number) val).intValue();
         try { return Integer.valueOf(val.toString()); } catch (Exception e) { return 0; }
+    }
+
+    private Double parseDouble(Object val, double defaultValue) {
+        if (val instanceof Number number) return number.doubleValue();
+        try { return val == null ? defaultValue : Double.parseDouble(val.toString()); }
+        catch (Exception e) { return defaultValue; }
+    }
+
+    private java.time.LocalDate parseDate(Object val) {
+        if (val == null) return null;
+        try { return java.time.LocalDate.parse(val.toString()); }
+        catch (Exception e) { return null; }
     }
 }

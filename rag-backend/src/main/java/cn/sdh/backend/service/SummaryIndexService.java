@@ -14,6 +14,10 @@ public interface SummaryIndexService {
     void indexDocumentSummary(Long documentId, Long knowledgeId, String title,
                               String content, String embeddingModel);
 
+    void indexDocumentSummary(Long documentId, Long knowledgeId, String title,
+                              String content, String embeddingModel,
+                              Map<String, Object> documentMetadata);
+
     Map<Long, Double> coarseRetrieval(String query, Long knowledgeId, int topK,
                                        String embeddingModel,
                                        Map<String, Object> metadataFilters);

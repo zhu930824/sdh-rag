@@ -53,6 +53,11 @@
         </template>
 
         <!-- HTTP 节点配置 -->
+        <template v-if="selectedNode.data.type === 'tool'">
+          <ToolConfig :node="selectedNode" @update="updateNodeData" />
+        </template>
+
+        <!-- HTTP 节点配置 -->
         <template v-if="selectedNode.data.type === 'http'">
           <HttpConfig :node="selectedNode" @update="updateNodeData" />
         </template>
@@ -86,6 +91,7 @@ import LlmConfig from './configs/LlmConfig.vue'
 import RetrievalConfig from './configs/RetrievalConfig.vue'
 import RerankConfig from './configs/RerankConfig.vue'
 import ConditionConfig from './configs/ConditionConfig.vue'
+import ToolConfig from './configs/ToolConfig.vue'
 import HttpConfig from './configs/HttpConfig.vue'
 import CodeConfig from './configs/CodeConfig.vue'
 

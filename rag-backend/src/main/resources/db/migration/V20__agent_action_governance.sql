@@ -1,0 +1,60 @@
+CREATE TABLE agent_tool (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(120) NOT NULL,
+    code VARCHAR(80) NOT NULL,
+    description VARCHAR(500) NULL,
+    endpoint VARCHAR(2000) NOT NULL,
+    http_method VARCHAR(10) NOT NULL DEFAULT 'POST',
+    credential_ref VARCHAR(200) NULL,
+    auth_type VARCHAR(20) NOT NULL DEFAULT 'none',
+    auth_header VARCHAR(64) NULL,
+    risk_level VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+    approval_mode VARCHAR(20) NOT NULL DEFAULT 'HIGH_RISK',
+    approver_id BIGINT NOT NULL,
+    timeout_seconds INT NOT NULL DEFAULT 30,
+    allow_private_network TINYINT NOT NULL DEFAULT 0,
+    allow_insecure_http TINYINT NOT NULL DEFAULT 0,
+    status TINYINT NOT NULL DEFAULT 1,
+    created_by BIGINT NOT NULL,
+    create_time DATETIME NOT NULL,
+    update_time DATETIME NOT NULL,
+    UNIQUE KEY uk_agent_tool_owner_code (created_by, code),
+    KEY idx_agent_tool_owner_status (created_by, status)
+) COMMENT='Agent 受控业务工具';
+
+CREATE TABLE agent_action (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    workflow_id BIGINT NULL,
+    node_id VARCHAR(100) NULL,
+    tool_id BIGINT NOT NULL,
+    tool_name VARCHAR(120) NOT NULL,
+    requested_by BIGINT NOT NULL,
+    approver_id BIGINT NOT NULL,
+    idempotency_key VARCHAR(128) NOT NULL,
+    request_json MEDIUMTEXT NOT NULL,
+    evidence_json MEDIUMTEXT NULL,
+    status VARCHAR(30) NOT NULL,
+    result_json MEDIUMTEXT NULL,
+    response_code INT NULL,
+    error_message VARCHAR(1000) NULL,
+    requested_at DATETIME NOT NULL,
+    decided_at DATETIME NULL,
+    executed_at DATETIME NULL,
+    update_time DATETIME NOT NULL,
+    UNIQUE KEY uk_agent_action_idempotency (tool_id, requested_by, idempotency_key),
+    KEY idx_agent_action_requester (requested_by, requested_at),
+    KEY idx_agent_action_approver (approver_id, status, requested_at),
+    KEY idx_agent_action_workflow (workflow_id, node_id)
+) COMMENT='Agent 工具动作审批与执行审计';
+
+CREATE TABLE agent_action_feedback (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    action_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    outcome VARCHAR(20) NOT NULL,
+    comment VARCHAR(1000) NULL,
+    reusable_knowledge TINYINT NOT NULL DEFAULT 0,
+    create_time DATETIME NOT NULL,
+    UNIQUE KEY uk_agent_action_feedback (action_id, user_id),
+    KEY idx_agent_action_feedback_outcome (outcome, create_time)
+) COMMENT='Agent 动作业务结果反馈';

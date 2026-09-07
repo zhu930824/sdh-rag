@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Elasticsearch 索引管理服务实现
@@ -26,6 +28,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
     private static final String INDEX_PREFIX = "sdh-rag-kb-";
 
     private final ElasticsearchClient elasticsearchClient;
+    private final Set<Long> metadataMappingEnsured = ConcurrentHashMap.newKeySet();
 
     @Override
     public String getIndexName(Long knowledgeId) {
@@ -78,6 +81,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
             }
 
             elasticsearchClient.indices().delete(d -> d.index(indexName));
+            metadataMappingEnsured.remove(knowledgeId);
             log.info("ES 索引删除成功: {}", indexName);
         } catch (Exception e) {
             log.error("ES 索引删除失败: knowledgeId={}, error={}",
@@ -103,6 +107,33 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         if (!indexExists(knowledgeId)) {
             createIndexForKnowledgeBase(knowledgeId, embeddingModelName);
         }
+        ensureMetadataMapping(knowledgeId);
+    }
+
+    private void ensureMetadataMapping(Long knowledgeId) {
+        if (!metadataMappingEnsured.add(knowledgeId)) {
+            return;
+        }
+        try {
+            elasticsearchClient.indices().putMapping(p -> p
+                .index(getIndexName(knowledgeId))
+                .properties(buildMetadataMappingProperties()));
+        } catch (Exception e) {
+            metadataMappingEnsured.remove(knowledgeId);
+            log.warn("补充 ES 元数据映射失败: knowledgeId={}, error={}",
+                knowledgeId, e.getMessage());
+        }
+    }
+
+    private Map<String, Property> buildMetadataMappingProperties() {
+        Map<String, Property> properties = new HashMap<>();
+        properties.put("document_title", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("total_chunks", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
+        properties.put("department", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("doc_type", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("doc_date", Property.of(p -> p.date(DateProperty.of(d -> d))));
+        properties.put("freshness_score", Property.of(p -> p.float_(FloatNumberProperty.of(f -> f))));
+        return properties;
     }
 
     private Map<String, Property> buildMappingProperties(int dimensions) {
@@ -120,6 +151,12 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
                 .index(true)
                 .similarity(DenseVectorSimilarity.Cosine)))));
         properties.put("embedding_model", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("document_title", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("total_chunks", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
+        properties.put("department", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("doc_type", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("doc_date", Property.of(p -> p.date(DateProperty.of(d -> d))));
+        properties.put("freshness_score", Property.of(p -> p.float_(FloatNumberProperty.of(f -> f))));
         properties.put("create_time", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
 
         return properties;

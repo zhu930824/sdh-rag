@@ -35,4 +35,32 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /** Bounded pool for model-intensive evaluation jobs. */
+    @Bean("evaluationExecutor")
+    public Executor evaluationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("evaluation-");
+        executor.setKeepAliveSeconds(60);
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    /** Bounded pool for external knowledge-source pulls. */
+    @Bean("knowledgeSourceExecutor")
+    public Executor knowledgeSourceExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("knowledge-source-");
+        executor.setKeepAliveSeconds(60);
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
 }

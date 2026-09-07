@@ -171,7 +171,7 @@
             <a-space>
               <a-button type="link" size="small" @click="handleViewDetail(record)">详情</a-button>
               <a-button type="link" size="small" @click="handleExportReport(record)">导出</a-button>
-              <a-popconfirm title="确定删除？" @confirm="handleDelete(record)">
+              <a-popconfirm v-if="record.canDelete" title="确定删除？" @confirm="handleDelete(record)">
                 <a-button type="link" size="small" danger>删除</a-button>
               </a-popconfirm>
             </a-space>
@@ -651,7 +651,9 @@ async function loadKnowledgeBases() {
   loadingKbList.value = true
   try {
     const res = await getKnowledgeBaseList({ page: 1, pageSize: 100 })
-    if (res.code === 200) knowledgeBases.value = res.data.records || []
+    if (res.code === 200) {
+      knowledgeBases.value = (res.data.records || []).filter(kb => kb.accessRole === 'owner' || kb.accessRole === 'editor')
+    }
   } catch (error) {
     console.error('加载知识库列表失败', error)
   } finally {

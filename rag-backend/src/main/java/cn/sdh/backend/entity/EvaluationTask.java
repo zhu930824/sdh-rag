@@ -90,4 +90,7 @@ public class EvaluationTask implements Serializable {
      */
     @TableField(exist = false)
     private String knowledgeName;
+
+    @TableField(exist = false)
+    private Boolean canDelete;
 }

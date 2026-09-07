@@ -4,6 +4,7 @@ import cn.sdh.backend.dto.DatasetInfo;
 import cn.sdh.backend.dto.EvaluationQaItem;
 import cn.sdh.backend.entity.EvaluationTask;
 import cn.sdh.backend.entity.EvaluationQa;
+import cn.sdh.backend.dto.KnowledgeQualityReport;
 
 import java.util.List;
 
@@ -86,4 +87,8 @@ public interface EvaluationService {
      * @param taskId 任务ID
      */
     void deleteTask(Long taskId);
+
+    KnowledgeQualityReport getQualityReport(Long knowledgeId, int issueLimit);
+
+    void updateIssue(Long qaId, String status, String note);
 }

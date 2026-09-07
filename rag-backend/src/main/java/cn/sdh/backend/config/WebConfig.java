@@ -1,6 +1,7 @@
 package cn.sdh.backend.config;
 
 import cn.sdh.backend.interceptor.JwtInterceptor;
+import cn.sdh.backend.interceptor.KnowledgeSourceApiKeyInterceptor;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,9 @@ public class WebConfig implements WebMvcConfigurer {
     @Autowired
     private JwtInterceptor jwtInterceptor;
 
+    @Autowired
+    private KnowledgeSourceApiKeyInterceptor knowledgeSourceApiKeyInterceptor;
+
     @Value("${file.upload.path:./uploads}")
     private String uploadPath;
 
@@ -38,12 +42,16 @@ public class WebConfig implements WebMvcConfigurer {
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(knowledgeSourceApiKeyInterceptor)
+                .addPathPatterns("/api/integration/knowledge-sources/**");
         registry.addInterceptor(jwtInterceptor)
                 .addPathPatterns("/**") // 拦截所有路径
                 .excludePathPatterns(
                         // 登录注册相关
                         "/api/user/login",
                         "/api/user/register",
+                        // 业务知识接入使用独立 API Key
+                        "/api/integration/knowledge-sources/**",
                         // 静态资源
                         "/static/**",
                         "/upload/**",

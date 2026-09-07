@@ -1,6 +1,10 @@
 package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.common.exception.BusinessException;
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.service.KnowledgeAccessService;
+import cn.sdh.backend.mapper.KnowledgeBaseMemberMapper;
+import cn.sdh.backend.entity.KnowledgeBaseMember;
 import cn.sdh.backend.dto.DocumentLinkConfig;
 import cn.sdh.backend.dto.KnowledgeBaseListVO;
 import cn.sdh.backend.dto.KnowledgeChunkVO;
@@ -63,6 +67,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private final KnowledgeBaseTagService knowledgeBaseTagService;
     private final TagService tagService;
     private final ElasticsearchIndexService elasticsearchIndexService;
+    private final KnowledgeAccessService access;
+    private final KnowledgeBaseMemberMapper memberMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -135,8 +141,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Override
     public List<KnowledgeBase> getKnowledgeBaseList(Long userId) {
         LambdaQueryWrapper<KnowledgeBase> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(KnowledgeBase::getUserId, userId)
-                .eq(KnowledgeBase::getStatus, 1)
+        access.constrainReadable(wrapper, userId);
+        wrapper.eq(KnowledgeBase::getStatus, 1)
                 .orderByDesc(KnowledgeBase::getCreateTime);
         return knowledgeBaseMapper.selectList(wrapper);
     }
@@ -146,7 +152,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         Page<KnowledgeBase> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<KnowledgeBase> wrapper = new LambdaQueryWrapper<>();
 
-        wrapper.eq(KnowledgeBase::getUserId, userId);
+        access.constrainReadable(wrapper, userId);
 
         if (StringUtils.hasText(keyword)) {
             wrapper.like(KnowledgeBase::getName, keyword);
@@ -179,6 +185,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         List<KnowledgeBaseListVO> voList = kbPage.getRecords().stream()
                 .map(kb -> {
                     KnowledgeBaseListVO vo = KnowledgeBaseListVO.fromEntity(kb);
+                    vo.setAccessRole(access.role(kb, userId));
 
                     // 获取关联的文档ID列表
                     List<Long> docIds = relationMapper.selectDocumentIdsByKnowledgeId(kb.getId());
@@ -298,6 +305,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteKnowledgeBase(Long id, Long userId) {
+        access.requireOwner(id, userId);
+        memberMapper.delete(new LambdaQueryWrapper<KnowledgeBaseMember>().eq(KnowledgeBaseMember::getKnowledgeId, id));
         KnowledgeBase knowledgeBase = getKnowledgeBaseById(id);
         if (knowledgeBase == null) {
             throw new BusinessException("知识库不存在");
@@ -387,6 +396,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean linkDocumentsToKnowledgeBase(Long knowledgeId, List<Long> documentIds) {
+        Long actor = UserContext.getCurrentUserId();
+        access.requireEdit(knowledgeId, actor);
+        if (documentIds != null) documentIds.forEach(id -> access.requireDocumentOwner(id, actor));
         if (documentIds == null || documentIds.isEmpty()) {
             return true;
         }
@@ -430,6 +442,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean linkDocumentsWithConfig(Long knowledgeId, List<DocumentLinkConfig> configs) {
+        Long actor = UserContext.getCurrentUserId();
+        access.requireEdit(knowledgeId, actor);
+        if (configs != null) configs.forEach(config -> access.requireDocumentOwner(config.getDocumentId(), actor));
         if (configs == null || configs.isEmpty()) {
             return true;
         }

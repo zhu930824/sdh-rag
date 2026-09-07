@@ -27,4 +27,10 @@ public class AskRequest {
      * 如果不指定，则使用默认模型
      */
     private Long modelId;
+
+    /** 是否启用会话记忆和跨会话记忆，默认启用。 */
+    private Boolean memoryEnabled = true;
+
+    /** 可选的文档元数据过滤条件。 */
+    private MetadataFilter metadataFilter;
 }

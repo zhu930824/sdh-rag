@@ -1,9 +1,11 @@
 package cn.sdh.backend.service;
 
 import cn.sdh.backend.entity.KnowledgeBase;
+import cn.sdh.backend.dto.SearchResult;
 import org.springframework.ai.document.Document;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * RAG检索服务接口
@@ -54,6 +56,13 @@ public interface RagSearchService {
      * @return 假设性文档内容
      */
     String generateHypotheticalDocument(String query, String modelId);
+
+    /**
+     * 三级级联检索，支持摘要粗筛、元数据过滤、重排、MMR 与冷热回退。
+     */
+    SearchResult searchWithCascade(String query, KnowledgeBase knowledgeBase,
+                                   List<ChatMessage> chatHistory,
+                                   Map<String, Object> metadataFilters);
 
     /**
      * 对话消息

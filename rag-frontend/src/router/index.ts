@@ -105,6 +105,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '新建工作流', icon: 'ShareAlt', requiresAuth: true, hidden: true } as RouteMeta,
       },
       {
+        path: 'agent-tools',
+        name: 'AgentTools',
+        component: () => import('@/views/agent-tool/index.vue'),
+        meta: { title: '业务工具中心', icon: 'Api', requiresAuth: true, permission: '/workflow' } as RouteMeta,
+      },
+      {
+        path: 'agent-actions',
+        name: 'AgentActions',
+        component: () => import('@/views/agent-action/index.vue'),
+        meta: { title: 'Agent审批与执行', icon: 'SafetyCertificate', requiresAuth: true, permission: '/workflow' } as RouteMeta,
+      },
+      {
         path: 'workflow/:id',
         name: 'WorkflowEdit',
         component: () => import('@/views/workflow/index.vue'),

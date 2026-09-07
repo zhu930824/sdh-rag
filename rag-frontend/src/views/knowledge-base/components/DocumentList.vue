@@ -37,7 +37,7 @@
           <span v-else class="no-model">-</span>
         </template>
         <template v-else-if="column.dataIndex === 'action'">
-          <a-space>
+          <a-space v-if="canEdit">
             <a-button type="link" size="small" @click="showConfigModal(record)">
               配置
             </a-button>
@@ -195,6 +195,7 @@ import type { ModelConfig } from '@/types'
 
 const props = defineProps<{
   knowledgeBaseId: number
+  canEdit?: boolean
 }>()
 
 const emit = defineEmits<{

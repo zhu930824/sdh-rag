@@ -1,6 +1,9 @@
 package cn.sdh.backend.workflow.executor;
 
 import cn.sdh.backend.entity.WorkflowExecution;
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.common.exception.BusinessException;
+import cn.sdh.backend.service.KnowledgeAccessService;
 import cn.sdh.backend.service.WorkflowExecutionService;
 import cn.sdh.backend.workflow.dag.DAGParser;
 import cn.sdh.backend.workflow.dto.ExecutionEvent;
@@ -26,6 +29,23 @@ import java.util.function.Consumer;
 public class WorkflowEngine {
 
     @Autowired
+    private KnowledgeAccessService knowledgeAccess;
+
+    public void requireOwner(cn.sdh.backend.entity.Workflow workflow, Long actor) {
+        if (actor == null || workflow == null || !actor.equals(workflow.getUserId())) {
+            throw new BusinessException(403, "无权访问或执行该工作流");
+        }
+    }
+
+    private void authorizeNode(WorkflowNode node, Long actor) {
+        if ("retrieval".equals(node.getType())) {
+            Object id = node.getData() == null ? null : node.getData().get("knowledgeBaseId");
+            if (!(id instanceof Number)) throw new BusinessException(400, "请选择有效的知识库");
+            knowledgeAccess.requireRead(((Number) id).longValue(), actor);
+        }
+    }
+
+    @Autowired
     private DAGParser dagParser;
 
     @Autowired
@@ -47,6 +67,13 @@ public class WorkflowEngine {
      */
     public ExecutionResponse executeWithCallback(cn.sdh.backend.entity.Workflow workflow, String inputData,
                                                    Consumer<ExecutionEvent> eventCallback) {
+        return executeWithCallback(workflow, inputData, eventCallback, UserContext.getCurrentUserId());
+    }
+
+    // The actor is captured by the authenticated caller before dispatching async work.
+    public ExecutionResponse executeWithCallback(cn.sdh.backend.entity.Workflow workflow, String inputData,
+                                                  Consumer<ExecutionEvent> eventCallback, Long actor) {
+        requireOwner(workflow, actor);
         long startTime = System.currentTimeMillis();
 
         // 解析工作流配置
@@ -127,6 +154,8 @@ public class WorkflowEngine {
 
         // 添加节点输出映射
         currentInput.put("__nodeOutputs__", nodeOutputs);
+        currentInput.put("__actorId__", actor);
+        currentInput.put("__workflowId__", workflow.getId());
 
         String status = "SUCCESS";
         String errorMessage = null;
@@ -173,10 +202,11 @@ public class WorkflowEngine {
             nodeResult.setNodeId(nodeId);
             nodeResult.setNodeName(nodeName);
             nodeResult.setNodeType(nodeType);
-            nodeResult.setInput(JSON.toJSONString(currentInput));
+            nodeResult.setInput(JSON.toJSONString(publicContext(currentInput)));
 
             try {
                 // 获取执行器并执行
+                authorizeNode(node, actor);
                 NodeExecutor executor = executorFactory.getExecutor(nodeType);
                 Map<String, Object> output = executor.execute(node, currentInput, eventCallback);
 
@@ -187,7 +217,8 @@ public class WorkflowEngine {
                 currentInput.putAll(output);
                 currentInput.put("__nodeOutputs__", nodeOutputs);
 
-                nodeResult.setStatus("SUCCESS");
+                boolean paused = Boolean.TRUE.equals(output.get("__workflowPaused__"));
+                nodeResult.setStatus(paused ? "WAITING_APPROVAL" : "SUCCESS");
                 nodeResult.setOutput(JSON.toJSONString(output));
 
                 long nodeEndTime = System.currentTimeMillis();
@@ -201,8 +232,13 @@ public class WorkflowEngine {
 
                 log.info("节点执行成功: {} (耗时: {}ms)", nodeId, nodeDuration);
 
-                // 决定下一个节点（支持条件分支）
-                currentNodeId = determineNextNode(currentNodeId, nodeType, output, outgoingEdges);
+                if (paused) {
+                    status = "WAITING_APPROVAL";
+                    currentNodeId = null;
+                } else {
+                    // 决定下一个节点（支持条件分支）
+                    currentNodeId = determineNextNode(currentNodeId, nodeType, output, outgoingEdges);
+                }
 
             } catch (Exception e) {
                 log.error("节点执行失败: {}", nodeId, e);
@@ -257,6 +293,9 @@ public class WorkflowEngine {
         // 移除内部标记
         outputData.remove("__nodeOutputs__");
         outputData.remove("__isFinalOutput__");
+        outputData.remove("__actorId__");
+        outputData.remove("__workflowId__");
+        outputData.remove("__workflowPaused__");
 
         // 发送工作流完成事件
         if (eventCallback != null) {
@@ -324,6 +363,8 @@ public class WorkflowEngine {
      */
     public Map<String, Object> debugNode(cn.sdh.backend.entity.Workflow workflow, String nodeId,
                                           Map<String, Object> inputs) {
+        Long actor = UserContext.getCurrentUserId();
+        requireOwner(workflow, actor);
         // 解析工作流配置
         WorkflowConfig config = JSON.parseObject(workflow.getFlowData(), WorkflowConfig.class);
         if (config == null || config.getNodes() == null) {
@@ -349,9 +390,13 @@ public class WorkflowEngine {
         if (!currentInput.containsKey("input")) {
             currentInput.put("input", "");
         }
+        currentInput.put("__actorId__", actor);
+        currentInput.put("__workflowId__", workflow.getId());
+        currentInput.put("__debugMode__", true);
 
         // 执行节点
         String nodeType = targetNode.getType();
+        authorizeNode(targetNode, actor);
         NodeExecutor executor = executorFactory.getExecutor(nodeType);
 
         log.info("调试节点: {} ({})", nodeId, nodeType);
@@ -365,7 +410,7 @@ public class WorkflowEngine {
             result.put("nodeId", nodeId);
             result.put("nodeType", nodeType);
             result.put("status", "SUCCESS");
-            result.put("input", currentInput);
+            result.put("input", publicContext(currentInput));
             result.put("output", output);
             result.put("duration", duration);
 
@@ -378,10 +423,18 @@ public class WorkflowEngine {
             result.put("nodeId", nodeId);
             result.put("nodeType", nodeType);
             result.put("status", "FAILED");
-            result.put("input", currentInput);
+            result.put("input", publicContext(currentInput));
             result.put("error", e.getMessage());
             result.put("duration", System.currentTimeMillis() - startTime);
             return result;
         }
+    }
+
+    private Map<String, Object> publicContext(Map<String, Object> context) {
+        Map<String, Object> result = new HashMap<>(context);
+        result.remove("__actorId__");
+        result.remove("__workflowId__");
+        result.remove("__debugMode__");
+        return result;
     }
 }

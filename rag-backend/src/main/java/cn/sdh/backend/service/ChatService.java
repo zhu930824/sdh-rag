@@ -4,6 +4,8 @@ import cn.sdh.backend.entity.ChatHistory;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import reactor.core.publisher.Flux;
 
+import java.util.Map;
+
 /**
  * 聊天服务接口
  */
@@ -18,7 +20,15 @@ public interface ChatService {
      * @param modelId 模型ID（可选）
      * @return 流式响应
      */
-    Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId);
+    default Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId) {
+        return ask(question, sessionId, userId, knowledgeId, modelId, true, Map.of());
+    }
+
+    /**
+     * 发起带检索选项的流式问答。
+     */
+    Flux<String> ask(String question, String sessionId, Long userId, Long knowledgeId, Long modelId,
+                     boolean memoryEnabled, Map<String, Object> metadataFilters);
 
     /**
      * 获取历史对话

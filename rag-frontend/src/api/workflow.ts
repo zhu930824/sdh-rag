@@ -62,7 +62,7 @@ export interface WorkflowFormData {
 // 工作流执行结果
 export interface WorkflowExecution {
   executionId?: string
-  status: string  // 'RUNNING' | 'SUCCESS' | 'FAILED' (后端返回大写)
+  status: string  // 'RUNNING' | 'SUCCESS' | 'FAILED' | 'WAITING_APPROVAL' (后端返回大写)
   startTime?: string
   endTime?: string
   inputs?: Record<string, any>

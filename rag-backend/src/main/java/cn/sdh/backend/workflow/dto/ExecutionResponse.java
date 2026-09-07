@@ -16,7 +16,7 @@ public class ExecutionResponse {
     private Long executionId;
 
     /**
-     * 执行状态: SUCCESS, FAILED
+     * 执行状态: SUCCESS, FAILED, WAITING_APPROVAL
      */
     private String status;
 

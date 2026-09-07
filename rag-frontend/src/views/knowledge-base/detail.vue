@@ -14,11 +14,11 @@
             </a-tag>
           </div>
           <a-space>
-            <a-button @click="handleEdit">
+            <a-button v-if="accessRole === 'owner'" @click="handleEdit">
               <template #icon><EditOutlined /></template>
               编辑
             </a-button>
-            <a-button type="primary" @click="showLinkDocumentModal = true">
+            <a-button v-if="canEdit" type="primary" @click="showLinkDocumentModal = true">
               <template #icon><LinkOutlined /></template>
               关联文档
             </a-button>
@@ -59,14 +59,14 @@
                     v-for="tag in tags"
                     :key="tag.id"
                     :color="tag.color || 'blue'"
-                    closable
+                    :closable="canEdit"
                     @close="handleRemoveTag(tag.id)"
                   >
                     {{ tag.name }}
                   </a-tag>
                 </template>
                 <span v-else class="no-tags">暂无标签</span>
-                <a-button type="link" size="small" @click="showAddTagModal = true">
+                <a-button v-if="canEdit" type="link" size="small" @click="showAddTagModal = true">
                   <PlusOutlined /> 添加
                 </a-button>
               </div>
@@ -83,6 +83,7 @@
           <DocumentList
             ref="documentListRef"
             :knowledge-base-id="knowledgeBaseId"
+            :can-edit="canEdit"
             @unlink="handleUnlinkDocument"
             @reprocess="handleReprocessDocument"
           />
@@ -90,21 +91,30 @@
         <a-tab-pane key="chunks" tab="分块管理">
           <ChunkList :knowledge-base-id="knowledgeBaseId" />
         </a-tab-pane>
-        <a-tab-pane key="config" tab="配置设置">
+        <a-tab-pane key="quality" tab="质量闭环">
+          <QualityPanel :knowledge-base-id="knowledgeBaseId" :can-edit="canEdit" />
+        </a-tab-pane>
+        <a-tab-pane v-if="canEdit" key="sources" tab="业务数据源">
+          <SourcePanel :knowledge-base-id="knowledgeBaseId" :role="accessRole" />
+        </a-tab-pane>
+        <a-tab-pane v-if="canEdit" key="config" tab="配置设置">
           <ConfigPanel
             :knowledge-base="knowledgeBase"
             @save="handleSaveConfig"
           />
         </a-tab-pane>
+        <a-tab-pane v-if="accessRole === 'owner'" key="members" tab="成员与权限">
+          <MemberPanel :knowledge-base-id="knowledgeBaseId" :is-public="knowledgeBase?.isPublic ?? false" />
+        </a-tab-pane>
         <a-tab-pane key="graph" tab="知识图谱">
           <div class="graph-section">
             <div class="graph-header">
               <a-space>
-                <a-button type="primary" @click="handleBuildGraph" :loading="graphBuilding" :disabled="graphBuilding">
+                <a-button v-if="canEdit" type="primary" @click="handleBuildGraph" :loading="graphBuilding" :disabled="graphBuilding">
                   <template #icon><ApartmentOutlined /></template>
                   {{ graphStatus?.graphBuilt ? '重建图谱' : '构建图谱' }}
                 </a-button>
-                <a-button v-if="graphStatus?.graphBuilt && !graphBuilding" danger @click="handleDeleteGraph">
+                <a-button v-if="canEdit && graphStatus?.graphBuilt && !graphBuilding" danger @click="handleDeleteGraph">
                   删除图谱
                 </a-button>
               </a-space>
@@ -213,6 +223,8 @@ import {
 } from '@ant-design/icons-vue'
 import {
   getKnowledgeBaseFullDetail,
+  getKnowledgeAccess,
+  type KnowledgeRole,
   updateKnowledgeBase,
   updateKnowledgeBaseConfig,
   linkDocumentsToKnowledgeBase,
@@ -235,6 +247,9 @@ import {
   type GraphBuildTask,
 } from '@/api/graph'
 import DocumentList from './components/DocumentList.vue'
+import MemberPanel from './components/MemberPanel.vue'
+import QualityPanel from './components/QualityPanel.vue'
+import SourcePanel from './components/SourcePanel.vue'
 import ChunkList from './components/ChunkList.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
 import LinkDocumentDialog from './components/LinkDocumentDialog.vue'
@@ -246,6 +261,8 @@ const knowledgeBaseId = computed(() => Number(route.params.id))
 
 const loading = ref(false)
 const knowledgeBase = ref<KnowledgeBase | null>(null)
+const accessRole = ref<KnowledgeRole>('none')
+const canEdit = computed(() => accessRole.value === 'owner' || accessRole.value === 'editor')
 const detail = ref<KnowledgeBaseDetail | null>(null)
 const tags = ref<Tag[]>([])
 const allTags = ref<Tag[]>([])
@@ -279,8 +296,13 @@ const availableTags = computed(() => {
 
 async function loadDetail() {
   loading.value = true
+  accessRole.value = 'none'
   try {
-    const res = await getKnowledgeBaseFullDetail(knowledgeBaseId.value)
+    const [res, access] = await Promise.all([
+      getKnowledgeBaseFullDetail(knowledgeBaseId.value),
+      getKnowledgeAccess(knowledgeBaseId.value),
+    ])
+    if (access.code === 200) accessRole.value = access.data.role
     if (res.code === 200 && res.data) {
       knowledgeBase.value = res.data.knowledgeBase
       detail.value = res.data
@@ -297,7 +319,12 @@ async function loadAllTags() {
   try {
     const res = await getAllTags()
     if (res.code === 200) {
-      allTags.value = res.data || []
+      allTags.value = (res.data || []).map(tag => ({
+        id: tag.id,
+        name: tag.name,
+        color: tag.color || 'blue',
+        category: tag.category || '',
+      }))
     }
   } catch (error) {
     console.error('加载标签列表失败', error)

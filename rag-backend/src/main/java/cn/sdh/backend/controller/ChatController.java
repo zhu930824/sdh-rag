@@ -44,7 +44,12 @@ public class ChatController {
         String sessionId = request.getSessionId();
         Long knowledgeId = request.getKnowledgeId();
         Long modelId = request.getModelId();
-        return chatService.ask(request.getQuestion(), sessionId, userId, knowledgeId, modelId);
+        boolean memoryEnabled = !Boolean.FALSE.equals(request.getMemoryEnabled());
+        Map<String, Object> metadataFilters = request.getMetadataFilter() == null
+                ? Map.of()
+                : request.getMetadataFilter().toSearchFilters();
+        return chatService.ask(request.getQuestion(), sessionId, userId, knowledgeId, modelId,
+                memoryEnabled, metadataFilters);
     }
 
     /**

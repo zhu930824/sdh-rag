@@ -30,7 +30,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -209,6 +211,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             log.info("使用嵌入模型: documentId={}, knowledgeId={}, embeddingModel={}",
                     documentId, knowledgeId, embeddingModelName);
 
+            Map<String, Object> documentMetadata = buildDocumentMetadata(document, chunkTexts.size());
+
             // 创建分块并直接存储到 ES
             int successCount = 0;
             for (int i = 0; i < chunkTexts.size(); i++) {
@@ -223,7 +227,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 chunk.setUpdateTime(LocalDateTime.now());
 
                 // 直接存储向量到 ES（不再存储到 MySQL）
-                String vectorId = vectorStoreService.addVector(chunk, knowledgeId, embeddingModelName);
+                String vectorId = vectorStoreService.addVector(
+                    chunk, knowledgeId, embeddingModelName, documentMetadata);
                 if (vectorId != null) {
                     successCount++;
                 }
@@ -242,7 +247,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 KnowledgeBase kb = knowledgeBaseMapper.selectById(knowledgeId);
                 if (kb != null && Boolean.TRUE.equals(kb.getEnableSummaryIndex())) {
                     summaryIndexService.indexDocumentSummary(documentId, knowledgeId,
-                        document.getTitle(), content, getEmbeddingModelName(knowledgeId, config));
+                        document.getTitle(), content, getEmbeddingModelName(knowledgeId, config),
+                        documentMetadata);
                 }
             } catch (Exception e) {
                 log.warn("摘要生成调度失败: documentId={}, error={}", documentId, e.getMessage());
@@ -256,6 +262,24 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             relation.setErrorMessage(e.getMessage());
             relation.setProcessTime(LocalDateTime.now());
             relationMapper.updateById(relation);
+        }
+    }
+
+    private Map<String, Object> buildDocumentMetadata(KnowledgeDocument document, int totalChunks) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        putIfNotNull(metadata, "document_title", document.getTitle());
+        putIfNotNull(metadata, "department", document.getDepartment());
+        putIfNotNull(metadata, "doc_type", document.getDocType());
+        putIfNotNull(metadata, "doc_date",
+            document.getDocDate() == null ? null : document.getDocDate().toString());
+        putIfNotNull(metadata, "freshness_score", document.getFreshnessScore());
+        metadata.put("total_chunks", totalChunks);
+        return metadata;
+    }
+
+    private void putIfNotNull(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
         }
     }
 

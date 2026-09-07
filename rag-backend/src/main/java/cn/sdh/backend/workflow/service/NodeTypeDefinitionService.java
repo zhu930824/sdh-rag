@@ -30,6 +30,7 @@ public class NodeTypeDefinitionService {
         definitions.add(createConditionNodeDefinition());
 
         // 工具节点
+        definitions.add(createAgentToolNodeDefinition());
         definitions.add(createHttpNodeDefinition());
         definitions.add(createCodeNodeDefinition());
 
@@ -214,6 +215,27 @@ public class NodeTypeDefinitionService {
                 createParam("response", "string", true, "响应内容"),
                 createParam("status", "number", true, "HTTP状态码")
         ));
+        return def;
+    }
+
+    private NodeTypeDefinition createAgentToolNodeDefinition() {
+        NodeTypeDefinition def = new NodeTypeDefinition();
+        def.setType("tool");
+        def.setName("业务工具节点");
+        def.setIcon("SafetyCertificateOutlined");
+        def.setCategory("tool");
+        def.setDescription("调用已登记的受控业务工具，支持审批、幂等、审计和结果反馈");
+        Map<String, Object> defaultConfig = new HashMap<>();
+        defaultConfig.put("toolId", null);
+        defaultConfig.put("parameters", "{}");
+        defaultConfig.put("evidenceKey", "documents");
+        defaultConfig.put("idempotencyKey", "");
+        def.setDefaultConfig(defaultConfig);
+        def.setInputs(List.of(createParam("parameters", "object", true, "结构化业务参数"),
+                createParam("documents", "array", false, "支持本次决策的知识依据")));
+        def.setOutputs(List.of(createParam("actionId", "number", true, "受审计动作 ID"),
+                createParam("actionStatus", "string", true, "审批或执行状态"),
+                createParam("result", "object", false, "业务工具返回结果")));
         return def;
     }
 

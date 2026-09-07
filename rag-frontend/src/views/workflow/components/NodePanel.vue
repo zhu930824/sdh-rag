@@ -62,6 +62,7 @@ const nodeCategories = [
       { type: 'llm', name: 'LLM', icon: '🤖', color: '#13c2c2', description: '大语言模型' },
       { type: 'retrieval', name: '检索', icon: '🔍', color: '#fa8c16', description: '知识库检索' },
       { type: 'rerank', name: '重排序', icon: '📊', color: '#1890ff', description: '结果重排序' },
+      { type: 'tool', name: '受控工具', icon: '🛡️', color: '#08979c', description: '审批与审计的业务动作' },
       { type: 'http', name: 'HTTP', icon: '🌐', color: '#2f54eb', description: 'HTTP请求' },
       { type: 'code', name: '代码', icon: '💻', color: '#eb2f96', description: '执行代码' },
     ],

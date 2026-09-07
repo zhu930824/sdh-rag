@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import type { ApiResponse } from '@/types'
 
 export interface EvaluationTask {
   id: number
@@ -17,6 +18,7 @@ export interface EvaluationTask {
   status: number
   configSnapshot: string | null
   userId: number
+  canDelete: boolean
   errorMessage: string | null
   createTime: string
   updateTime: string
@@ -38,7 +40,41 @@ export interface EvaluationQa {
   isNegative: boolean | null
   sourceType: string | null
   externalId: string | null
+  issueStatus: 'open' | 'resolved' | 'ignored'
+  issueNote: string | null
   createTime: string
+}
+
+export interface KnowledgeQualityIssue {
+  qaId: number
+  taskId: number
+  question: string
+  expectedAnswer: string | null
+  sourceDocumentId: number | null
+  reason: string
+  severity: 'high' | 'medium'
+  status: 'open' | 'resolved' | 'ignored'
+  note: string | null
+}
+
+export interface KnowledgeQualityReport {
+  knowledgeId: number
+  completedTasks: number
+  totalQuestions: number
+  chunkMisses: number
+  documentMisses: number
+  negativeFalsePositives: number
+  openIssues: number
+  recommendations: string[]
+  issues: KnowledgeQualityIssue[]
+}
+
+export function getKnowledgeQuality(knowledgeId: number, issueLimit = 30): Promise<ApiResponse<KnowledgeQualityReport>> {
+  return request.get(`/api/evaluation/knowledge/${knowledgeId}/quality`, { params: { issueLimit } })
+}
+
+export function updateQualityIssue(qaId: number, status: 'open' | 'resolved' | 'ignored', note?: string): Promise<ApiResponse<void>> {
+  return request.post(`/api/evaluation/qa/${qaId}/issue`, { status, note })
 }
 
 export interface DatasetInfo {
@@ -54,13 +90,13 @@ export function generateTestset(data: {
   knowledgeId: number
   qaCount?: number
   taskName?: string
-}) {
-  return request.post<EvaluationTask>('/api/evaluation/generate-testset', data)
+}): Promise<ApiResponse<EvaluationTask>> {
+  return request.post('/api/evaluation/generate-testset', data)
 }
 
 // 导入外部测试集
-export function importTestset(formData: FormData) {
-  return request.post<EvaluationTask>('/api/evaluation/import', formData, {
+export function importTestset(formData: FormData): Promise<ApiResponse<EvaluationTask>> {
+  return request.post('/api/evaluation/import', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
@@ -74,32 +110,32 @@ export function downloadTemplate() {
 export function runBuiltinDataset(data: {
   datasetName: string
   knowledgeId: number
-}) {
-  return request.post<EvaluationTask>('/api/evaluation/builtin', data)
+}): Promise<ApiResponse<EvaluationTask>> {
+  return request.post('/api/evaluation/builtin', data)
 }
 
 // 获取内置数据集列表
-export function getBuiltinDatasets() {
-  return request.get<DatasetInfo[]>('/api/evaluation/builtin/list')
+export function getBuiltinDatasets(): Promise<ApiResponse<DatasetInfo[]>> {
+  return request.get('/api/evaluation/builtin/list')
 }
 
 // 获取评估任务详情
-export function getEvaluationTask(id: number) {
-  return request.get<EvaluationTask>(`/api/evaluation/task/${id}`)
+export function getEvaluationTask(id: number): Promise<ApiResponse<EvaluationTask>> {
+  return request.get(`/api/evaluation/task/${id}`)
 }
 
 // 获取任务的QA列表
-export function getEvaluationQaList(taskId: number) {
-  return request.get<EvaluationQa[]>(`/api/evaluation/task/${taskId}/qa-list`)
+export function getEvaluationQaList(taskId: number): Promise<ApiResponse<EvaluationQa[]>> {
+  return request.get(`/api/evaluation/task/${taskId}/qa-list`)
 }
 
 // 获取评估任务列表（分页）
-export function getEvaluationList(params: { page: number; pageSize: number; knowledgeId?: number }) {
-  return request.get<{ records: EvaluationTask[]; total: number }>('/api/evaluation/list', { params })
+export function getEvaluationList(params: { page: number; pageSize: number; knowledgeId?: number }): Promise<ApiResponse<{ records: EvaluationTask[]; total: number }>> {
+  return request.get('/api/evaluation/list', { params })
 }
 
 // 删除评估任务
-export function deleteEvaluationTask(id: number) {
+export function deleteEvaluationTask(id: number): Promise<ApiResponse<void>> {
   return request.post(`/api/evaluation/task/${id}/delete`)
 }
 

@@ -101,8 +101,8 @@ export function getNodeNeighbors(nodeId: number): Promise<ApiResponse<GraphData>
 }
 
 // 获取最短路径
-export function getShortestPath(startId: number, endId: number): Promise<ApiResponse<GraphPath>> {
-  return request.get('/api/graph/path', { params: { startId, endId } })
+export function getShortestPath(startId: number, endId: number, knowledgeBaseId: number): Promise<ApiResponse<GraphPath>> {
+  return request.get('/api/graph/path', { params: { startId, endId, knowledgeBaseId } })
 }
 
 // 获取统计信息

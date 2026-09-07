@@ -3,6 +3,7 @@ package cn.sdh.backend.service.impl;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.dto.DatasetInfo;
 import cn.sdh.backend.dto.EvaluationQaItem;
+import cn.sdh.backend.dto.KnowledgeQualityReport;
 import cn.sdh.backend.entity.*;
 import cn.sdh.backend.mapper.EvaluationQaMapper;
 import cn.sdh.backend.mapper.EvaluationTaskMapper;
@@ -19,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
@@ -42,6 +44,8 @@ public class EvaluationServiceImpl implements EvaluationService {
     private final ChatService chatService;
     private final TestDatasetService testDatasetService;
     private final ObjectMapper objectMapper;
+    private final KnowledgeAccessService knowledgeAccess;
+    private final Executor evaluationExecutor;
 
     private static final String QA_GENERATION_PROMPT = """
         请根据以下文档内容，生成一个高质量的问题和答案。
@@ -67,7 +71,9 @@ public class EvaluationServiceImpl implements EvaluationService {
             RagSearchService ragSearchService,
             ChatService chatService,
             TestDatasetService testDatasetService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            KnowledgeAccessService knowledgeAccess,
+            @Qualifier("evaluationExecutor") Executor evaluationExecutor) {
         this.taskMapper = taskMapper;
         this.qaMapper = qaMapper;
         this.vectorStoreService = vectorStoreService;
@@ -76,6 +82,8 @@ public class EvaluationServiceImpl implements EvaluationService {
         this.chatService = chatService;
         this.testDatasetService = testDatasetService;
         this.objectMapper = objectMapper;
+        this.knowledgeAccess = knowledgeAccess;
+        this.evaluationExecutor = evaluationExecutor;
     }
 
     @Override
@@ -85,11 +93,12 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (userId == null) {
             throw new RuntimeException("用户未登录");
         }
+        knowledgeAccess.requireEdit(knowledgeId, userId);
 
         EvaluationTask task = createTask(knowledgeId, taskName, qaCount, "generated", userId);
         taskMapper.insert(task);
 
-        new Thread(() -> runEvaluation(task.getId())).start();
+        evaluationExecutor.execute(() -> runEvaluation(task.getId()));
 
         return task;
     }
@@ -101,6 +110,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (userId == null) {
             throw new RuntimeException("用户未登录");
         }
+        knowledgeAccess.requireEdit(knowledgeId, userId);
         if (items == null || items.isEmpty()) {
             throw new RuntimeException("导入数据不能为空");
         }
@@ -108,7 +118,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "imported", userId);
         taskMapper.insert(task);
 
-        new Thread(() -> runImportedEvaluation(task.getId(), items)).start();
+        evaluationExecutor.execute(() -> runImportedEvaluation(task.getId(), items));
 
         return task;
     }
@@ -123,6 +133,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (knowledgeId == null) {
             throw new RuntimeException("请选择知识库");
         }
+        knowledgeAccess.requireEdit(knowledgeId, userId);
 
         List<EvaluationQaItem> items = loadBuiltinDataset(datasetName);
         if (items.isEmpty()) {
@@ -133,7 +144,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "builtin", userId);
         taskMapper.insert(task);
 
-        new Thread(() -> runImportedEvaluation(task.getId(), items)).start();
+        evaluationExecutor.execute(() -> runImportedEvaluation(task.getId(), items));
 
         return task;
     }
@@ -148,6 +159,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (knowledgeId == null) {
             throw new RuntimeException("请选择知识库");
         }
+        knowledgeAccess.requireEdit(knowledgeId, userId);
 
         // 通过 TestDatasetService 获取数据集的QA项
         List<EvaluationQaItem> items = testDatasetService.getDatasetQaItems(datasetId);
@@ -163,7 +175,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         EvaluationTask task = createTask(knowledgeId, taskName, items.size(), datasetType, userId);
         taskMapper.insert(task);
 
-        new Thread(() -> runImportedEvaluation(task.getId(), items)).start();
+        evaluationExecutor.execute(() -> runImportedEvaluation(task.getId(), items));
 
         return task;
     }
@@ -264,7 +276,6 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
     }
 
-    @Async
     @Override
     public void runEvaluation(Long taskId) {
         EvaluationTask task = taskMapper.selectById(taskId);
@@ -274,6 +285,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
 
         try {
+            knowledgeAccess.requireRead(task.getKnowledgeId(), task.getUserId());
             task.setStatus(1);
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
@@ -359,6 +371,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
 
         try {
+            knowledgeAccess.requireRead(task.getKnowledgeId(), task.getUserId());
             task.setStatus(1);
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
@@ -688,7 +701,15 @@ public class EvaluationServiceImpl implements EvaluationService {
         Page<EvaluationTask> pageParam = new Page<>(page, pageSize);
         LambdaQueryWrapper<EvaluationTask> wrapper = new LambdaQueryWrapper<EvaluationTask>()
                 .orderByDesc(EvaluationTask::getCreateTime);
+        Long actor = UserContext.getCurrentUserId();
+        List<Long> readableIds = knowledgeAccess.readableKnowledgeIds(actor);
+        if (readableIds.isEmpty()) {
+            wrapper.eq(EvaluationTask::getId, -1L);
+        } else {
+            wrapper.in(EvaluationTask::getKnowledgeId, readableIds);
+        }
         if (knowledgeId != null) {
+            knowledgeAccess.requireRead(knowledgeId, actor);
             wrapper.eq(EvaluationTask::getKnowledgeId, knowledgeId);
         }
         IPage<EvaluationTask> result = taskMapper.selectPage(pageParam, wrapper);
@@ -708,11 +729,13 @@ public class EvaluationServiceImpl implements EvaluationService {
             return;
         }
         Map<Long, String> kbNameMap = new HashMap<>();
+        Map<Long, KnowledgeBase> kbMap = new HashMap<>();
         for (Long kbId : kbIds) {
             try {
                 KnowledgeBase kb = knowledgeBaseService.getKnowledgeBaseById(kbId);
                 if (kb != null) {
                     kbNameMap.put(kbId, kb.getName());
+                    kbMap.put(kbId, kb);
                 }
             } catch (Exception ignored) {
             }
@@ -720,6 +743,9 @@ public class EvaluationServiceImpl implements EvaluationService {
         for (EvaluationTask task : tasks) {
             if (task.getKnowledgeId() != null) {
                 task.setKnowledgeName(kbNameMap.get(task.getKnowledgeId()));
+                KnowledgeBase kb = kbMap.get(task.getKnowledgeId());
+                Long actor = UserContext.getCurrentUserId();
+                task.setCanDelete(actor != null && (actor.equals(task.getUserId()) || "owner".equals(knowledgeAccess.role(kb, actor))));
             }
         }
     }
@@ -727,8 +753,87 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     @Transactional
     public void deleteTask(Long taskId) {
+        EvaluationTask task = taskMapper.selectById(taskId);
+        Long actor = UserContext.getCurrentUserId();
+        if (task == null) return;
+        KnowledgeBase base = knowledgeAccess.requireRead(task.getKnowledgeId(), actor);
+        if (!actor.equals(task.getUserId()) && !"owner".equals(knowledgeAccess.role(base, actor))) {
+            throw new cn.sdh.backend.common.exception.BusinessException(403, "只有任务创建者或知识库所有者可删除评估任务");
+        }
         qaMapper.delete(new LambdaQueryWrapper<EvaluationQa>()
                 .eq(EvaluationQa::getTaskId, taskId));
         taskMapper.deleteById(taskId);
+    }
+
+    @Override
+    public KnowledgeQualityReport getQualityReport(Long knowledgeId, int issueLimit) {
+        knowledgeAccess.requireRead(knowledgeId, UserContext.getCurrentUserId());
+        int safeLimit = Math.max(1, Math.min(issueLimit, 100));
+        List<EvaluationTask> tasks = taskMapper.selectList(new LambdaQueryWrapper<EvaluationTask>()
+                .eq(EvaluationTask::getKnowledgeId, knowledgeId)
+                .eq(EvaluationTask::getStatus, 2)
+                .orderByDesc(EvaluationTask::getCreateTime)
+                .last("LIMIT 20"));
+        if (tasks == null || tasks.isEmpty()) {
+            return new KnowledgeQualityReport(knowledgeId, 0, 0, 0, 0, 0, 0,
+                    List.of("先运行一次评估，建立知识库质量基线"), List.of());
+        }
+        List<Long> taskIds = tasks.stream().map(EvaluationTask::getId).toList();
+        List<EvaluationQa> qaList = qaMapper.selectList(new LambdaQueryWrapper<EvaluationQa>()
+                .in(EvaluationQa::getTaskId, taskIds).orderByDesc(EvaluationQa::getId));
+        if (qaList == null) qaList = List.of();
+
+        int chunkMisses = 0, documentMisses = 0, negativeFalsePositives = 0, openIssueCount = 0, total = qaList.size();
+        List<KnowledgeQualityReport.QualityIssue> allIssues = new ArrayList<>();
+        for (EvaluationQa qa : qaList) {
+            boolean falsePositive = Boolean.TRUE.equals(qa.getIsNegative()) && hasRetrieved(qa);
+            boolean documentMiss = !Boolean.TRUE.equals(qa.getIsNegative()) && !Boolean.TRUE.equals(qa.getDocHit());
+            boolean chunkMiss = !Boolean.TRUE.equals(qa.getIsNegative()) && !Boolean.TRUE.equals(qa.getHit());
+            if (chunkMiss) chunkMisses++;
+            if (documentMiss) documentMisses++;
+            if (falsePositive) negativeFalsePositives++;
+            if ((falsePositive || chunkMiss) && (qa.getIssueStatus() == null || "open".equals(qa.getIssueStatus()))) openIssueCount++;
+            if (falsePositive || chunkMiss) {
+                String status = qa.getIssueStatus() == null ? "open" : qa.getIssueStatus();
+                String reason = falsePositive ? "负样本被错误召回" : documentMiss ? "未召回来源文档" : "召回了文档但未命中正确分块";
+                String severity = falsePositive || documentMiss ? "high" : "medium";
+                allIssues.add(new KnowledgeQualityReport.QualityIssue(qa.getId(), qa.getTaskId(), qa.getQuestion(),
+                        qa.getExpectedAnswer(), qa.getSourceDocumentId(), reason, severity, status, qa.getIssueNote()));
+            }
+        }
+        Comparator<KnowledgeQualityReport.QualityIssue> issueOrder = Comparator
+                .comparingInt((KnowledgeQualityReport.QualityIssue issue) -> "open".equals(issue.status()) ? 0 : 1)
+                .thenComparing(KnowledgeQualityReport.QualityIssue::qaId, Comparator.reverseOrder());
+        List<KnowledgeQualityReport.QualityIssue> issues = allIssues.stream()
+                .sorted(issueOrder).limit(safeLimit).toList();
+        List<String> recommendations = new ArrayList<>();
+        if (documentMisses > 0) recommendations.add("优先补齐缺失知识或检查数据源同步范围");
+        if (chunkMisses > documentMisses) recommendations.add("文档已召回但分块不准，建议调整切分、重写或重排配置");
+        if (negativeFalsePositives > 0) recommendations.add("降低无关召回：提高相似度阈值并补充业务负样本");
+        if (recommendations.isEmpty()) recommendations.add("当前质量稳定，建议持续加入真实业务问题做回归评估");
+        return new KnowledgeQualityReport(knowledgeId, tasks.size(), total, chunkMisses, documentMisses,
+                negativeFalsePositives, openIssueCount, recommendations, issues);
+    }
+
+    @Override
+    public void updateIssue(Long qaId, String status, String note) {
+        if (!("open".equals(status) || "resolved".equals(status) || "ignored".equals(status))) {
+            throw new cn.sdh.backend.common.exception.BusinessException(400, "问题状态必须为 open、resolved 或 ignored");
+        }
+        EvaluationQa qa = qaMapper.selectById(qaId);
+        if (qa == null) throw new cn.sdh.backend.common.exception.BusinessException(404, "评估问题不存在");
+        EvaluationTask task = taskMapper.selectById(qa.getTaskId());
+        Long actor = UserContext.getCurrentUserId();
+        knowledgeAccess.requireEdit(task == null ? null : task.getKnowledgeId(), actor);
+        qa.setIssueStatus(status);
+        qa.setIssueNote(note == null ? null : note.trim().substring(0, Math.min(note.trim().length(), 500)));
+        qa.setResolvedBy("open".equals(status) ? null : actor);
+        qa.setResolvedTime("open".equals(status) ? null : LocalDateTime.now());
+        qaMapper.updateById(qa);
+    }
+
+    private boolean hasRetrieved(EvaluationQa qa) {
+        String retrieved = qa.getRetrievedChunkIds();
+        return retrieved != null && !retrieved.isBlank() && !"[]".equals(retrieved);
     }
 }

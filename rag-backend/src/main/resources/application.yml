@@ -103,6 +103,10 @@ logging:
               advisor: debug
 
 knowledge:
+  sources:
+    scheduler-delay-ms: 60000
+    scheduler-batch-size: 20
+    lock-minutes: 20
   default:
     chunk-size: 500
     chunk-overlap: 50

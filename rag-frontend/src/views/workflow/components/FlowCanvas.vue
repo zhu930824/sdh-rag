@@ -47,6 +47,9 @@
       <template #node-http="nodeProps">
         <HttpNode :data="nodeProps.data" :selected="nodeProps.selected" />
       </template>
+      <template #node-tool="nodeProps">
+        <ToolNode :id="nodeProps.id" :data="nodeProps.data" :selected="nodeProps.selected" />
+      </template>
       <template #node-code="nodeProps">
         <CodeNode :data="nodeProps.data" :selected="nodeProps.selected" />
       </template>
@@ -79,6 +82,7 @@ import OutputNode from './nodes/OutputNode.vue'
 import LlmNode from './nodes/LlmNode.vue'
 import RetrievalNode from './nodes/RetrievalNode.vue'
 import ConditionNode from './nodes/ConditionNode.vue'
+import ToolNode from './nodes/ToolNode.vue'
 import HttpNode from './nodes/HttpNode.vue'
 import CodeNode from './nodes/CodeNode.vue'
 import EdgeWithButton from './edges/EdgeWithButton.vue'
@@ -164,6 +168,7 @@ function getNodeColor(node: Node): string {
     llm: '#13c2c2',
     retrieval: '#fa8c16',
     condition: '#faad14',
+    tool: '#08979c',
     http: '#2f54eb',
     code: '#eb2f96',
   }

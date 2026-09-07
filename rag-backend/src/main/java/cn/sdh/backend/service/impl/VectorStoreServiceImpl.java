@@ -55,6 +55,12 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
     @Override
     public String addVector(KnowledgeChunk chunk, Long knowledgeId, String embeddingModelName) {
+        return addVector(chunk, knowledgeId, embeddingModelName, Map.of());
+    }
+
+    @Override
+    public String addVector(KnowledgeChunk chunk, Long knowledgeId, String embeddingModelName,
+                            Map<String, Object> documentMetadata) {
         try {
             String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
             elasticsearchIndexService.ensureIndexExists(knowledgeId, embeddingModelName);
@@ -75,6 +81,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             doc.put("embedding", toFloatList(embedding));
             doc.put("embedding_model", embeddingModelName);
             doc.put("create_time", LocalDateTime.now().toString());
+            if (documentMetadata != null) {
+                documentMetadata.forEach((key, value) -> {
+                    if (value != null) {
+                        doc.put(key, value);
+                    }
+                });
+            }
 
             IndexRequest<Map<String, Object>> request = IndexRequest.of(i -> i
                     .index(indexName)
@@ -225,11 +238,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                     }
 
                     Document doc = new Document((String) source.get("content"));
-                    doc.getMetadata().put("id", hit.id());
-                    doc.getMetadata().put("chunk_id", source.get("chunk_id"));
-                    doc.getMetadata().put("document_id", source.get("document_id"));
-                    doc.getMetadata().put("knowledge_id", source.get("knowledge_id"));
-                    doc.getMetadata().put("embedding_model", source.get("embedding_model"));
+                    copySearchMetadata(doc, source, hit.id());
                     doc.getMetadata().put("score", score);
                     documents.add(doc);
                 }
@@ -401,12 +410,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             if (response.found() && response.source() != null) {
                 Map<String, Object> source = response.source();
                 Document doc = new Document((String) source.get("content"));
-                doc.getMetadata().put("id", response.id());
-                doc.getMetadata().put("chunk_index", source.get("chunk_index"));
-                doc.getMetadata().put("document_id", source.get("document_id"));
-                doc.getMetadata().put("knowledge_id", source.get("knowledge_id"));
-                doc.getMetadata().put("embedding_model", source.get("embedding_model"));
-                doc.getMetadata().put("create_time", source.get("create_time"));
+                copySearchMetadata(doc, source, response.id());
                 return doc;
             }
         } catch (Exception e) {
@@ -557,13 +561,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             Map<String, Object> source = hit.source();
             if (source != null) {
                 Document doc = new Document((String) source.get("content"));
-                doc.getMetadata().put("id", hit.id());
-                doc.getMetadata().put("chunk_id", source.get("chunk_id"));
-                doc.getMetadata().put("chunk_index", source.get("chunk_index"));
-                doc.getMetadata().put("document_id", source.get("document_id"));
-                doc.getMetadata().put("knowledge_id", source.get("knowledge_id"));
-                doc.getMetadata().put("embedding_model", source.get("embedding_model"));
-                doc.getMetadata().put("create_time", source.get("create_time"));
+                copySearchMetadata(doc, source, hit.id());
                 doc.getMetadata().put("score", hit.score());
                 documents.add(doc);
             }
@@ -576,6 +574,31 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
             Long knowledgeId, int topKPerDoc, String embeddingModel) {
+        return searchByDocumentIds(queries, documentIds, knowledgeId, topKPerDoc,
+            embeddingModel, Map.of());
+    }
+
+    private void copySearchMetadata(Document document, Map<String, Object> source, String hitId) {
+        document.getMetadata().put("id", hitId);
+        List<String> fields = List.of(
+            "chunk_id", "chunk_index", "document_id", "document_title", "knowledge_id",
+            "total_chunks", "department", "doc_type", "doc_date", "freshness_score",
+            "document_summary", "embedding_model", "create_time");
+        for (String field : fields) {
+            Object value = source.get(field);
+            if (value != null) {
+                document.getMetadata().put(field, value);
+            }
+        }
+    }
+
+    @Override
+    public List<Document> searchByDocumentIds(List<String> queries, Set<Long> documentIds,
+            Long knowledgeId, int topKPerDoc, String embeddingModel,
+            Map<String, Object> metadataFilters) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return List.of();
+        }
         String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
         List<Document> allResults = new ArrayList<>();
         try {
@@ -593,6 +616,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
                 var boolQuery = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
                     .must(m -> m.terms(t -> t.field("document_id").terms(docIdFilter)));
+                applyMetadataFilters(boolQuery, metadataFilters);
 
                 var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                     .field("embedding")
@@ -634,12 +658,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             for (float v : embedding) queryVector.add(v);
 
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder();
-            if (metadataFilters != null && !metadataFilters.isEmpty()) {
-                for (var entry : metadataFilters.entrySet()) {
-                    boolBuilder.must(m -> m.term(
-                        t -> t.field(entry.getKey()).value(entry.getValue().toString())));
-                }
-            }
+            applyMetadataFilters(boolBuilder, metadataFilters);
 
             var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                 .field("embedding").queryVector(queryVector)
@@ -665,12 +684,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             for (float v : embedding) queryVector.add(v);
 
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder();
-            if (metadataFilters != null && !metadataFilters.isEmpty()) {
-                for (var entry : metadataFilters.entrySet()) {
-                    boolBuilder.must(m -> m.term(
-                        t -> t.field(entry.getKey()).value(entry.getValue().toString())));
-                }
-            }
+            applyMetadataFilters(boolBuilder, metadataFilters);
 
             var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                 .field("embedding").queryVector(queryVector)
@@ -698,12 +712,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
                 .must(m -> m.match(mm -> mm.field("content").query(query)));
-            if (metadataFilters != null && !metadataFilters.isEmpty()) {
-                for (var entry : metadataFilters.entrySet()) {
-                    boolBuilder.must(m -> m.term(
-                        t -> t.field(entry.getKey()).value(entry.getValue().toString())));
-                }
-            }
+            applyMetadataFilters(boolBuilder, metadataFilters);
             var response = elasticsearchClient.search(s -> s
                 .index(indexName).query(q -> q.bool(boolBuilder.build())).size(topK), Map.class);
             return convertHitsToDocuments(response.hits().hits());
@@ -738,6 +747,41 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return doc;
             })
             .collect(Collectors.toList());
+    }
+
+    /**
+     * 将受支持的元数据条件应用到 ES bool query。日期范围使用专用的内部键，
+     * 其余字段使用精确 term，避免把范围条件错误地当作字段名查询。
+     */
+    private void applyMetadataFilters(
+            co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
+            Map<String, Object> metadataFilters) {
+        if (metadataFilters == null || metadataFilters.isEmpty()) {
+            return;
+        }
+
+        String dateFrom = Objects.toString(metadataFilters.get("doc_date_gte"), null);
+        String dateTo = Objects.toString(metadataFilters.get("doc_date_lte"), null);
+
+        metadataFilters.forEach((field, value) -> {
+            if (value == null || "doc_date_gte".equals(field) || "doc_date_lte".equals(field)) {
+                return;
+            }
+            boolBuilder.filter(f -> f.term(t -> t.field(field).value(value.toString())));
+        });
+
+        if (dateFrom != null || dateTo != null) {
+            boolBuilder.filter(f -> f.range(r -> r.date(d -> {
+                d.field("doc_date");
+                if (dateFrom != null) {
+                    d.gte(dateFrom);
+                }
+                if (dateTo != null) {
+                    d.lte(dateTo);
+                }
+                return d;
+            })));
+        }
     }
 
     private String getColdIndexName(Long knowledgeId) {

@@ -1,14 +1,18 @@
 package cn.sdh.backend.controller;
 
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.DatasetInfo;
 import cn.sdh.backend.dto.EvaluationExportOverview;
 import cn.sdh.backend.dto.EvaluationExportQaDetail;
 import cn.sdh.backend.dto.EvaluationQaItem;
+import cn.sdh.backend.dto.KnowledgeQualityReport;
 import cn.sdh.backend.entity.EvaluationQa;
 import cn.sdh.backend.entity.EvaluationTask;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import cn.sdh.backend.service.EvaluationService;
+import cn.sdh.backend.service.KnowledgeAccessService;
 import cn.sdh.backend.utils.EvaluationFileParser;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.write.builder.ExcelWriterBuilder;
@@ -32,9 +36,11 @@ import java.util.HashMap;
 public class EvaluationController {
 
     private final EvaluationService evaluationService;
+    private final KnowledgeAccessService knowledgeAccess;
 
-    public EvaluationController(EvaluationService evaluationService) {
+    public EvaluationController(EvaluationService evaluationService, KnowledgeAccessService knowledgeAccess) {
         this.evaluationService = evaluationService;
+        this.knowledgeAccess = knowledgeAccess;
     }
 
     /**
@@ -67,6 +73,7 @@ public class EvaluationController {
         if (originalFilename == null) {
             return Result.error("文件名不能为空");
         }
+        knowledgeAccess.requireEdit(knowledgeId, UserContext.getCurrentUserId());
 
         try {
             List<EvaluationQaItem> items;
@@ -161,6 +168,7 @@ public class EvaluationController {
             @RequestBody Map<String, Object> params) {
 
         Long knowledgeId = Long.valueOf(params.get("knowledgeId").toString());
+        knowledgeAccess.requireEdit(knowledgeId, UserContext.getCurrentUserId());
 
         try {
             EvaluationTask task = evaluationService.runDatasetEvaluation(datasetId, knowledgeId);
@@ -184,10 +192,7 @@ public class EvaluationController {
      */
     @GetMapping("/task/{id}")
     public Result<EvaluationTask> getTaskDetail(@PathVariable Long id) {
-        EvaluationTask task = evaluationService.getTaskDetail(id);
-        if (task == null) {
-            return Result.error("任务不存在");
-        }
+        EvaluationTask task = requireTaskRead(id);
         return Result.success(task);
     }
 
@@ -196,6 +201,7 @@ public class EvaluationController {
      */
     @GetMapping("/task/{id}/qa-list")
     public Result<List<EvaluationQa>> getTaskQaList(@PathVariable Long id) {
+        requireTaskRead(id);
         List<EvaluationQa> qaList = evaluationService.getTaskQaList(id);
         return Result.success(qaList);
     }
@@ -229,11 +235,7 @@ public class EvaluationController {
      */
     @GetMapping("/task/{id}/export")
     public void exportReport(@PathVariable Long id, HttpServletResponse response) {
-        EvaluationTask task = evaluationService.getTaskDetail(id);
-        if (task == null) {
-            response.setStatus(404);
-            return;
-        }
+        EvaluationTask task = requireTaskRead(id);
 
         List<EvaluationQa> qaList = evaluationService.getTaskQaList(id);
 
@@ -321,5 +323,27 @@ public class EvaluationController {
             case 3 -> "失败";
             default -> "未知";
         };
+    }
+
+    @GetMapping("/knowledge/{knowledgeId}/quality")
+    public Result<KnowledgeQualityReport> getQualityReport(
+            @PathVariable Long knowledgeId,
+            @RequestParam(defaultValue = "30") int issueLimit) {
+        return Result.success(evaluationService.getQualityReport(knowledgeId, issueLimit));
+    }
+
+    public record IssueUpdateRequest(String status, String note) {}
+
+    @PostMapping("/qa/{qaId}/issue")
+    public Result<Void> updateIssue(@PathVariable Long qaId, @RequestBody IssueUpdateRequest request) {
+        evaluationService.updateIssue(qaId, request.status(), request.note());
+        return Result.success("问题状态已更新", null);
+    }
+
+    private EvaluationTask requireTaskRead(Long taskId) {
+        EvaluationTask task = evaluationService.getTaskDetail(taskId);
+        if (task == null) throw new BusinessException(404, "评估任务不存在");
+        knowledgeAccess.requireRead(task.getKnowledgeId(), UserContext.getCurrentUserId());
+        return task;
     }
 }

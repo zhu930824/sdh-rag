@@ -15,6 +15,7 @@ public class KnowledgeBaseListVO {
     private String name;
     private String description;
     private Long userId;
+    private String accessRole;
     private Integer chunkSize;
     private Integer chunkOverlap;
     private String embeddingModel;

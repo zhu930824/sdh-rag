@@ -98,6 +98,7 @@ import {
   TeamOutlined,
   DatabaseOutlined,
   RadarChartOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons-vue'
 
 interface MenuItem {
@@ -144,6 +145,18 @@ const menuConfig: MenuItem[] = [
     key: '/workflow',
     label: '工作流编排',
     icon: ForkOutlined,
+    permission: '/workflow',
+  },
+  {
+    key: '/agent-tools',
+    label: '业务工具中心',
+    icon: ApiOutlined,
+    permission: '/workflow',
+  },
+  {
+    key: '/agent-actions',
+    label: 'Agent审批与执行',
+    icon: SafetyCertificateOutlined,
     permission: '/workflow',
   },
   {
