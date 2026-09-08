@@ -4,6 +4,10 @@ import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.dto.EvaluationQaItem;
 import cn.sdh.backend.entity.TestDataset;
 import cn.sdh.backend.entity.TestDatasetItem;
+import cn.sdh.backend.entity.QaFeedback;
+import cn.sdh.backend.entity.ChatHistory;
+import cn.sdh.backend.mapper.QaFeedbackMapper;
+import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.mapper.TestDatasetItemMapper;
 import cn.sdh.backend.mapper.TestDatasetMapper;
 import cn.sdh.backend.service.TestDatasetService;
@@ -32,13 +36,22 @@ public class TestDatasetServiceImpl implements TestDatasetService {
     private final TestDatasetMapper datasetMapper;
     private final TestDatasetItemMapper itemMapper;
     private final ObjectMapper objectMapper;
+    private final QaFeedbackMapper feedbackMapper;
+    private final ChatHistoryMapper chatHistoryMapper;
+    private final cn.sdh.backend.service.KnowledgeAccessService knowledgeAccess;
 
     public TestDatasetServiceImpl(TestDatasetMapper datasetMapper,
                                   TestDatasetItemMapper itemMapper,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper,
+                                  QaFeedbackMapper feedbackMapper,
+                                  ChatHistoryMapper chatHistoryMapper,
+                                  cn.sdh.backend.service.KnowledgeAccessService knowledgeAccess) {
         this.datasetMapper = datasetMapper;
         this.itemMapper = itemMapper;
         this.objectMapper = objectMapper;
+        this.feedbackMapper = feedbackMapper;
+        this.chatHistoryMapper = chatHistoryMapper;
+        this.knowledgeAccess = knowledgeAccess;
     }
 
     @Override
@@ -100,6 +113,7 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         dataset.setItemCount(0);
         dataset.setNegativeCount(0);
         dataset.setDatasetType("custom");
+        dataset.setVersion(1);
         dataset.setUserId(userId);
         dataset.setCreateTime(LocalDateTime.now());
         dataset.setUpdateTime(LocalDateTime.now());
@@ -122,6 +136,7 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         dataset.setName(name);
         dataset.setDescription(description);
         dataset.setUpdateTime(LocalDateTime.now());
+        bumpVersion(dataset, "更新数据集信息");
         datasetMapper.updateById(dataset);
     }
 
@@ -153,6 +168,7 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         }
 
         int negativeCount = 0;
+        int insertedCount = 0;
         int sortOrder = dataset.getItemCount() != null ? dataset.getItemCount() : 0;
 
         for (EvaluationQaItem item : items) {
@@ -166,8 +182,14 @@ public class TestDatasetServiceImpl implements TestDatasetService {
             datasetItem.setExpectedAnswer(item.getExpectedAnswer() != null ? item.getExpectedAnswer().trim() : "");
             datasetItem.setSourceChunkId(item.getSourceChunkId());
             datasetItem.setSourceDocumentId(item.getSourceDocumentId());
+            datasetItem.setExpectedDocumentIds(writeJson(item.getExpectedDocumentIds()));
+            datasetItem.setRelevanceJudgments(writeJson(item.getRelevanceJudgments()));
             datasetItem.setIsNegative(item.getIsNegative() != null ? item.getIsNegative() : false);
             datasetItem.setExternalId(item.getExternalId());
+            datasetItem.setCategory(item.getCategory());
+            datasetItem.setDifficulty(item.getDifficulty());
+            datasetItem.setBusinessLine(item.getBusinessLine());
+            datasetItem.setUserRole(item.getUserRole());
             datasetItem.setSortOrder(sortOrder++);
             datasetItem.setCreateTime(LocalDateTime.now());
 
@@ -176,12 +198,14 @@ public class TestDatasetServiceImpl implements TestDatasetService {
             }
 
             itemMapper.insert(datasetItem);
+            insertedCount++;
         }
 
         // 更新统计
-        dataset.setItemCount((dataset.getItemCount() != null ? dataset.getItemCount() : 0) + items.size());
+        dataset.setItemCount((dataset.getItemCount() != null ? dataset.getItemCount() : 0) + insertedCount);
         dataset.setNegativeCount((dataset.getNegativeCount() != null ? dataset.getNegativeCount() : 0) + negativeCount);
         dataset.setUpdateTime(LocalDateTime.now());
+        bumpVersion(dataset, "批量添加 " + insertedCount + " 条评测样本");
         datasetMapper.updateById(dataset);
     }
 
@@ -213,6 +237,7 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         dataset.setItemCount(itemCount);
         dataset.setNegativeCount(negativeCount);
         dataset.setUpdateTime(LocalDateTime.now());
+        bumpVersion(dataset, "删除评测样本 #" + itemId);
         datasetMapper.updateById(dataset);
     }
 
@@ -240,7 +265,14 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         item.setExpectedAnswer(updatedItem.getExpectedAnswer());
         item.setIsNegative(updatedItem.getIsNegative());
         item.setSourceChunkId(updatedItem.getSourceChunkId());
+        item.setSourceDocumentId(updatedItem.getSourceDocumentId());
+        item.setExpectedDocumentIds(updatedItem.getExpectedDocumentIds());
+        item.setRelevanceJudgments(updatedItem.getRelevanceJudgments());
         item.setExternalId(updatedItem.getExternalId());
+        item.setCategory(updatedItem.getCategory());
+        item.setDifficulty(updatedItem.getDifficulty());
+        item.setBusinessLine(updatedItem.getBusinessLine());
+        item.setUserRole(updatedItem.getUserRole());
 
         itemMapper.updateById(item);
 
@@ -254,8 +286,10 @@ public class TestDatasetServiceImpl implements TestDatasetService {
             }
             dataset.setNegativeCount(negativeCount);
             dataset.setUpdateTime(LocalDateTime.now());
-            datasetMapper.updateById(dataset);
         }
+        bumpVersion(dataset, "更新评测样本 #" + itemId);
+        dataset.setUpdateTime(LocalDateTime.now());
+        datasetMapper.updateById(dataset);
     }
 
     @Override
@@ -284,6 +318,7 @@ public class TestDatasetServiceImpl implements TestDatasetService {
             dataset.setNegativeCount((dataset.getNegativeCount() != null ? dataset.getNegativeCount() : 0) + 1);
         }
         dataset.setUpdateTime(LocalDateTime.now());
+        bumpVersion(dataset, "添加评测样本");
         datasetMapper.updateById(dataset);
     }
 
@@ -294,7 +329,61 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         if (items != null && !items.isEmpty()) {
             addItems(dataset.getId(), items);
         }
+        dataset.setVersion(1);
+        dataset.setChangeNote("创建数据集");
+        dataset.setUpdateTime(LocalDateTime.now());
+        datasetMapper.updateById(dataset);
         return datasetMapper.selectById(dataset.getId());
+    }
+
+    @Override
+    @Transactional
+    public TestDataset cloneDataset(Long datasetId) {
+        TestDataset source = datasetMapper.selectById(datasetId);
+        if (source == null) throw new IllegalArgumentException("数据集不存在");
+        List<EvaluationQaItem> items = getDatasetQaItems(datasetId);
+        TestDataset clone = importDataset(source.getName() + "-业务标注", "复制自：" + source.getName(), items);
+        clone.setParentDatasetId(source.getId());
+        clone.setChangeNote("复制自数据集 #" + source.getId() + " v" + (source.getVersion() == null ? 1 : source.getVersion()));
+        datasetMapper.updateById(clone);
+        return clone;
+    }
+
+    @Override
+    @Transactional
+    public TestDatasetItem addFeedbackItem(Long datasetId, Long feedbackId) {
+        TestDataset dataset = datasetMapper.selectById(datasetId);
+        if (dataset == null || "builtin".equals(dataset.getDatasetType())) {
+            throw new IllegalArgumentException("请选择可编辑的自定义数据集");
+        }
+        TestDatasetItem existing = itemMapper.selectOne(new LambdaQueryWrapper<TestDatasetItem>()
+                .eq(TestDatasetItem::getDatasetId, datasetId)
+                .eq(TestDatasetItem::getSourceFeedbackId, feedbackId));
+        if (existing != null) return existing;
+        QaFeedback feedback = feedbackMapper.selectById(feedbackId);
+        if (feedback == null) throw new IllegalArgumentException("问答反馈不存在");
+        ChatHistory chat = chatHistoryMapper.selectById(feedback.getChatHistoryId());
+        if (chat == null || chat.getQuestion() == null || chat.getQuestion().isBlank()) {
+            throw new IllegalArgumentException("反馈没有可回流的原始问题");
+        }
+        Long actor = UserContext.getCurrentUserId();
+        if (chat.getKnowledgeId() != null) knowledgeAccess.requireRead(chat.getKnowledgeId(), actor);
+
+        TestDatasetItem item = new TestDatasetItem();
+        item.setQuestion(chat.getQuestion().trim());
+        item.setExpectedAnswer(feedback.getCorrectAnswer() == null ? "" : feedback.getCorrectAnswer().trim());
+        item.setIsNegative(false);
+        item.setExternalId("feedback:" + feedbackId);
+        item.setSourceFeedbackId(feedbackId);
+        item.setCategory("production_feedback");
+        item.setDifficulty("MEDIUM");
+        addItem(datasetId, item);
+
+        feedback.setStatus(1);
+        feedback.setHandledBy(actor);
+        feedback.setHandleTime(LocalDateTime.now());
+        feedbackMapper.updateById(feedback);
+        return item;
     }
 
     @Override
@@ -324,8 +413,14 @@ public class TestDatasetServiceImpl implements TestDatasetService {
             qaItem.setExpectedAnswer(item.getExpectedAnswer());
             qaItem.setSourceChunkId(item.getSourceChunkId());
             qaItem.setSourceDocumentId(item.getSourceDocumentId());
+            qaItem.setExpectedDocumentIds(readLongList(item.getExpectedDocumentIds()));
+            qaItem.setRelevanceJudgments(readJudgments(item.getRelevanceJudgments()));
             qaItem.setIsNegative(item.getIsNegative());
             qaItem.setExternalId(item.getExternalId());
+            qaItem.setCategory(item.getCategory());
+            qaItem.setDifficulty(item.getDifficulty());
+            qaItem.setBusinessLine(item.getBusinessLine());
+            qaItem.setUserRole(item.getUserRole());
             result.add(qaItem);
         }
 
@@ -350,19 +445,7 @@ public class TestDatasetServiceImpl implements TestDatasetService {
                 }
 
                 List<EvaluationQaItem> result = new ArrayList<>();
-                for (Map<String, Object> item : items) {
-                    EvaluationQaItem qaItem = new EvaluationQaItem();
-                    qaItem.setQuestion((String) item.get("question"));
-                    qaItem.setExpectedAnswer((String) item.get("expectedAnswer"));
-                    qaItem.setIsNegative(Boolean.TRUE.equals(item.get("isNegative")));
-                    if (item.get("sourceChunkId") != null) {
-                        qaItem.setSourceChunkId((String) item.get("sourceChunkId"));
-                    }
-                    if (item.get("externalId") != null) {
-                        qaItem.setExternalId((String) item.get("externalId"));
-                    }
-                    result.add(qaItem);
-                }
+                for (Map<String, Object> item : items) result.add(objectMapper.convertValue(item, EvaluationQaItem.class));
                 return result;
             }
         } catch (Exception e) {
@@ -386,8 +469,14 @@ public class TestDatasetServiceImpl implements TestDatasetService {
             item.setExpectedAnswer(qa.getExpectedAnswer());
             item.setSourceChunkId(qa.getSourceChunkId());
             item.setSourceDocumentId(qa.getSourceDocumentId());
+            item.setExpectedDocumentIds(writeJson(qa.getExpectedDocumentIds()));
+            item.setRelevanceJudgments(writeJson(qa.getRelevanceJudgments()));
             item.setIsNegative(qa.getIsNegative());
             item.setExternalId(qa.getExternalId());
+            item.setCategory(qa.getCategory());
+            item.setDifficulty(qa.getDifficulty());
+            item.setBusinessLine(qa.getBusinessLine());
+            item.setUserRole(qa.getUserRole());
             item.setSortOrder(sortOrder++);
             result.add(item);
         }
@@ -408,5 +497,28 @@ public class TestDatasetServiceImpl implements TestDatasetService {
         } catch (Exception e) {
             log.warn("同步内置数据集统计失败: {}", dataset.getFileName(), e);
         }
+    }
+
+    private String writeJson(Object value) {
+        if (value == null) return null;
+        try { return objectMapper.writeValueAsString(value); }
+        catch (Exception e) { throw new IllegalArgumentException("评测标注 JSON 无效", e); }
+    }
+
+    private List<Long> readLongList(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        try { return objectMapper.readValue(value, new TypeReference<List<Long>>() {}); }
+        catch (Exception e) { return List.of(); }
+    }
+
+    private Map<Long, Integer> readJudgments(String value) {
+        if (value == null || value.isBlank()) return Map.of();
+        try { return objectMapper.readValue(value, new TypeReference<Map<Long, Integer>>() {}); }
+        catch (Exception e) { return Map.of(); }
+    }
+
+    private void bumpVersion(TestDataset dataset, String note) {
+        dataset.setVersion((dataset.getVersion() == null ? 1 : dataset.getVersion()) + 1);
+        dataset.setChangeNote(note);
     }
 }

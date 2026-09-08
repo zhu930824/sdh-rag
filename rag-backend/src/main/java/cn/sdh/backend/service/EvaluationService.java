@@ -5,6 +5,7 @@ import cn.sdh.backend.dto.EvaluationQaItem;
 import cn.sdh.backend.entity.EvaluationTask;
 import cn.sdh.backend.entity.EvaluationQa;
 import cn.sdh.backend.dto.KnowledgeQualityReport;
+import cn.sdh.backend.dto.EvaluationRunConfig;
 
 import java.util.List;
 
@@ -21,6 +22,7 @@ public interface EvaluationService {
      * @return 评估任务
      */
     EvaluationTask generateAndRun(Long knowledgeId, int qaCount, String taskName);
+    EvaluationTask generateAndRun(Long knowledgeId, int qaCount, String taskName, EvaluationRunConfig config);
 
     /**
      * 导入外部测试集并运行评估
@@ -30,6 +32,7 @@ public interface EvaluationService {
      * @return 评估任务
      */
     EvaluationTask importAndRun(Long knowledgeId, List<EvaluationQaItem> items, String taskName);
+    EvaluationTask importAndRun(Long knowledgeId, List<EvaluationQaItem> items, String taskName, EvaluationRunConfig config);
 
     /**
      * 运行内置数据集评估
@@ -38,6 +41,7 @@ public interface EvaluationService {
      * @return 评估任务
      */
     EvaluationTask runBuiltinDataset(String datasetName, Long knowledgeId);
+    EvaluationTask runBuiltinDataset(String datasetName, Long knowledgeId, EvaluationRunConfig config);
 
     /**
      * 运行数据集评估（支持数据库中的数据集ID）
@@ -46,6 +50,11 @@ public interface EvaluationService {
      * @return 评估任务
      */
     EvaluationTask runDatasetEvaluation(Long datasetId, Long knowledgeId);
+    EvaluationTask runDatasetEvaluation(Long datasetId, Long knowledgeId, EvaluationRunConfig config);
+
+    /** Run a dataset on behalf of a persisted experiment owner. Not exposed directly as an API. */
+    EvaluationTask runDatasetEvaluationForUser(Long datasetId, Long knowledgeId, EvaluationRunConfig config,
+                                               Long userId, String taskName);
 
     /**
      * 获取内置数据集列表

@@ -213,9 +213,28 @@ public class AgentAskService {
         if (decided == null) {
             throw new BusinessException(404, "未找到本次审批对应的动作记录");
         }
+        if (List.of("PENDING_APPROVAL", "READY", "EXECUTING").contains(decided.getStatus())) {
+            throw new BusinessException(409, "动作尚未完成审批与执行，不能续跑");
+        }
+        boolean hasPending = agentActionService.listByRun(run.getId()).stream()
+                .anyMatch(item -> List.of("PENDING_APPROVAL", "READY", "EXECUTING").contains(item.getStatus()));
+        if (hasPending) {
+            throw new BusinessException(409, "本次运行仍有未决定动作，全部处理后才能续跑");
+        }
         if (!"WAITING_APPROVAL".equals(run.getStatus())) {
             throw new BusinessException(409, "运行状态不是等待审批(当前:" + run.getStatus()
                     + "),请刷新页面获取最新状态");
+        }
+        if ("REJECTED".equals(decided.getStatus())) {
+            String answer = rejectionAnswer(decided);
+            finalizeRejected(decided);
+            Map<String, Object> done = new LinkedHashMap<>();
+            done.put("type", "done");
+            done.put("historyId", run.getHistoryId());
+            done.put("runId", run.getRunKey());
+            return Flux.just(writeJson(Map.of("type", "content", "content", answer)),
+                    writeJson(Map.of("type", "agent_status", "status", AgentRun.STATUS_REJECTED)),
+                    writeJson(done));
         }
         if (!runStateService.transition(runKey, AgentRun.STATUS_WAITING_APPROVAL, AgentRun.STATUS_RUNNING)) {
             throw new BusinessException(409, "运行已在续跑或状态已变化,请刷新页面");
@@ -249,14 +268,18 @@ public class AgentAskService {
             row.setCompletedAt(java.time.LocalDateTime.now());
             runStateService.save(row);
 
-            String reason = action.getErrorMessage() == null ? "审批人拒绝" : action.getErrorMessage();
-            String answer = "业务动作「" + action.getToolName() + "」已被拒绝(" + reason + "),本次未执行。";
+            String answer = rejectionAnswer(action);
             chatService.persistAnswerRow(row.getHistoryId(), answer, row.getKnowledgeId(), row.getModelId(),
                     null, null, row.getRunKey(), buildTraceJson(row));
             log.info("Agent 运行被拒绝并收尾 runKey={}", row.getRunKey());
         } catch (Exception e) {
             log.warn("Agent 拒绝收尾失败: {}", e.getMessage());
         }
+    }
+
+    private String rejectionAnswer(AgentAction action) {
+        String reason = action.getErrorMessage() == null ? "审批人拒绝" : action.getErrorMessage();
+        return "业务动作「" + action.getToolName() + "」已被拒绝(" + reason + "),本次未执行。";
     }
 
     private Prepared preparedFromRun(AgentRun run, AgentAction decided) {
@@ -337,6 +360,9 @@ public class AgentAskService {
             }
 
             AgentRun run = runStateService.getByRunKey(p.runKey());
+            if (p.suppressStart() && run != null) {
+                st.assistantTexts.addAll(runStateService.loadRounds(run.getMessagesJson()));
+            }
 
             int turn = 0;
             for (turn = 1; turn <= p.maxSteps(); turn++) {

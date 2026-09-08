@@ -1,0 +1,22 @@
+CREATE TABLE agent_improvement_item (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_type VARCHAR(30) NOT NULL COMMENT 'ACTION_FEEDBACK/RUN_FAILURE/APPROVAL_REJECTION',
+    source_id BIGINT NOT NULL,
+    run_id BIGINT NULL,
+    action_id BIGINT NULL,
+    knowledge_id BIGINT NULL,
+    category VARCHAR(30) NOT NULL COMMENT 'KNOWLEDGE_REUSE/AGENT_FAILURE/PROCESS_POLICY',
+    priority VARCHAR(10) NOT NULL DEFAULT 'MEDIUM' COMMENT 'LOW/MEDIUM/HIGH',
+    title VARCHAR(200) NOT NULL,
+    detail TEXT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN/RESOLVED/IGNORED',
+    created_by BIGINT NOT NULL,
+    reviewed_by BIGINT NULL,
+    review_note VARCHAR(1000) NULL,
+    created_at DATETIME NOT NULL,
+    reviewed_at DATETIME NULL,
+    updated_at DATETIME NOT NULL,
+    UNIQUE KEY uk_agent_improvement_source (source_type, source_id),
+    KEY idx_agent_improvement_owner (created_by, status, created_at),
+    KEY idx_agent_improvement_knowledge (knowledge_id, status)
+) COMMENT='Agent 业务结果驱动的知识与流程改进队列';

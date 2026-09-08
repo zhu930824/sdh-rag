@@ -2,7 +2,7 @@
   <div class="page-shell">
     <div class="page-header">
       <div><h2>Agent 审批与执行</h2><p>在业务动作发生前保留人工控制，在执行后用真实业务结果改进知识与流程。</p></div>
-      <a-button @click="router.push('/agent-tools')">业务工具中心</a-button>
+      <a-space><a-button @click="router.push('/agent-ops')">运营与改进</a-button><a-button @click="router.push('/agent-tools')">业务工具中心</a-button></a-space>
     </div>
     <a-tabs v-model:activeKey="activeTab" @change="load">
       <a-tab-pane key="pending" tab="待我审批" />
@@ -59,12 +59,12 @@ const selected = ref<AgentAction>(); const detailOpen = ref(false); const reject
 const feedback = reactive({ outcome: 'SUCCEEDED', comment: '', reusableKnowledge: false })
 const columns = [{ title:'业务动作',key:'tool',width:260 },{ title:'状态',key:'status',width:150 },{ title:'发起时间',key:'time',width:180 },{ title:'操作',key:'action',width:250 }]
 async function load() { loading.value=true; try { actions.value=((activeTab.value==='pending' ? await getPendingAgentActions() : await getAgentActions()).data)||[] } finally { loading.value=false } }
-function showDetail(action: AgentAction) { selected.value=action; detailOpen.value=true }
-function approve(action: AgentAction) { Modal.confirm({ title:`批准“${action.toolName}”动作？`, content:'批准后将立即调用业务系统，执行结果会写入审计记录。', async onOk(){ await approveAgentAction(action.id); message.success('已审批并执行'); await load() } }) }
-function openReject(action: AgentAction) { selected.value=action; rejectReason.value=''; rejectOpen.value=true }
+function showDetail(value: any) { selected.value=value as AgentAction; detailOpen.value=true }
+function approve(value: any) { const action=value as AgentAction; Modal.confirm({ title:`批准“${action.toolName}”动作？`, content:'批准后将立即调用业务系统，执行结果会写入审计记录。', async onOk(){ await approveAgentAction(action.id); message.success('已审批并执行'); await load() } }) }
+function openReject(value: any) { selected.value=value as AgentAction; rejectReason.value=''; rejectOpen.value=true }
 async function reject() { if(!selected.value)return; await rejectAgentAction(selected.value.id,rejectReason.value); message.success('已拒绝'); rejectOpen.value=false; await load() }
-function retry(action: AgentAction) { Modal.confirm({ title:'重试失败动作？', content:'将沿用原请求参数和幂等审计记录再次调用。', async onOk(){ await retryAgentAction(action.id); message.success('重试已完成'); await load() } }) }
-function openFeedback(action: AgentAction) { selected.value=action; Object.assign(feedback,{outcome:'SUCCEEDED',comment:'',reusableKnowledge:false}); feedbackOpen.value=true }
+function retry(value: any) { const action=value as AgentAction; Modal.confirm({ title:'重试失败动作？', content:'将沿用原请求参数和幂等审计记录再次调用。', async onOk(){ await retryAgentAction(action.id); message.success('重试已完成'); await load() } }) }
+function openFeedback(value: any) { selected.value=value as AgentAction; Object.assign(feedback,{outcome:'SUCCEEDED',comment:'',reusableKnowledge:false}); feedbackOpen.value=true }
 async function submitFeedback(){ if(!selected.value)return; await feedbackAgentAction(selected.value.id,{...feedback}); message.success('业务结果已回流'); feedbackOpen.value=false }
 function statusText(value:string){return ({PENDING_APPROVAL:'待审批',READY:'待执行',EXECUTING:'执行中',SUCCEEDED:'已成功',FAILED:'失败',REJECTED:'已拒绝'} as Record<string,string>)[value]||value}
 function statusColor(value:string){return ({PENDING_APPROVAL:'orange',READY:'blue',EXECUTING:'processing',SUCCEEDED:'green',FAILED:'red',REJECTED:'default'} as Record<string,string>)[value]||'default'}

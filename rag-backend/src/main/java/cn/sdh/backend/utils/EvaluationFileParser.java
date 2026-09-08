@@ -99,6 +99,34 @@ public class EvaluationFileParser {
                             case "外部id":
                                 item.setExternalId(value.trim());
                                 break;
+                            case "expecteddocumentids":
+                            case "expected_document_ids":
+                            case "相关文档ids":
+                                item.setExpectedDocumentIds(parseLongList(value));
+                                break;
+                            case "relevancejudgments":
+                            case "relevance_judgments":
+                            case "相关性标注":
+                                item.setRelevanceJudgments(parseJudgments(value));
+                                break;
+                            case "category":
+                            case "场景分类":
+                                item.setCategory(value.trim());
+                                break;
+                            case "difficulty":
+                            case "难度":
+                                item.setDifficulty(value.trim());
+                                break;
+                            case "businessline":
+                            case "business_line":
+                            case "业务线":
+                                item.setBusinessLine(value.trim());
+                                break;
+                            case "userrole":
+                            case "user_role":
+                            case "用户角色":
+                                item.setUserRole(value.trim());
+                                break;
                         }
                     }
 
@@ -129,5 +157,21 @@ public class EvaluationFileParser {
         }
         String v = value.trim().toLowerCase();
         return "true".equals(v) || "1".equals(v) || "是".equals(v) || "yes".equals(v);
+    }
+
+    private static List<Long> parseLongList(String value) {
+        List<Long> result = new ArrayList<>();
+        for (String part : value.split("[,，;；]")) {
+            try { result.add(Long.parseLong(part.trim())); } catch (NumberFormatException ignored) { }
+        }
+        return result;
+    }
+
+    private static Map<Long, Integer> parseJudgments(String value) {
+        try {
+            return objectMapper.readValue(value, new TypeReference<Map<Long, Integer>>() {});
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 }

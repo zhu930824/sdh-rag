@@ -106,6 +106,24 @@ public class TestDatasetController {
         }
     }
 
+    @PostMapping("/{id}/clone")
+    public Result<TestDataset> cloneDataset(@PathVariable Long id) {
+        try {
+            return Result.success(datasetService.cloneDataset(id));
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/feedback/{feedbackId}")
+    public Result<TestDatasetItem> addFeedbackItem(@PathVariable Long id, @PathVariable Long feedbackId) {
+        try {
+            return Result.success(datasetService.addFeedbackItem(id, feedbackId));
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     /**
      * 批量添加问题
      */

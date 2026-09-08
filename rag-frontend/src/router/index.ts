@@ -105,6 +105,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '新建工作流', icon: 'ShareAlt', requiresAuth: true, hidden: true } as RouteMeta,
       },
       {
+        path: 'knowledge-publishing',
+        name: 'KnowledgePublishing',
+        component: () => import('@/views/knowledge-publishing/index.vue'),
+        meta: { title: '知识审核与发布', icon: 'FileDone', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
+      },
+      {
         path: 'agent-tools',
         name: 'AgentTools',
         component: () => import('@/views/agent-tool/index.vue'),
@@ -115,6 +121,12 @@ const routes: RouteRecordRaw[] = [
         name: 'AgentActions',
         component: () => import('@/views/agent-action/index.vue'),
         meta: { title: 'Agent审批与执行', icon: 'SafetyCertificate', requiresAuth: true, permission: '/workflow' } as RouteMeta,
+      },
+      {
+        path: 'agent-ops',
+        name: 'AgentOps',
+        component: () => import('@/views/agent-ops/index.vue'),
+        meta: { title: 'Agent运营与改进', icon: 'FundProjectionScreen', requiresAuth: true, permission: '/workflow' } as RouteMeta,
       },
       {
         path: 'workflow/:id',
@@ -199,6 +211,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Evaluation',
         component: () => import('@/views/evaluation/index.vue'),
         meta: { title: '检索评估', icon: 'DataAnalysis', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
+      },
+      {
+        path: 'evaluation-lab',
+        name: 'EvaluationLab',
+        component: () => import('@/views/evaluation-lab/index.vue'),
+        meta: { title: '评测实验室', icon: 'Experiment', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
       },
       {
         path: 'memory',

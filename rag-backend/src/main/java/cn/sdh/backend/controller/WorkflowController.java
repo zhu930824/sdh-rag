@@ -6,6 +6,8 @@ import cn.sdh.backend.entity.Workflow;
 import cn.sdh.backend.entity.WorkflowExecution;
 import cn.sdh.backend.service.WorkflowService;
 import cn.sdh.backend.service.WorkflowExecutionService;
+import cn.sdh.backend.service.AgentActionService;
+import cn.sdh.backend.entity.AgentAction;
 import cn.sdh.backend.workflow.dto.ExecutionEvent;
 import cn.sdh.backend.dto.WorkflowDebugRequest;
 import cn.sdh.backend.workflow.dto.ExecutionResponse;
@@ -17,6 +19,8 @@ import com.alibaba.fastjson2.JSON;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -24,8 +28,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 
 @Slf4j
 @RestController
@@ -37,8 +40,11 @@ public class WorkflowController {
     private final WorkflowExecutionService workflowExecutionService;
     private final WorkflowEngine workflowEngine;
     private final NodeTypeDefinitionService nodeTypeDefinitionService;
+    private final AgentActionService agentActionService;
 
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
+    @Autowired
+    @Qualifier("workflowExecutor")
+    private Executor executorService;
 
     @GetMapping("/list")
     public Result<IPage<Workflow>> list(
@@ -159,7 +165,33 @@ public class WorkflowController {
         if (actor == null) {
             return Result.unauthorized();
         }
-        ExecutionResponse response = workflowEngine.resume(executionId, actor, null);
+        WorkflowExecution execution = workflowExecutionService.getById(executionId);
+        if (execution == null) {
+            return Result.notFound("执行记录不存在");
+        }
+        workflowEngine.requireOwner(workflowService.getById(execution.getWorkflowId()), actor);
+        List<AgentAction> linkedActions = agentActionService.listByWorkflowExecution(executionId);
+        if (linkedActions.isEmpty()) {
+            return Result.error(409, "执行记录没有可续跑的审批动作");
+        }
+        boolean undecided = linkedActions.stream().anyMatch(action ->
+                List.of("PENDING_APPROVAL", "READY", "EXECUTING").contains(action.getStatus()));
+        if (undecided) {
+            return Result.error(409, "审批动作尚未全部决定，不能续跑工作流");
+        }
+        Map<String, Map<String, Object>> overrides = new java.util.HashMap<>();
+        for (AgentAction action : linkedActions) {
+            if (action.getNodeId() == null) continue;
+            Map<String, Object> fields = new java.util.LinkedHashMap<>();
+            fields.put("actionId", action.getId());
+            fields.put("actionStatus", action.getStatus());
+            fields.put("approvalRequired", false);
+            fields.put("responseCode", action.getResponseCode());
+            fields.put("result", parseActionResult(action.getResultJson()));
+            fields.put("error", action.getErrorMessage());
+            overrides.put(action.getNodeId(), fields);
+        }
+        ExecutionResponse response = workflowEngine.resume(executionId, actor, null, overrides);
         return Result.success("工作流已继续执行", response);
     }
 
@@ -309,5 +341,11 @@ public class WorkflowController {
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    private Object parseActionResult(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return JSON.parse(value); }
+        catch (Exception e) { return value; }
     }
 }

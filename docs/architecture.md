@@ -1,1077 +1,489 @@
-# SDH-RAG 系统架构设计文档
+# SDH-RAG 平台架构与设计
 
-## 1. 项目概述
+> 文档状态：当前架构基线  
+> 更新时间：2026-09-08  
+> 对应数据库版本：Flyway V27  
+> 架构形态：Vue SPA + Spring Boot 模块化单体 + 多存储基础设施
 
-### 1.1 项目简介
-SDH-RAG 是一个企业级 RAG（Retrieval-Augmented Generation）知识库管理系统，基于 Spring AI 和 Vue 3 构建。系统提供智能问答、文档管理、知识检索、知识图谱等核心功能，支持多知识库管理、多模型配置、工作流编排等高级特性。
+## 1. 平台定位
 
-### 1.2 技术栈
+SDH-RAG 已经从早期的“文档上传 + 知识问答”演进为企业知识与业务 Agent 平台。当前平台由三条相互闭环的主链路组成：
 
-#### 后端技术栈
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Java | 21 | JDK 版本 |
-| Spring Boot | 3.4 | 基础框架 |
-| Spring AI | Latest | AI 集成框架 |
-| Spring AI Alibaba | Latest | 阿里云通义千问集成 |
-| MyBatis Plus | Latest | ORM 框架 |
-| MySQL | 8.0+ | 关系型数据库 |
-| Redis | 6.0+ | 缓存数据库 |
-| Elasticsearch | 8.0+ | 向量存储与全文检索 |
-| Neo4j | Latest | 知识图谱数据库 |
-| MinIO | Latest | 对象存储 |
-| JWT | 0.12.6 | 认证授权 |
-| Flyway | Latest | 数据库版本管理 |
+1. **知识生产与治理**：外部知识接入、去重与版本、审核发布、索引、回滚。
+2. **RAG 问答与质量运营**：混合检索、回答生成、反馈回流、分层评测、实验和持续回归。
+3. **Agent 执行与治理**：工具注册、模型选用、人工审批、幂等执行、轨迹审计和经验沉淀。
 
-#### 前端技术栈
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Vue | 3.4 | 前端框架 |
-| TypeScript | 5.4 | 类型系统 |
-| Vite | 5.2 | 构建工具 |
-| Ant Design Vue | 4.2 | UI 组件库 |
-| Pinia | 2.1 | 状态管理 |
-| Vue Router | 4.3 | 路由管理 |
-| Axios | 1.6 | HTTP 客户端 |
-| @antv/g6 | 4.8 | 图谱可视化 |
-| @vue-flow | 1.48 | 工作流编排 |
-| Marked | 17.0 | Markdown 解析 |
-| Highlight.js | 11.11 | 代码高亮 |
+平台的核心价值不是单次问答，而是把“知识进入业务、业务产生反馈、反馈继续改善知识与 Agent”做成可管理、可评测、可审计的闭环。
 
-### 1.3 系统特性
-- 多知识库管理，支持知识库级别的数据隔离
-- 多模型配置，支持通义千问等大模型
-- 智能问答，支持 RAG 检索增强生成
-- **记忆增强，支持跨会话记忆和智能记忆抽象**
-- 知识图谱，支持实体、关系、概念、关键词提取
-- 工作流编排，可视化流程设计
-- 向量检索与全文检索混合搜索
-- 敏感词过滤、热点词分析
-- 定时任务、Webhook 支持
+## 2. 当前架构结论
 
----
+| 维度 | 当前设计 |
+|---|---|
+| 应用形态 | 模块化单体，不是微服务；一个 Spring Boot 后端承载业务领域，一个 Vue SPA 提供管理与使用界面 |
+| 接口形态 | REST API + 流式聊天响应，统一 `/api` 路径和 `Result<T>` 响应模型 |
+| 权限模型 | JWT 身份认证、菜单 RBAC、知识库 owner/editor/reader 资源级权限 |
+| 主数据 | MySQL 8，MyBatis Plus 访问，Flyway V1-V27 管理演进 |
+| 文档与附件 | MinIO 保存原文件和发布生成的 Markdown 文件 |
+| 检索 | Elasticsearch 同时承担文档分块向量、关键词、摘要粗排和语义记忆索引 |
+| 图谱 | Neo4j 保存知识图谱和用户行为模式记忆 |
+| 缓存与协调 | Redis 保存工作记忆、路由缓存、限流计数和知识源分布式锁 |
+| 模型接入 | Spring AI，当前支持 DashScope/OpenAI 兼容模型、Embedding 与 Rerank 配置 |
+| 异步执行 | 应用内有界线程池 + Spring Scheduler；知识源同步使用 Redis 锁，评测实验当前为单调度器扫描模型 |
+| 前端 | Vue 3、TypeScript、Vite、Ant Design Vue、Pinia、Vue Router、G6、Vue Flow |
+| 部署 | Nginx 托管 SPA 并反向代理，后端独立容器；MySQL、Redis、Elasticsearch、Neo4j、MinIO 为外部依赖 |
 
-## 2. 系统架构
+## 3. 系统上下文
 
-### 2.1 整体架构图
+```mermaid
+flowchart LR
+    U[业务用户 / 知识运营 / 审批人] --> FE[Vue 3 管理与问答端]
+    SYS[业务系统 / 内容平台] --> PUSH[API Push / REST JSON 连接器]
+    FE --> API[Spring Boot 模块化单体]
+    PUSH --> API
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              前端层 (Vue 3)                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐          │
-│  │ 知识库   │  │ 智能问答 │  │ 知识图谱 │  │ 工作流   │  │ 系统管理 │          │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘          │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Pinia Store (状态管理)                            │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Axios (HTTP 请求)                                 │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            后端层 (Spring Boot)                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Controller Layer (控制器层)                       │   │
-│  │  UserController / ChatController / KnowledgeController / Graph...   │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Service Layer (服务层)                            │   │
-│  │  ChatService / KnowledgeService / GraphService / MemoryOrchestrator │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Spring AI Layer (AI集成层)                        │   │
-│  │  ChatClient / EmbeddingModel / VectorStore / Advisor                │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Repository Layer (数据访问层)                     │   │
-│  │  MyBatis Plus / Neo4j Repository / Elasticsearch Repository         │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            数据存储层                                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐              │
-│  │   MySQL   │  │   Redis   │  │Elasticsearch│ │   Neo4j   │              │
-│  │ 业务数据   │  │ 缓存/会话  │  │  向量存储   │  │ 知识图谱  │              │
-│  └───────────┘  └───────────┘  └───────────┘  └───────────┘              │
-│  ┌───────────┐                                                            │
-│  │   MinIO   │                                                            │
-│  │ 文件存储   │                                                            │
-│  └───────────┘                                                            │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            外部服务层                                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                    DashScope (阿里云通义千问)                          │ │
-│  │  Qwen3 (Chat) / Text-Embedding-v3 (Embedding) / Qwen3-Rerank         │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
+    API --> LLM[LLM / Embedding / Rerank 服务]
+    API --> BIZ[受控业务 API]
+    API --> MYSQL[(MySQL)]
+    API --> ES[(Elasticsearch)]
+    API --> REDIS[(Redis)]
+    API --> NEO4J[(Neo4j)]
+    API --> MINIO[(MinIO)]
+    API --> HOOK[Webhook 消费方]
 ```
 
-### 2.2 核心模块
+### 3.1 外部参与者
 
-#### 2.2.1 后端模块结构
+- **知识运营人员**：维护知识源、数据集、草稿、评测实验和质量问题。
+- **普通业务用户**：进行知识问答，或在 Agent 模式下发起业务任务。
+- **审批人**：处理高风险 Agent 动作，决定批准或拒绝。
+- **业务系统**：向平台推送知识，或作为 Agent 受控工具的目标系统。
+- **模型服务**：提供 Chat、Embedding、Rerank 和 LLM-as-Judge 能力。
 
-```
-rag-backend/src/main/java/cn/sdh/backend/
-├── advisor/                    # Spring AI Advisor
-│   ├── common/                 # 通用 Advisor
-│   │   ├── AIModelObservationHandler.java    # 模型观测
-│   │   ├── ContextSettingAdvisor.java        # 上下文设置
-│   │   ├── HotwordAdvisor.java               # 热点词处理
-│   │   ├── LoggingAdvisor.java               # 日志记录
-│   │   ├── MySQLChatMemoryRepository.java    # 对话记忆存储
-│   │   ├── SensitiveWordAdvisor.java         # 敏感词过滤
-│   │   └── TokenUsageAdvisor.java            # Token统计
-│   └── rag/                    # RAG 相关 Advisor
-│       ├── HistoryAwareQueryTransformer.java # 历史感知查询转换
-│       ├── HybridDocumentRetriever.java      # 混合检索器
-│       ├── RagAdvisorFactory.java            # RAG Advisor 工厂
-│       └── RerankDocumentPostProcessor.java  # 重排序处理器
-├── aop/                        # AOP 切面
-│   └── OperationLogAspect.java # 操作日志切面
-├── common/                     # 公共组件
-│   ├── context/                # 上下文
-│   │   └── UserContext.java    # 用户上下文
-│   ├── exception/              # 异常处理
-│   │   ├── BusinessException.java
-│   │   └── GlobalExceptionHandler.java
-│   └── result/                 # 统一响应
-│       └── Result.java
-├── config/                     # 配置类
-│   ├── AsyncConfig.java        # 异步任务配置
-│   ├── ChatClientConfig.java   # 聊天客户端配置
-│   ├── CorsConfig.java         # 跨域配置
-│   ├── ElasticsearchConfig.java# ES配置
-│   ├── MinioConfig.java        # MinIO配置
-│   ├── MybatisPlusConfig.java  # MyBatis配置
-│   ├── Neo4jConfig.java        # Neo4j配置
-│   ├── RagConfig.java          # RAG配置
-│   └── WebConfig.java          # Web配置
-├── controller/                 # 控制器层 (26个)
-│   ├── AnnouncementController.java
-│   ├── BatchProcessController.java
-│   ├── ChatController.java
-│   ├── DashboardController.java
-│   ├── DocumentController.java
-│   ├── GraphController.java
-│   ├── KnowledgeBaseController.java
-│   ├── ModelConfigController.java
-│   ├── UserController.java
-│   └── ...
-├── dto/                        # 数据传输对象 (30+)
-├── entity/                     # 实体类 (46个)
-│   ├── User.java
-│   ├── Role.java
-│   ├── KnowledgeBase.java
-│   ├── KnowledgeDocument.java
-│   ├── KnowledgeChunk.java
-│   ├── ChatHistory.java
-│   ├── ChatSession.java
-│   ├── ModelConfig.java
-│   ├── Workflow.java
-│   └── ...
-├── graph/                      # 知识图谱模块
-│   ├── extractor/               # 实体提取器
-│   │   ├── EntityExtractor.java
-│   │   └── impl/LLMEntityExtractor.java
-│   ├── node/                   # 图谱节点
-│   │   ├── BaseNode.java
-│   │   ├── EntityNode.java
-│   │   ├── ConceptNode.java
-│   │   ├── KeywordNode.java
-│   │   └── DocumentNode.java
-│   ├── relation/               # 图谱关系
-│   └── repository/             # 图谱仓库
-│       ├── CustomGraphRepository.java
-│       ├── EntityNodeRepository.java
-│       └── ...
-├── interceptor/                # 拦截器
-│   └── JwtInterceptor.java
-├── mapper/                     # MyBatis Mapper
-├── memory/                     # 记忆系统模块
-│   ├── boundary/               # 语义边界检测
-│   │   ├── BoundaryResult.java
-│   │   ├── SemanticBoundaryDetector.java
-│   │   └── SummarizationTrigger.java
-│   ├── config/                 # 记忆配置
-│   │   └── MemoryConfig.java
-│   ├── core/                   # 核心类型
-│   │   ├── MemoryLayerType.java
-│   │   ├── MemoryType.java
-│   │   ├── MemoryEntry.java
-│   │   ├── MemoryQuery.java
-│   │   ├── MemoryContext.java
-│   │   └── MemoryLayer.java
-│   ├── extractor/              # 记忆提取器
-│   │   ├── MemoryExtractor.java
-│   │   ├── PreferenceExtractor.java
-│   │   ├── FactExtractor.java
-│   │   └── PatternExtractor.java
-│   ├── layer/                  # 记忆层实现
-│   │   ├── WorkingMemoryLayer.java    # Redis
-│   │   ├── EpisodicMemoryLayer.java   # MySQL
-│   │   ├── SemanticMemoryLayer.java  # ES
-│   │   ├── PatternMemoryLayer.java   # Neo4j
-│   │   └── AbstractMemoryLayer.java  # MySQL摘要
-│   └── orchestrator/           # 编排层
-│       ├── MemoryOrchestrator.java
-│       └── MemoryAssembler.java
-├── service/                    # 服务接口层 (35+)
-│   ├── impl/                   # 服务实现
-│   ├── ChatService.java
-│   ├── KnowledgeBaseService.java
-│   ├── KnowledgeService.java
-│   ├── GraphService.java
-│   ├── GraphBuildService.java
-│   ├── GraphBuildAsyncService.java
-│   ├── RagSearchService.java
-│   ├── RerankService.java
-│   ├── VectorStoreService.java
-│   └── ...
-└── utils/                      # 工具类
-    └── JwtUtil.java
+### 3.2 系统边界
+
+平台负责知识加工、检索、生成、评测、动作治理和审计；业务系统仍然是订单、库存、工单等交易数据的最终事实来源。Agent 工具调用不会把平台变成业务交易库。
+
+## 4. 逻辑分层
+
+```mermaid
+flowchart TB
+    subgraph Experience[体验层]
+      ChatUI[智能问答]
+      KnowledgeUI[知识管理]
+      EvalUI[检索评估 / 评测实验室]
+      AgentUI[工具 / 审批 / Agent运营]
+      WorkflowUI[工作流编排]
+      AdminUI[系统管理]
+    end
+
+    subgraph API[接口与访问控制层]
+      Controllers[REST Controllers]
+      Auth[JWT Interceptor / UserContext]
+      Access[RBAC / KnowledgeAccessService]
+      Result[统一响应与异常处理]
+    end
+
+    subgraph Domain[领域服务层]
+      Knowledge[知识接入与发布]
+      Retrieval[RAG 检索与生成]
+      Evaluation[质量评测与实验]
+      Agent[Agent 工具、动作、轨迹]
+      Workflow[工作流引擎]
+      Memory[多层记忆]
+      Operations[统计、日志、Webhook]
+    end
+
+    subgraph Integration[基础设施适配层]
+      Mapper[MyBatis Plus Mapper]
+      Vector[Elasticsearch Adapter]
+      Graph[Neo4j Repository]
+      Object[MinIO Adapter]
+      Cache[Redis Adapter]
+      Model[Spring AI Model Adapter]
+      Http[受控 HTTP Client]
+    end
+
+    Experience --> API --> Domain --> Integration
 ```
 
-#### 2.2.2 前端模块结构
+### 4.1 分层规则
 
-```
-rag-frontend/src/
-├── api/                        # API 接口 (24个)
-│   ├── announcement.ts
-│   ├── chat.ts
-│   ├── chatSession.ts
-│   ├── dashboard.ts
-│   ├── document.ts
-│   ├── feedback.ts
-│   ├── graph.ts
-│   ├── hotwords.ts
-│   ├── knowledgeBase.ts
-│   ├── model.ts
-│   ├── promptTemplate.ts
-│   ├── user.ts
-│   ├── workflow.ts
-│   └── ...
-├── components/                 # 公共组件
-│   ├── AnnouncementMarquee.vue # 公告跑马灯
-│   └── TableToolbar.vue       # 表格工具栏
-├── composables/                # 组合式函数
-├── layouts/                    # 布局组件
-│   ├── MainLayout.vue         # 主布局
-│   └── components/
-│       ├── Header.vue         # 头部
-│       ├── Sidebar.vue        # 侧边栏
-│       ├── MobileMenu.vue     # 移动端菜单
-│       ├── Breadcrumb.vue     # 面包屑
-│       └── Tabs.vue           # 标签页
-├── router/                     # 路由配置
-│   └── index.ts
-├── stores/                     # 状态管理
-│   ├── app.ts                 # 应用状态
-│   ├── user.ts                # 用户状态
-│   ├── chat.ts                # 聊天状态（含memoryEnabled）
-│   ├── document.ts            # 文档状态
-│   ├── workflow.ts            # 工作流状态
-│   ├── memory.ts              # 记忆状态
-│   └── index.ts
-├── types/                      # 类型定义
-│   └── index.ts
-├── utils/                      # 工具函数
-│   ├── request.ts             # Axios封装
-│   ├── message.ts             # 消息提示
-│   ├── confirm.ts             # 确认框
-│   └── form.ts                # 表单工具
-├── views/                      # 页面组件 (25+)
-│   ├── login/                 # 登录页
-│   ├── register/              # 注册页
-│   ├── dashboard/             # 首页仪表盘
-│   ├── knowledge-base/        # 知识库管理
-│   │   ├── index.vue
-│   │   ├── detail.vue
-│   │   └── components/
-│   ├── document/              # 文档管理
-│   ├── chat/                  # 智能问答
-│   │   ├── index.vue
-│   │   └── components/
-│   ├── graph/                 # 知识图谱
-│   │   ├── index.vue
-│   │   └── components/
-│   ├── workflow/              # 工作流编排
-│   │   ├── index.vue
-│   │   └── components/
-│   ├── model/                 # 模型管理
-│   ├── user/                  # 用户管理
-│   ├── role/                  # 角色管理
-│   ├── tag/                   # 标签管理
-│   ├── sensitive/             # 敏感词管理
-│   ├── hotwords/              # 热点词分析
-│   ├── stats/                 # 数据统计
-│   ├── feedback/              # 问答评价
-│   ├── log/                   # 日志管理
-│   ├── memory/                # 记忆中心
-│   │   └── index.vue
-│   ├── settings/              # 系统设置
-│   ├── profile/               # 个人中心
-│   ├── scheduled-task/        # 定时任务
-│   ├── webhook/               # Webhook
-│   ├── voice/                 # 语音问答
-│   ├── prompt/                # Prompt模板
-│   └── session/               # 会话管理
-├── App.vue                     # 根组件
-└── main.ts                     # 入口文件
+- Controller 只处理协议、参数和响应，不承载跨领域业务编排。
+- Service 是事务、权限复核和业务状态流转的主要边界。
+- Mapper/Repository 仅负责持久化，不能替代领域访问控制。
+- 异步任务必须保存执行用户和资源 ID，执行时重新校验权限。
+- 外部模型、存储和 HTTP 调用通过服务适配层隔离，避免控制器直接依赖 SDK。
+
+## 5. 领域模块设计
+
+### 5.1 身份、权限与协作
+
+核心对象包括 `user`、`role`、`menu_permission`、`knowledge_base_member`。
+
+- JWT 拦截器解析身份并写入线程级 `UserContext`。
+- 菜单权限控制页面和功能入口。
+- `KnowledgeAccessService` 统一判断 owner、editor、reader；后端资源权限是最终安全边界。
+- 知识库列表、评测任务、发布草稿等对象都必须按可读知识库集合过滤，不能只依赖前端隐藏按钮。
+
+### 5.2 知识接入与文档加工
+
+知识来源分为三类：
+
+- 用户上传 PDF、Word、TXT 等文件。
+- 业务系统通过带 API Key 的 API Push 主动推送。
+- `rest_json` 连接器按游标、分页和 Cron 从外部接口增量拉取。
+
+统一加工链路：
+
+```mermaid
+flowchart LR
+    Source[上传 / API Push / REST JSON] --> Normalize[统一 SourceItem]
+    Normalize --> Dedupe[externalId + 内容哈希去重]
+    Dedupe --> Version[文档版本与来源映射]
+    Version --> Object[(MinIO 原文)]
+    Version --> Parse[解析与结构化]
+    Parse --> Chunk[固定 / 递归 / 语义 / 正则分块]
+    Chunk --> Embed[Embedding]
+    Embed --> ChunkIndex[(ES 分块索引)]
+    Parse --> Summary[文档摘要]
+    Summary --> SummaryIndex[(ES 摘要索引)]
 ```
 
----
+关键设计：
 
-## 3. 核心功能模块
+- `knowledge_source_item` 用 `(source_id, external_id)` 保证来源幂等。
+- 内容哈希避免无变化内容重复解析和向量化。
+- 外部删除事件移除知识库关联和检索索引，但保留同步审计。
+- 知识源调度使用 Redis 分布式锁与失败退避，避免多实例重复同步。
+- 分块配置属于知识库与文档关系，支持不同知识库对同一文档使用不同加工策略。
 
-### 3.1 用户认证与授权
+### 5.3 知识审核与发布
 
-#### 3.1.1 认证流程
-```
-用户登录请求
-    │
-    ▼
-UserController.login()
-    │
-    ▼
-UserService.login() → 验证用户名密码
-    │
-    ▼
-JwtUtil.generateToken() → 生成JWT Token
-    │
-    ▼
-返回Token给前端
-    │
-    ▼
-前端存储Token (localStorage/sessionStorage)
-    │
-    ▼
-后续请求携带Token (Header: token)
-    │
-    ▼
-JwtInterceptor → 验证Token并设置用户上下文
+业务经验和人工编辑内容先进入 `knowledge_draft`，不能直接写入线上检索索引。
+
+状态机：
+
+```text
+DRAFT → IN_REVIEW → APPROVED → PUBLISHING → PUBLISHED
+                ↘ REJECTED → DRAFT
+PUBLISHING → PUBLISH_FAILED
+PUBLISHED / PUBLISH_FAILED → ROLLED_BACK
 ```
 
-#### 3.1.2 权限控制
-- 基于角色的权限控制 (RBAC)
-- 用户 → 角色 → 权限 (菜单路径)
-- 前端路由守卫 + 后端接口拦截
+发布流程包含：人工审核、生成 Markdown 文档、MinIO 持久化、文档关联、异步分块与索引、Top-5 回归问题门禁。门禁失败时状态为 `GATE_FAILED`，发布内容会从知识库关联和向量检索链路移除，同时保留原文档和发布审计。
 
-### 3.2 知识库管理
+### 5.4 RAG 检索与回答
 
-#### 3.2.1 数据模型
-```
-KnowledgeBase (知识库)
-    │
-    ├── KnowledgeDocument (文档) ──┐
-    │       │                      │
-    │       └── KnowledgeChunk (分块)
-    │              │
-    │              └── 向量化存储到 Elasticsearch
-    │
-    ├── KnowledgeDocumentRelation (文档关联)
-    │
-    └── KnowledgeBaseTag (标签关联)
-```
+当前检索不是单一向量 Top K，而是可配置的多阶段检索：
 
-#### 3.2.2 文档处理流程
-```
-上传文档
-    │
-    ▼
-MinIO 存储原始文件
-    │
-    ▼
-文档解析 (Tika/PDF Reader)
-    │
-    ▼
-文本分块 (ChunkSize=500, Overlap=50)
-    │
-    ▼
-向量化 (Embedding Model)
-    │
-    ▼
-存储到 Elasticsearch
+```mermaid
+flowchart LR
+    Q[用户问题] --> Route[知识库意图路由]
+    Route --> Memory[装配用户记忆]
+    Memory --> Rewrite[查询改写]
+    Rewrite --> Expand[查询扩展]
+    Expand --> Hyde[HyDE 可选]
+    Hyde --> Coarse[摘要索引粗召回]
+    Coarse --> Hybrid[候选文档内向量 + BM25]
+    Hybrid --> RRF[RRF 多路融合]
+    RRF --> Rerank[Rerank]
+    Rerank --> Diversity[MMR / 时效 / 冷归档策略]
+    Diversity --> Context[Context 与引用]
+    Context --> Generate[LLM 生成或拒答]
 ```
 
-### 3.3 智能问答 (RAG)
+降级策略：摘要粗召回不可用时回退到全库混合检索；Rerank 或部分增强能力失败时保留基础召回结果。Metadata Filter 用于在检索阶段约束部门、产品、地区、文档日期等业务范围。
 
-#### 3.3.1 RAG 架构
-```
-用户提问
-    │
-    ▼
-┌─────────────────────────────────────────────────────┐
-│                   Spring AI Advisor Chain           │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 1. ContextSettingAdvisor                    │   │
-│  │    设置系统上下文、知识库ID等                 │   │
-│  └─────────────────────────────────────────────┘   │
-│                      │                             │
-│                      ▼                             │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 2. HistoryAwareQueryTransformer             │   │
-│  │    基于对话历史改写查询                       │   │
-│  └─────────────────────────────────────────────┘   │
-│                      │                             │
-│                      ▼                             │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 3. HybridDocumentRetriever                  │   │
-│  │    混合检索: 向量检索 + 关键词检索            │   │
-│  └─────────────────────────────────────────────┘   │
-│                      │                             │
-│                      ▼                             │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 4. RerankDocumentPostProcessor              │   │
-│  │    重排序检索结果                            │   │
-│  └─────────────────────────────────────────────┘   │
-│                      │                             │
-│                      ▼                             │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 5. SensitiveWordAdvisor                     │   │
-│  │    敏感词过滤                                │   │
-│  └─────────────────────────────────────────────┘   │
-│                      │                             │
-│                      ▼                             │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 6. ChatClient                               │   │
-│  │    调用LLM生成回答                           │   │
-│  └─────────────────────────────────────────────┘   │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-    │
-    ▼
-返回回答 + 引用来源
+### 5.5 记忆系统
+
+记忆按用途拆分，不把所有历史消息直接塞入 Prompt：
+
+| 记忆层 | 当前存储 | 作用 |
+|---|---|---|
+| Working Memory | Redis | 当前会话短期上下文和窗口 |
+| Episodic Memory | MySQL `chat_history` | 可追溯的历史问答与情景片段 |
+| Semantic Memory | Elasticsearch `sdh-memory-index` | 用户事实和偏好的语义召回 |
+| Abstract Memory | MySQL `memory_abstract` | 跨情景摘要和压缩信息 |
+| Pattern Memory | Neo4j | 多次观察后形成的行为模式关系 |
+
+`MemoryOrchestrator` 负责召回、组装、事实/偏好/模式提取和写回。记忆不可越过用户边界，也不应替代业务系统中的权威数据。
+
+### 5.6 RAG 评测与质量运营
+
+评测分为三个层级：
+
+- `RETRIEVAL`：Recall@K、Precision@K、MRR、NDCG@K、MAP、负样本错误命中率。
+- `GENERATION`：Context Precision/Recall、Faithfulness、Answer Relevancy、Completeness、Fluency。
+- `FULL`：同一任务内完成检索与生成评测。
+
+质量运营链路：
+
+```mermaid
+flowchart LR
+    Feedback[线上点踩 / 失败问题] --> Dataset[版本化测试数据集]
+    Dataset --> Labels[文档、分块、0-3 相关性标注]
+    Labels --> Eval[分层评测]
+    Eval --> Diagnose[失败归因与建议]
+    Eval --> Experiment[多变体评测实验]
+    Experiment --> Slice[场景 / 难度 / 业务线 / 角色切片]
+    Slice --> Review[人工复核 LLM-as-Judge]
+    Review --> Baseline[基线与持续回归]
+    Baseline --> Gate[知识发布门禁]
+    Gate --> Feedback
 ```
 
-#### 3.3.2 混合检索策略
-```java
-// 向量检索 (语义相似度)
-List<Document> vectorResults = vectorStore.similaritySearch(query);
+评测任务会保存数据集 ID、版本、配置快照和不可变 QA 副本。实验支持多个变体、Spring Cron、单批评审预算、失败重试和 Webhook 告警。人工评分归一化为 0-1，并统计各维度 MAE 和一档内一致率。
 
-// 关键词检索 (精确匹配)
-List<Document> keywordResults = elasticsearchService.keywordSearch(query);
+### 5.7 Agent 与工作流
 
-// 融合排序
-List<Document> mergedResults = hybridRetriever.merge(vectorResults, keywordResults);
+平台提供两种执行模式：
 
-// 重排序
-List<Document> rerankedResults = rerankService.rerank(query, mergedResults);
+- **Agent 模式**：模型根据工具描述和参数 Schema 自主选择工具，适合开放式业务任务。
+- **工作流模式**：按 DAG 和节点配置确定性执行，适合稳定、可重复的流程。
+
+两者复用同一套受控工具与动作治理：
+
+```mermaid
+flowchart LR
+    Request[用户任务] --> Plan[模型工具调用 / 工作流节点]
+    Plan --> Registry[Agent Tool Registry + JSON Schema]
+    Registry --> Risk{风险与审批策略}
+    Risk -->|低风险| Execute[幂等执行]
+    Risk -->|中高风险| Approval[人工审批]
+    Approval -->|批准| Execute
+    Approval -->|拒绝| Stop[拒绝并结束]
+    Execute --> Business[受控业务 API]
+    Execute --> Trace[Agent Run / Step / Action]
+    Trace --> Outcome[真实业务结果反馈]
+    Outcome --> Improve[知识 / 流程改进项]
+    Improve --> Draft[知识草稿与发布流水线]
 ```
 
-### 3.4 知识图谱
+安全边界包括固定 endpoint、HTTPS 默认、SSRF 防护、请求/响应大小限制、超时、禁止自动重定向、凭据环境变量引用和 `(tool_id, requested_by, idempotency_key)` 唯一约束。审批后的聊天或工作流从暂停点恢复，不重复已经执行的步骤。
 
-#### 3.4.1 图谱数据模型 (Neo4j)
-```
-                    ┌──────────────┐
-                    │ DocumentNode │
-                    │  (文档节点)   │
-                    └──────┬───────┘
-                           │
-           ┌───────────────┼───────────────┐
-           │ CONTAINS      │ CONTAINS      │ CONTAINS
-           ▼               ▼               ▼
-    ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-    │ EntityNode   │ │ ConceptNode  │ │ KeywordNode  │
-    │  (实体节点)   │ │  (概念节点)   │ │  (关键词节点) │
-    └──────┬───────┘ └──────────────┘ └──────────────┘
-           │
-           │ RELATED_TO
-           ▼
-    ┌──────────────┐
-    │ EntityNode   │
-    │  (关联实体)   │
-    └──────────────┘
+### 5.8 平台运营
 
-节点属性:
-- BaseNode: id, name, description, knowledgeBaseId, createTime, updateTime
-- EntityNode: entityType, confidence, sourceDocumentId, frequency
-- ConceptNode: category, weight
-- KeywordNode: tfidf, sourceDocumentId, frequency
-```
+运营能力包括 Dashboard、热点词、Token 用量、问答评价、操作日志、公告、敏感词、模型配置、Prompt 模板、Webhook 和计划任务。Agent 运营页进一步统计任务完成率、工具成功率、审批状态、业务结果和改进项。
 
-#### 3.4.2 图谱构建流程 (异步)
-```
-构建请求
-    │
-    ▼
-创建构建任务 (GraphBuildTask)
-    │
-    ▼
-异步执行 (GraphBuildAsyncService)
-    │
-    ├── 获取文档分块
-    │
-    ├── LLM 提取实体/关系/概念/关键词
-    │
-    ├── 创建节点 (带 knowledgeBaseId)
-    │
-    ├── 创建关系
-    │
-    └── 更新任务状态
-    │
-    ▼
-前端轮询任务状态
-```
+## 6. 数据架构
 
-### 3.5 记忆系统
+### 6.1 存储职责
 
-#### 3.5.1 分层记忆架构
-采用分层记忆架构，灵感来自认知心理学的人类记忆模型：
+| 存储 | 数据职责 | 一致性定位 |
+|---|---|---|
+| MySQL | 用户权限、知识库、文档元数据、会话、评测、实验、Agent、工作流和审计 | 业务事实来源 |
+| MinIO | 上传原文、知识发布生成文件 | 大对象事实来源 |
+| Elasticsearch | 分块全文与向量索引、文档摘要索引、语义记忆 | 可重建的查询模型 |
+| Neo4j | 文档实体/概念/关键词关系、用户模式记忆 | 图查询模型 |
+| Redis | 会话工作记忆、缓存、限流、调度锁 | 临时状态和协调设施 |
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    LLM (生成回复)                             │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-        ┌─────────────┴─────────────┐
-        │     Memory Orchestrator   │  ← 统一调度入口
-        └─────────────┬─────────────┘
-                      │
-┌─────────┬───────────┼───────────┬─────────┬─────────────────────┐
-│Working  │ Episodic  │  Semantic │ Pattern │   Abstract          │
-│Memory   │ Memory    │  Memory   │ Memory  │   Memory            │
-│(Redis)  │ (MySQL)   │  (ES向量) │ (Neo4j) │   (MySQL摘要表)     │
-└─────────┴───────────┴───────────┴─────────┴─────────────────────┘
+MySQL 与 MinIO 中的原始内容必须足以重建 Elasticsearch 和 Neo4j。搜索索引不应成为唯一事实来源。
+
+### 6.2 关系数据领域分组
+
+| 领域 | 主要表 |
+|---|---|
+| 身份与权限 | `user`、`role`、`user_role`、`menu_permission`、`role_menu`、`knowledge_base_member` |
+| 知识与文档 | `knowledge_base`、`knowledge_document`、`knowledge_document_relation`、`document_hash`、`document_tag` |
+| 外部知识源 | `knowledge_source`、`knowledge_source_item`、`knowledge_sync_task`、`knowledge_source_api_key`、`knowledge_source_api_audit` |
+| 会话与反馈 | `chat_session`、`chat_history`、`qa_feedback`、`token_usage` |
+| 评测 | `evaluation_task`、`evaluation_qa`、`test_dataset`、`test_dataset_item` |
+| 评测实验 | `evaluation_experiment`、`evaluation_experiment_variant`、`evaluation_experiment_run`、`evaluation_experiment_run_task` |
+| Agent | `agent_tool`、`agent_action`、`agent_action_feedback`、`agent_run`、`agent_step`、`agent_improvement_item` |
+| 知识发布 | `knowledge_draft`、`knowledge_publish_record` |
+| 工作流 | `workflow`、`workflow_node`、`workflow_execution` |
+| 系统运营 | `operation_log`、`stats_daily`、`hotword_record`、`scheduled_task`、`webhook_config` 等 |
+
+### 6.3 数据版本与审计原则
+
+- Schema 只通过 Flyway 演进，禁止在生产环境手工修改后不回写迁移。
+- 测试数据集使用递增版本，历史评测保存快照，不跟随数据集后续修改。
+- 知识来源、发布、Agent 动作和评测实验均保留来源与运行记录。
+- 重要状态变化应记录操作人、发生时间、结果和失败原因。
+- 凭据表只保存哈希或引用，不保存可恢复的 API Key 明文。
+
+## 7. 后端设计
+
+### 7.1 包结构
+
+```text
+cn.sdh.backend
+├── controller       HTTP 协议与资源入口
+├── service          领域服务接口和部分领域编排
+├── service.impl     服务实现与事务边界
+├── entity / mapper  MySQL 实体与 MyBatis Plus Mapper
+├── dto              API 与跨层数据对象
+├── agent            Agent 规划、工具回调、审批路由、恢复状态
+├── workflow         DAG、节点执行器和工作流运行
+├── knowledge        外部知识源连接器 SPI
+├── memory           多层记忆与编排
+├── graph            Neo4j 节点、仓储与抽取器
+├── advisor          Spring AI Advisor
+├── interceptor      JWT 与请求上下文
+└── common / config  响应、异常、线程池和基础配置
 ```
 
-#### 3.5.2 各层职责
+### 7.2 事务与异步边界
 
-| 层级 | 存储介质 | 作用 | 生命周期 |
-|------|---------|------|---------|
-| Working | Redis | 当前会话上下文，滑动窗口 | 会话结束后 1 小时 |
-| Episodic | MySQL | 完整对话记录，按语义分块 | 永久（可归档） |
-| Semantic | ES 向量 | 用户偏好/事实，向量检索 | 按重要性衰减 |
-| Pattern | Neo4j | 用户行为模式，图谱关系 | 30 天未观察则衰减 |
-| Abstract | MySQL | 语义分块摘要 | 180 天后归档 |
+- 创建任务和业务状态写入 MySQL 后，再把耗时工作提交到有界线程池。
+- 评测任务使用事务提交回调，避免执行线程读不到尚未提交的任务。
+- 知识发布在数据库提交后进行文档处理和索引。
+- 异步任务通过持久化状态暴露 `PENDING/RUNNING/SUCCEEDED/FAILED` 等进度。
+- 多实例任务必须使用分布式锁、租约或数据库原子抢占；当前知识源同步已实现，评测实验仍需补齐。
 
-#### 3.5.3 记忆处理流程
+### 7.3 API 设计
 
-```
-用户发送消息
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    ASSEMBLE PHASE                            │
-├─────────────────────────────────────────────────────────────┤
-│  Working Memory ──→ 最近 N 轮对话                            │
-│  Semantic Memory ─→ 向量检索相关偏好/事实                     │
-│  Pattern Memory  ─→ Cypher 查询行为模式                       │
-│  Abstract Memory ─→ 相关历史摘要                              │
-└─────────────────────────────────────────────────────────────┘
-     │
-     ▼
-MemoryContext ──→ 构建系统提示词 ──→ LLM 生成回复
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    PROCESS PHASE (异步)                      │
-├─────────────────────────────────────────────────────────────┤
-│  SemanticBoundaryDetector ──→ 检测话题切换                   │
-│       │                                                     │
-│       ├── TRANSITION ──→ 触发摘要生成                        │
-│       │                                                     │
-│       └── 继续当前 Episode                                   │
-│                                                             │
-│  并行执行提取器：                                            │
-│  PreferenceExtractor ──→ 提取用户偏好 ──→ ES 存储           │
-│  FactExtractor ──→ 提取知识事实 ──→ ES 存储                  │
-│  PatternExtractor ──→ 分析行为模式 ──→ Neo4j 更新            │
-└─────────────────────────────────────────────────────────────┘
-```
+- 业务 API 统一使用 `/api/{domain}`。
+- 普通管理接口返回 `Result<T>`；分页返回 records、total 等字段。
+- 集成 API 使用 API Key，并返回真实 HTTP 401/403/429/5xx。
+- 流式聊天单独维护流生命周期和错误事件。
+- 导出接口直接返回文件流，不包装 JSON。
 
-#### 3.5.4 记忆提取器
+## 8. 前端信息架构
 
-| 提取器 | 功能 | 目标存储 |
-|--------|------|---------|
-| PreferenceExtractor | 提取用户偏好（语言、风格、技术栈） | ES (Semantic) |
-| FactExtractor | 提取客观事实（项目信息、已确认知识） | ES (Semantic) |
-| PatternExtractor | 分析行为模式（提问风格、技术水平） | Neo4j (Pattern) |
+当前一级能力按用户任务组织：
 
-#### 3.5.5 语义边界检测
+| 工作区 | 页面 |
+|---|---|
+| 使用知识 | 智能问答、会话、语音问答 |
+| 管理知识 | 知识库、文档、知识图谱、知识审核与发布 |
+| 运营质量 | 检索评估、评测实验室、问答评价、统计、热点词 |
+| 执行业务 | 工作流编排、业务工具中心、Agent 审批与执行、Agent 运营与改进 |
+| 配置平台 | 模型、Prompt、标签、敏感词、计划任务、Webhook、系统设置 |
+| 管理组织 | 用户、角色、权限、操作日志、公告 |
 
-采用 **LLM 双重判断** + **启发式规则** 结合：
+前端使用路由懒加载；Pinia 保存身份、权限与全局 UI 状态；API 类型集中在 `src/api`。桌面侧边栏和移动菜单应共享同一份菜单元数据，这是后续需要收敛的设计债务。
 
-| 类型 | 触发条件 | 处理动作 |
-|------|---------|---------|
-| TRANSITION | 检测到话题切换 | 触发摘要，开始新 episode |
-| LENGTH_LIMIT | 达到最大消息数 | 强制触发摘要 |
-| NONE | 无边界 | 继续当前 episode |
+## 9. 安全架构
 
-### 3.6 工作流编排
+### 9.1 已实现控制
 
-#### 3.5.1 节点类型
-| 节点类型 | 说明 |
-|---------|------|
-| Input | 输入节点，定义输入参数 |
-| LLM | LLM节点，调用大模型 |
-| Retrieval | 检索节点，RAG检索 |
-| Code | 代码节点，执行脚本 |
-| HTTP | HTTP节点，调用外部API |
-| Condition | 条件节点，分支判断 |
-| Output | 输出节点，定义输出 |
+- JWT 身份认证和后端资源级知识库权限。
+- 用户、角色、菜单权限和操作日志。
+- 知识源 API Key 随机生成、摘要保存、独立限流和调用审计。
+- 外部知识连接器和 Agent HTTP 工具的 SSRF、HTTPS、大小、超时和重定向限制。
+- Agent 中高风险动作人工审批和幂等键。
+- 敏感词、模型/Prompt 配置权限和发布审核门禁。
 
-#### 3.5.2 工作流执行
-```
-Workflow (工作流定义)
-    │
-    ├── WorkflowNode[] (节点列表)
-    │       ├── type (节点类型)
-    │       ├── config (节点配置)
-    │       └── position (位置信息)
-    │
-    └── 执行引擎
-            ├── 解析节点依赖关系
-            ├── 拓扑排序
-            └── 顺序执行节点
+### 9.2 当前必须处理的安全债务
+
+以下属于部署前 P0，而不是目标状态：
+
+1. `application.yml` 和开发 `docker-compose.yml` 仍包含可用的主机地址、数据库密码、MinIO 密钥、JWT 默认密钥或模型 Key 默认值，必须迁移到环境变量/Secret Manager，并立即轮换已经暴露的密钥。
+2. 生产环境禁止提供弱默认密码；缺少必要 Secret 时应启动失败。
+3. Webhook 当前更接近系统级配置，应明确管理员权限，或增加 `user_id/tenant_id` 隔离。
+4. 对评测实验调度增加多实例租约，避免水平扩容后重复启动实验。
+5. 日志需要统一脱敏策略，禁止记录 Prompt 中的凭据、完整个人信息和业务敏感响应。
+
+## 10. 部署与运行架构
+
+### 10.1 当前部署
+
+```mermaid
+flowchart TB
+    Client[Browser] --> Nginx[Nginx / Vue 静态资源]
+    Nginx --> Backend[rag-backend :8989]
+    Backend --> MySQL[(MySQL 8)]
+    Backend --> Redis[(Redis 6+)]
+    Backend --> ES[(Elasticsearch 8)]
+    Backend --> Neo4j[(Neo4j)]
+    Backend --> MinIO[(MinIO)]
+    Backend --> Models[外部模型服务]
 ```
 
----
+`docker-compose.yml` 只编排前后端，基础数据服务当前由外部环境提供。后端 Actuator 仅暴露 health；前端容器通过 Nginx 提供静态文件与 API 代理。
 
-## 4. 数据库设计
+### 10.2 扩展策略
 
-### 4.1 MySQL 表结构
+- 前端可无状态水平扩展。
+- 后端大部分请求可无状态扩展，但应用内任务和调度需要分布式抢占后才能安全多副本。
+- Elasticsearch 索引按知识库过滤；大规模租户场景需要进一步评估共享索引、按租户索引或冷热分层。
+- 文档处理、图谱构建、评测和 Agent 长任务达到一定量级后，可优先抽离为 Worker，而不是立刻拆分所有业务服务。
 
-#### 核心业务表
-| 表名 | 说明 |
-|------|------|
-| user | 用户表 |
-| role | 角色表 |
-| user_role | 用户角色关联表 |
-| knowledge_base | 知识库表 |
-| knowledge_document | 文档表 |
-| knowledge_chunk | 文档分块表 |
-| knowledge_document_relation | 文档知识库关联表 |
-| knowledge_base_tag | 知识库标签关联表 |
-| chat_history | 对话历史表 |
-| chat_session | 对话会话表 |
-| model_config | 模型配置表 |
-| prompt_template | Prompt模板表 |
-| workflow | 工作流表 |
-| scheduled_task | 定时任务表 |
-| webhook_config | Webhook配置表 |
-| sensitive_word | 敏感词表 |
-| tag | 标签表 |
-| announcement | 公告表 |
-| qa_feedback | 问答评价表 |
-| memory_abstract | 记忆摘要表 |
+## 11. 可观测性与质量保障
 
-### 4.2 Elasticsearch 索引
+### 11.1 当前能力
 
-#### 向量存储索引 (sdh-rag-index)
-```json
-{
-  "mappings": {
-    "properties": {
-      "id": { "type": "keyword" },
-      "content": { "type": "text" },
-      "embedding": { 
-        "type": "dense_vector",
-        "dims": 1536,
-        "similarity": "cosine"
-      },
-      "metadata": {
-        "properties": {
-          "document_id": { "type": "long" },
-          "knowledge_id": { "type": "long" },
-          "chunk_index": { "type": "integer" },
-          "file_type": { "type": "keyword" }
-        }
-      }
-    }
-  }
-}
-```
+- Spring Boot Actuator 健康检查。
+- 操作日志、API 调用日志、Token 用量、同步审计。
+- Agent Run/Step/Action 轨迹。
+- 知识发布记录与回归门禁结果。
+- RAG 分层评测、实验批次、失败归因和人工复核。
+- 后端单元测试与前端生产构建校验。
 
-#### 记忆索引 (sdh-memory-index)
-```json
-{
-  "mappings": {
-    "properties": {
-      "id": { "type": "keyword" },
-      "userId": { "type": "long" },
-      "type": { "type": "keyword" },
-      "content": { "type": "text", "analyzer": "ik_max_word" },
-      "embedding": { 
-        "type": "dense_vector",
-        "dims": 1536,
-        "similarity": "cosine"
-      },
-      "importance": { "type": "integer" },
-      "accessCount": { "type": "integer" },
-      "lastAccessAt": { "type": "date" },
-      "createdAt": { "type": "date" }
-    }
-  }
-}
-```
+### 11.2 目标能力
 
-### 4.3 Neo4j 图谱结构
+- OpenTelemetry Trace 串联“HTTP → 检索 → 模型 → 工具 → 存储”。
+- Micrometer/Prometheus 指标覆盖延迟、错误率、Token、模型成本、召回空结果、队列积压和调度延迟。
+- 统一 `trace_id/run_id/task_id`，支持从用户投诉定位到检索结果、Prompt、工具调用和发布版本。
+- 数据库迁移集成测试、真实 Elasticsearch 检索契约测试、外部连接器 Mock Server 测试。
+- 前端关键闭环 E2E：知识发布、评测实验、Agent 审批与续跑。
 
-#### 节点标签
-- `DocumentNode` - 文档节点
-- `EntityNode` - 实体节点
-- `ConceptNode` - 概念节点
-- `KeywordNode` - 关键词节点
+## 12. 架构演进路线
 
-#### 关系类型
-- `CONTAINS` - 文档包含实体/概念/关键词
-- `RELATED_TO` - 实体间关联关系
+### P0：生产安全与配置治理
 
-#### 用户行为模式节点 (Pattern Memory)
-```
-(User)──[:HAS_PATTERN]──>(BehaviorPattern)
-   │
-   ├──[:PREFERS]──>(Preference)
-   │
-   └──[:FAMILIAR_WITH]──>(Topic)
+- 清理仓库中的明文凭据和弱默认值，轮换现有密钥。
+- 按 dev/test/prod 分离配置，接入 Secret Manager。
+- 明确 Webhook、模型配置和系统任务的管理员/租户边界。
 
-节点属性:
-- BehaviorPattern: name, description, confidence, observedCount
-- Preference: name, value
-- Topic: name, level
-```
+### P1：可靠任务与可观测性
 
----
+- 建立统一 Job/Worker 模型：数据库原子抢占、租约、心跳、重试、取消和死信。
+- 使用 Transactional Outbox 连接“事务提交”和“异步副作用”，覆盖索引、Webhook、评测和 Agent 恢复。
+- 建立 OpenTelemetry、指标面板和成本预算告警。
 
-## 5. API 接口设计
+### P2：质量与 Agent Evaluation
 
-### 5.1 接口规范
+- 补齐任务完成率、工具选择准确率、参数正确率、无效调用率和安全策略命中率。
+- Agent 失败轨迹一键转成回归场景，并进入实验与发布门禁。
+- 支持成对评审、盲测和多评审模型校准，降低 LLM-as-Judge 偏差。
 
-#### 统一响应格式
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {}
-}
-```
+### P3：边界清晰后的服务化
 
-#### 分页响应格式
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "records": [],
-    "total": 100,
-    "current": 1,
-    "size": 10
-  }
-}
-```
+优先保持模块化单体。只有当团队、吞吐或故障隔离需求明确时，按以下自然边界抽离：
 
-### 5.2 主要接口列表
+1. 文档加工与索引 Worker。
+2. 评测与实验 Worker。
+3. Agent 工具执行与审批服务。
+4. 外部知识连接器运行时。
 
-#### 用户模块
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | /api/user/login | 用户登录 |
-| POST | /api/user/register | 用户注册 |
-| GET | /api/user/info | 获取用户信息 |
-| POST | /api/user/logout | 用户登出 |
-| POST | /api/user/profile | 更新个人资料 |
-| POST | /api/user/password | 修改密码 |
-| POST | /api/user/avatar | 上传头像 |
-| GET | /api/user/stats | 获取用户统计 |
+拆分前先建立领域事件、幂等协议、统一身份和可观测性，避免形成分布式单体。
 
-#### 知识库模块
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/knowledge/list | 知识库列表 |
-| GET | /api/knowledge/{id} | 知识库详情 |
-| POST | /api/knowledge | 创建知识库 |
-| PUT | /api/knowledge/{id} | 更新知识库 |
-| DELETE | /api/knowledge/{id} | 删除知识库 |
-| POST | /api/knowledge/{id}/documents | 关联文档 |
-| GET | /api/knowledge/{id}/stats | 知识库统计 |
+## 13. 关键架构决策
 
-#### 对话模块
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | /api/chat/ask | 发起对话 |
-| GET | /api/chat/sessions | 会话列表 |
-| DELETE | /api/chat/sessions/{id} | 删除会话 |
-| GET | /api/chat/history/{sessionId} | 对话历史 |
+| 决策 | 选择 | 原因 |
+|---|---|---|
+| 应用结构 | 模块化单体优先 | 当前领域仍在快速演进，保持事务与交付效率 |
+| 检索存储 | Elasticsearch | 同时提供 BM25、向量 KNN、过滤和摘要索引 |
+| 图谱存储 | Neo4j | 适合实体关系和模式记忆遍历 |
+| 文档存储 | MinIO + MySQL 元数据 | 大对象与业务元数据职责分离 |
+| 评测数据 | 版本化数据集 + 任务快照 | 保证历史结果可复现 |
+| Agent 动作 | 工具注册 + 风险审批 + 幂等执行 | 让模型建议与真实副作用解耦 |
+| 知识发布 | 草稿审核 + 索引 + 回归门禁 | 防止未经验证内容直接污染线上知识 |
+| 服务拆分 | 按负载和故障边界渐进抽离 | 避免为“微服务”而微服务 |
 
-#### 图谱模块
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/graph/data | 获取图谱数据 |
-| GET | /api/graph/nodes | 搜索节点 |
-| GET | /api/graph/path | 最短路径 |
-| GET | /api/graph/stats | 统计信息 |
-| POST | /api/graph/build/knowledge/{id} | 构建知识库图谱 |
-| GET | /api/graph/task/{taskId} | 获取构建任务状态 |
+## 14. 文档导航
 
-#### 记忆模块
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/memory/overview | 获取用户记忆概览 |
-| POST | /api/memory/preference | 手动添加偏好 |
-| DELETE | /api/memory/{memoryId} | 删除记忆 |
-| GET | /api/memory/search | 搜索记忆 |
-| DELETE | /api/memory/all | 清除所有记忆 |
+- [产品设计文档](PRODUCT_DESIGN_DOCUMENT.md)：用户、功能与页面设计。
+- [RAG 检索设计](rag-retrieval-design.md)：查询改写、混合检索、RRF 与 Rerank。
+- [知识源连接器](knowledge-source-connectors.md)：API Push、API Key、REST JSON 与可靠调度。
+- [知识发布流水线](knowledge-publishing-pipeline.md)：审核、索引、门禁和回滚。
+- [分层 RAG 评测](layered-rag-evaluation-implementation.md)：指标、数据集、实验和人工校准。
+- [RAG 质量路线图](rag-quality-operations-roadmap.md)：质量运营阶段与验收状态。
+- [Agent 业务闭环](agent-business-loop.md)：工具、审批、轨迹、反馈和知识改进。
 
----
+## 15. 代码导航
 
-## 6. 前端路由设计
+| 能力 | 主要入口 |
+|---|---|
+| RAG 检索 | `RagSearchServiceImpl`、`VectorStoreServiceImpl`、`SummaryIndexServiceImpl`、`RerankServiceImpl` |
+| 问答与记忆 | `ChatServiceImpl`、`MemoryOrchestrator` |
+| 知识源 | `KnowledgeSourceService`、`KnowledgeSourceSyncCoordinator`、`KnowledgeSourceConnectorRegistry` |
+| 知识发布 | `KnowledgePublishingService`、`KnowledgePublishingController` |
+| RAG 评测 | `EvaluationServiceImpl`、`EvaluationOperationsServiceImpl` |
+| 评测实验 | `EvaluationExperimentServiceImpl`、`EvaluationExperimentController` |
+| Agent | `AgentAskService`、`AgentToolService`、`AgentActionService`、`AgentOpsService` |
+| 工作流 | `WorkflowEngine`、`WorkflowExecutionService` |
+| 资源权限 | `KnowledgeAccessService`、JWT Interceptor、`UserContext` |
 
-### 6.1 路由配置
-```typescript
-const routes = [
-  { path: '/login', name: 'Login', component: Login },
-  { path: '/register', name: 'Register', component: Register },
-  {
-    path: '/',
-    component: MainLayout,
-    redirect: '/dashboard',
-    children: [
-      { path: 'dashboard', name: 'Dashboard', meta: { permission: '/dashboard' } },
-      { path: 'knowledge', name: 'KnowledgeBase', meta: { permission: '/knowledge' } },
-      { path: 'knowledge/:id', name: 'KnowledgeBaseDetail', meta: { hidden: true } },
-      { path: 'document', name: 'Document', meta: { permission: '/document' } },
-      { path: 'chat', name: 'Chat', meta: { permission: '/chat' } },
-      { path: 'graph', name: 'Graph', meta: { permission: '/graph' } },
-      { path: 'workflow', name: 'Workflow', meta: { permission: '/workflow' } },
-      { path: 'model', name: 'Model', meta: { permission: '/model' } },
-      { path: 'user', name: 'User', meta: { permission: '/user' } },
-      { path: 'role', name: 'Role', meta: { permission: '/role' } },
-      { path: 'tag', name: 'Tag', meta: { permission: '/tag' } },
-      { path: 'stats', name: 'Stats', meta: { permission: '/stats' } },
-      { path: 'hotwords', name: 'Hotwords', meta: { permission: '/hotwords' } },
-      { path: 'feedback', name: 'Feedback', meta: { permission: '/feedback' } },
-      { path: 'log', name: 'Log', meta: { permission: '/log' } },
-      { path: 'memory', name: 'Memory', meta: { permission: '/memory' } },
-      { path: 'sensitive', name: 'Sensitive', meta: { permission: '/sensitive' } },
-      { path: 'announcement', name: 'Announcement', meta: { permission: '/announcement' } },
-      { path: 'settings', name: 'Settings', meta: { permission: '/settings' } },
-      { path: 'scheduled-task', name: 'ScheduledTask', meta: { permission: '/scheduled-task' } },
-      { path: 'webhook', name: 'Webhook', meta: { permission: '/webhook' } },
-      { path: 'voice', name: 'Voice', meta: { permission: '/voice' } },
-      { path: 'prompt', name: 'Prompt', meta: { permission: '/prompt' } },
-      { path: 'session', name: 'Session', meta: { permission: '/session' } },
-      { path: 'nlp-query', name: 'NlpQuery', meta: { permission: '/nlp-query' } },
-      { path: 'profile', name: 'Profile', meta: { hidden: true } },
-    ]
-  }
-]
-```
-
----
-
-## 7. 部署架构
-
-### 7.1 开发环境
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      开发机器                                │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │  Frontend:3000  │  │  Backend:8989   │                  │
-│  │  (Vite Dev)     │  │  (Spring Boot)  │                  │
-│  └────────┬────────┘  └────────┬────────┘                  │
-│           │                    │                            │
-│           └────────────────────┘                            │
-│                    │                                         │
-└────────────────────┼─────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   外部服务 (192.168.2.128)                   │
-├─────────────────────────────────────────────────────────────┤
-│  MySQL:3306 │ Redis:6379 │ ES:9200 │ Neo4j:7687 │ MinIO:9000 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 7.2 生产环境 (推荐)
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      负载均衡 (Nginx)                        │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-        ▼                ▼                ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│  Frontend     │ │  Frontend     │ │  Frontend     │
-│  (Nginx)      │ │  (Nginx)      │ │  (Nginx)      │
-└───────────────┘ └───────────────┘ └───────────────┘
-        │                │                │
-        └────────────────┼────────────────┘
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-        ▼                ▼                ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│  Backend      │ │  Backend      │ │  Backend      │
-│  (Spring Boot)│ │  (Spring Boot)│ │  (Spring Boot)│
-└───────────────┘ └───────────────┘ └───────────────┘
-        │                │                │
-        └────────────────┼────────────────┘
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-        ▼                ▼                ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│  MySQL        │ │  Redis        │ │  ES Cluster   │
-│  (主从)       │ │  (Cluster)    │ │               │
-└───────────────┘ └───────────────┘ └───────────────┘
-        │
-        ▼
-┌───────────────┐ ┌───────────────┐
-│  Neo4j        │ │  MinIO        │
-│  (Cluster)    │ │  (Cluster)    │
-└───────────────┘ └───────────────┘
-```
-
----
-
-## 8. 技术亮点
-
-### 8.1 Spring AI 集成
-- 使用 Spring AI Advisor Chain 实现 RAG 流程
-- 支持对话记忆 (MySQL 存储)
-- 支持 Token 使用统计
-- 支持模型观测
-
-### 8.2 混合检索
-- 向量检索 (语义相似度)
-- 关键词检索 (精确匹配)
-- 融合排序 + Rerank 重排
-
-### 8.3 知识图谱
-- LLM 自动提取实体、关系、概念、关键词
-- 按知识库隔离存储
-- 异步构建 + 任务状态追踪
-
-### 8.4 工作流编排
-- 可视化流程设计 (@vue-flow)
-- 多种节点类型支持
-- 灵活的节点配置
-
-### 8.5 分层记忆系统
-- 五层记忆架构（Working、Episodic、Semantic、Pattern、Abstract）
-- 跨会话记忆，记住用户偏好和历史对话
-- LLM 智能提取偏好、事实、行为模式
-- 语义边界检测，自动触发摘要生成
-- 记忆衰减机制，按重要性自动清理过期记忆
-- 用户可控的记忆开关和记忆管理页面
-
----
-
-## 9. 配置说明
-
-### 9.1 后端配置 (application.yml)
-```yaml
-server:
-  port: 8989
-
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/sdh_rag
-    username: root
-    password: root
-  
-  data:
-    redis:
-      host: localhost
-      port: 6379
-  
-  elasticsearch:
-    uris: localhost:9200
-  
-  neo4j:
-    uri: bolt://localhost:7687
-    authentication:
-      username: neo4j
-      password: password
-
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
-
-minio:
-  endpoint: http://localhost:9000
-  access-key: admin
-  secret-key: password
-  bucket-name: sdh-documents
-
-knowledge:
-  default:
-    chunk-size: 500
-    chunk-overlap: 50
-    embeddingModel: text-embedding-v3
-    rankModel: qwen3-rerank
-
-# 记忆系统配置
-memory:
-  enabled: true                              # 是否启用记忆系统
-  working-window-size: 10                    # 工作记忆窗口大小
-  working-memory-ttl-hours: 1                # 工作记忆过期时间(小时)
-  semantic-similarity-threshold: 0.75        # 语义记忆相似度阈值
-  semantic-dedup-threshold: 0.9              # 语义记忆去重阈值
-  pattern-min-observations: 3                # 模式记忆最小观察次数
-  preference-importance-threshold: 5         # 偏好提取重要性阈值
-  boundary-detection-window-size: 3          # 语义边界检测窗口
-  summary-max-messages: 20                   # 摘要最大消息数阈值
-  decay-cron: "0 0 3 * * ?"                  # 记忆衰减任务Cron
-  memory-index-name: "sdh-memory-index"      # ES记忆索引名称
-  working-memory-key-prefix: "memory:working:" # Redis工作记忆Key前缀
-```
-
-### 9.2 前端配置 (.env)
-```env
-VITE_API_BASE_URL=/api
-VITE_APP_TITLE=SDH-RAG 知识库管理系统
-```
-
----
-
-## 10. 目录索引
-
-### 10.1 后端核心文件
-| 文件 | 说明 |
-|------|------|
-| `controller/ChatController.java` | 对话接口 |
-| `controller/KnowledgeBaseController.java` | 知识库接口 |
-| `controller/GraphController.java` | 图谱接口 |
-| `controller/MemoryController.java` | 记忆管理接口 |
-| `service/impl/RagSearchServiceImpl.java` | RAG检索实现 |
-| `service/impl/GraphBuildServiceImpl.java` | 图谱构建实现 |
-| `advisor/rag/RagAdvisorFactory.java` | RAG Advisor工厂 |
-| `graph/extractor/impl/LLMEntityExtractor.java` | LLM实体提取 |
-| `memory/orchestrator/MemoryOrchestrator.java` | 记忆编排器 |
-| `memory/orchestrator/MemoryAssembler.java` | 记忆组装器 |
-| `memory/layer/SemanticMemoryLayer.java` | 语义记忆层(ES) |
-| `memory/extractor/PreferenceExtractor.java` | 偏好提取器 |
-
-### 10.2 前端核心文件
-| 文件 | 说明 |
-|------|------|
-| `views/chat/index.vue` | 智能问答页面 |
-| `views/knowledge-base/detail.vue` | 知识库详情页 |
-| `views/graph/index.vue` | 知识图谱页面 |
-| `views/workflow/index.vue` | 工作流编排页面 |
-| `views/memory/index.vue` | 记忆中心页面 |
-| `stores/user.ts` | 用户状态管理 |
-| `stores/chat.ts` | 聊天状态管理（含记忆开关） |
-| `stores/memory.ts` | 记忆状态管理 |
-| `utils/request.ts` | HTTP请求封装 |
-
----
-
-*文档版本: 1.1*
-*更新日期: 2026-04-27*

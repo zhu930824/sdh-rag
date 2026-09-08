@@ -47,21 +47,30 @@ class EvaluationQualityServiceTest {
         task.setId(1L);
         task.setKnowledgeId(7L);
         when(tasks.selectList(any())).thenReturn(List.of(task));
+        EvaluationQa unlabeled = qa(15L, false, false, false, "[\"d\"]", "open");
+        unlabeled.setSourceChunkId(null);
+        unlabeled.setSourceDocumentId(null);
+        EvaluationQa hallucination = qa(16L, false, true, true, "[\"e\"]", "open");
+        hallucination.setSourceChunkId(null);
+        hallucination.setSourceDocumentId(null);
+        hallucination.setFailureCategory("HALLUCINATION");
         when(qaMapper.selectList(any())).thenReturn(List.of(
                 qa(11L, false, false, false, "[]", "open"),
                 qa(12L, false, false, true, "[\"a\"]", "resolved"),
                 qa(13L, true, false, false, "[\"b\"]", "ignored"),
-                qa(14L, false, true, true, "[\"c\"]", "open")
+                qa(14L, false, true, true, "[\"c\"]", "open"),
+                unlabeled,
+                hallucination
         ));
 
         var report = service.getQualityReport(7L, 30);
 
-        assertEquals(4, report.totalQuestions());
+        assertEquals(6, report.totalQuestions());
         assertEquals(2, report.chunkMisses());
         assertEquals(1, report.documentMisses());
         assertEquals(1, report.negativeFalsePositives());
-        assertEquals(1, report.openIssues());
-        assertEquals(3, report.issues().size());
+        assertEquals(2, report.openIssues());
+        assertEquals(4, report.issues().size());
         assertEquals(3, report.recommendations().size());
         verify(access).requireRead(7L, 8L);
     }
@@ -93,6 +102,10 @@ class EvaluationQualityServiceTest {
         qa.setDocHit(docHit);
         qa.setRetrievedChunkIds(retrieved);
         qa.setIssueStatus(status);
+        if (!negative) {
+            qa.setSourceChunkId("chunk-" + id);
+            qa.setSourceDocumentId(id);
+        }
         return qa;
     }
 }

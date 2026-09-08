@@ -33,12 +33,27 @@
         <span>知识图谱</span>
       </a-menu-item>
 
+      <a-menu-item key="/evaluation">
+        <template #icon><RadarChartOutlined /></template>
+        <span>检索评估</span>
+      </a-menu-item>
+
+      <a-menu-item key="/evaluation-lab">
+        <template #icon><ExperimentOutlined /></template>
+        <span>评测实验室</span>
+      </a-menu-item>
+
       <div class="menu-divider" />
 
       <!-- Tools -->
       <a-menu-item key="/workflow">
         <template #icon><ForkOutlined /></template>
         <span>工作流编排</span>
+      </a-menu-item>
+
+      <a-menu-item key="/knowledge-publishing">
+        <template #icon><FileDoneOutlined /></template>
+        <span>知识审核与发布</span>
       </a-menu-item>
 
       <a-menu-item key="/agent-tools">
@@ -49,6 +64,11 @@
       <a-menu-item key="/agent-actions">
         <template #icon><SafetyCertificateOutlined /></template>
         <span>Agent审批与执行</span>
+      </a-menu-item>
+
+      <a-menu-item key="/agent-ops">
+        <template #icon><FundProjectionScreenOutlined /></template>
+        <span>Agent运营与改进</span>
       </a-menu-item>
 
       <a-menu-item key="/model">
@@ -139,6 +159,10 @@ import {
   TagsOutlined,
   AudioOutlined,
   SafetyCertificateOutlined,
+  FundProjectionScreenOutlined,
+  FileDoneOutlined,
+  RadarChartOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons-vue'
 
 const emit = defineEmits<{

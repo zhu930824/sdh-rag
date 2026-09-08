@@ -17,6 +17,7 @@ import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -26,8 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /**
@@ -72,12 +72,10 @@ public class WorkflowEngine {
     @Lazy
     private WorkflowService workflowService;
 
-    /** 后台续跑线程池(审批通过后自动续跑工作流) */
-    private static final ExecutorService RESUME_POOL = Executors.newCachedThreadPool(r -> {
-        Thread thread = new Thread(r, "workflow-resume");
-        thread.setDaemon(true);
-        return thread;
-    });
+    /** 后台续跑使用有界共享线程池，避免审批高峰创建无限线程。 */
+    @Autowired
+    @Qualifier("workflowExecutor")
+    private Executor workflowExecutor;
 
     // 执行记录状态(引擎统一大写语义)
     private static final String EXEC_RUNNING = "RUNNING";
@@ -162,7 +160,7 @@ public class WorkflowEngine {
                 log.warn("后台续跑失败:执行记录 {} 不存在", executionRowId);
                 return;
             }
-            RESUME_POOL.execute(() -> {
+            workflowExecutor.execute(() -> {
                 try {
                     resume(executionRowId, execution.getUserId(), null, nodeOverrides);
                     log.info("工作流执行后台续跑完成 executionId={}", executionRowId);

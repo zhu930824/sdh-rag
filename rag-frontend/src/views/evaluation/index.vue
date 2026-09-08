@@ -2,6 +2,27 @@
   <div class="evaluation-page">
     <!-- Tab 切换 -->
     <a-card style="margin-bottom: 16px">
+      <a-alert type="info" show-icon class="evaluation-guide-tip" message="推荐顺序：先跑检索评测，再跑生成/完整评测；Full 模式会调用评审模型，成本和耗时更高。" />
+      <div class="evaluation-config">
+        <a-form layout="inline">
+          <a-form-item label="评测层级">
+            <a-select v-model:value="runConfig.evaluationMode" style="width: 150px">
+              <a-select-option value="RETRIEVAL">检索评测</a-select-option>
+              <a-select-option value="GENERATION">生成评测</a-select-option>
+              <a-select-option value="FULL">完整评测</a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="Top K"><a-input-number v-model:value="runConfig.topK" :min="1" :max="20" /></a-form-item>
+          <a-form-item v-if="runConfig.evaluationMode !== 'RETRIEVAL'" label="评审模型">
+            <a-input v-model:value="runConfig.judgeModel" placeholder="留空使用默认模型" style="width: 180px" />
+          </a-form-item>
+          <a-form-item label="对比基线">
+            <a-select v-model:value="runConfig.baselineTaskId" allow-clear placeholder="不对比" style="width: 220px">
+              <a-select-option v-for="task in baselineOptions" :key="task.id" :value="task.id">#{{ task.id }} {{ task.taskName }}</a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-form>
+      </div>
       <a-tabs v-model:activeKey="activeTab">
         <a-tab-pane key="generate" tab="生成测试集">
           <a-form layout="inline" :model="generateForm">
@@ -110,6 +131,7 @@
                 <div class="dataset-desc">{{ ds.description || '暂无描述' }}</div>
                 <div class="dataset-stats">
                   <a-tag color="blue">{{ ds.itemCount }} 条问题</a-tag>
+                  <a-tag color="purple">v{{ ds.version || 1 }}</a-tag>
                   <a-tag v-if="ds.negativeCount > 0" color="orange">{{ ds.negativeCount }} 条负样本</a-tag>
                 </div>
                 <div class="dataset-actions">
@@ -123,6 +145,7 @@
                     运行评估
                   </a-button>
                   <a-button size="small" @click="handlePreviewDataset(ds)">预览</a-button>
+                  <a-button size="small" @click="handleCloneDataset(ds)" v-if="ds.datasetType === 'builtin'">复制并标注</a-button>
                   <a-button size="small" @click="handleEditDataset(ds)" v-if="ds.datasetType !== 'builtin'">编辑</a-button>
                   <a-popconfirm title="确定删除此数据集？" @confirm="handleDeleteDataset(ds)" v-if="ds.datasetType !== 'builtin'">
                     <a-button size="small" danger>删除</a-button>
@@ -154,8 +177,14 @@
             <a-tag :color="datasetTypeColor(record.datasetType)">{{ datasetTypeText(record.datasetType) }}</a-tag>
           </template>
           <template v-else-if="column.key === 'hitRate'">
-            <span v-if="record.hitRate !== null">{{ (record.hitRate * 100).toFixed(1) }}%</span>
+            <span v-if="record.recallAtK != null">{{ (record.recallAtK * 100).toFixed(1) }}%</span>
             <span v-else>-</span>
+          </template>
+          <template v-else-if="column.key === 'faithfulness'">
+            <span v-if="record.faithfulness != null">{{ (record.faithfulness * 100).toFixed(1) }}%</span><span v-else>-</span>
+          </template>
+          <template v-else-if="column.key === 'regressionStatus'">
+            <a-tag :color="record.regressionStatus === 'PASSED' ? 'green' : record.regressionStatus === 'FAILED' ? 'red' : 'default'">{{ regressionText(record.regressionStatus) }}</a-tag>
           </template>
           <template v-else-if="column.key === 'negativeHitRate'">
             <span v-if="record.negativeCount > 0 && record.negativeHitRate !== null">
@@ -193,6 +222,7 @@
                   <h2 class="task-name">{{ currentTask.taskName || '未命名任务' }}</h2>
                   <div class="task-meta">
                     <span class="meta-dot"><DatabaseOutlined /> {{ currentTask.knowledgeName || '未知知识库' }}</span>
+                    <span v-if="currentTask.datasetId" class="meta-dot">数据集 #{{ currentTask.datasetId }} · v{{ currentTask.datasetVersion || 1 }}</span>
                     <span class="meta-separator">|</span>
                     <span class="meta-dot"><ClockCircleOutlined /> {{ currentTask.createTime }}</span>
                     <span class="meta-separator">|</span>
@@ -213,6 +243,21 @@
               </a-button>
             </div>
           </div>
+        </div>
+
+        <div class="layered-metrics-panel">
+          <div class="panel-title">检索层指标（Top {{ currentTask.topK || 5 }}，已标注 {{ currentTask.labeledCount || 0 }} 条）</div>
+          <a-alert v-if="!currentTask.labeledCount" type="warning" show-icon message="当前数据集没有相关文档标注，经典检索指标不会参与统计。" style="margin-bottom: 12px" />
+          <a-row :gutter="12">
+            <a-col v-for="metric in retrievalMetrics" :key="metric.label" :span="6"><a-statistic :title="metric.label" :value="metric.value" :precision="3" /></a-col>
+          </a-row>
+        </div>
+
+        <div v-if="currentTask.evaluationMode === 'GENERATION' || currentTask.evaluationMode === 'FULL'" class="layered-metrics-panel">
+          <div class="panel-title">生成层指标（LLM-as-Judge，已评审 {{ currentTask.judgedCount || 0 }} 条）</div>
+          <a-row :gutter="12">
+            <a-col v-for="metric in generationMetrics" :key="metric.label" :span="6"><a-statistic :title="metric.label" :value="metric.value * 100" suffix="%" :precision="1" /></a-col>
+          </a-row>
         </div>
 
         <!-- 核心指标 -->
@@ -348,6 +393,8 @@
                 <span v-else-if="record.docHitRank" class="text-muted">D{{ record.docHitRank }}</span>
                 <span v-else class="text-muted">-</span>
               </template>
+              <template v-else-if="column.key === 'recallAtK'"><span v-if="record.recallAtK != null">{{ (record.recallAtK * 100).toFixed(0) }}%</span><span v-else>-</span></template>
+              <template v-else-if="column.key === 'faithfulness'"><span v-if="record.faithfulness != null">{{ (record.faithfulness * 100).toFixed(0) }}%</span><span v-else>-</span></template>
               <template v-else-if="column.key === 'question'">
                 <a-tooltip :title="record.question">
                   <span class="text-ellipsis">{{ record.question }}</span>
@@ -400,6 +447,13 @@
           <a-descriptions-item label="检索到的分块IDs" :span="2">
             <a-typography-text copyable>{{ selectedQa.retrievedChunkIds || '-' }}</a-typography-text>
           </a-descriptions-item>
+          <a-descriptions-item label="相关文档标注" :span="2">{{ selectedQa.relevanceJudgments || selectedQa.expectedDocumentIds || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="实际答案" :span="2">{{ selectedQa.actualAnswer || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="忠实度 / 相关性">{{ scoreText(selectedQa.faithfulness) }} / {{ scoreText(selectedQa.answerRelevancy) }}</a-descriptions-item>
+          <a-descriptions-item label="完整性 / 流畅性">{{ scoreText(selectedQa.completeness) }} / {{ scoreText(selectedQa.fluency) }}</a-descriptions-item>
+          <a-descriptions-item label="评审理由" :span="2">{{ selectedQa.judgeReason || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="失败归因">{{ failureText(selectedQa.failureCategory) }}</a-descriptions-item>
+          <a-descriptions-item label="改进建议">{{ selectedQa.failureSuggestion || '-' }}</a-descriptions-item>
         </a-descriptions>
       </template>
     </a-modal>
@@ -464,7 +518,12 @@
               </span>
             </a-tooltip>
           </template>
+          <template v-else-if="column.key === 'labels'">
+            <a-tag v-if="hasLabels(record)" color="blue">已标注</a-tag>
+            <span v-else class="text-muted">未标注</span>
+          </template>
           <template v-else-if="column.key === 'action'">
+            <a-button v-if="editingDataset && editingDataset.datasetType !== 'builtin'" type="link" size="small" @click="showEditItemModal(record)">标注</a-button>
             <a-popconfirm v-if="editingDataset && editingDataset.datasetType !== 'builtin'" title="确定删除此问题？" @confirm="handleRemoveItem(record)">
               <a-button type="link" size="small" danger>删除</a-button>
             </a-popconfirm>
@@ -474,7 +533,7 @@
     </a-modal>
 
     <!-- 添加单个问题 模态框 -->
-    <a-modal v-model:open="addItemVisible" title="添加问题" @ok="handleAddItem" :confirm-loading="addingItem">
+    <a-modal v-model:open="addItemVisible" :title="editingDatasetItem ? '编辑问题与标注' : '添加问题'" @ok="handleAddItem" :confirm-loading="addingItem">
       <a-form layout="vertical">
         <a-form-item label="问题" required>
           <a-textarea v-model:value="newItemForm.question" placeholder="请输入问题内容" :rows="2" />
@@ -486,6 +545,18 @@
           <a-switch v-model:checked="newItemForm.isNegative" />
           <span style="margin-left: 8px; color: #999;">负样本的答案不在知识库中</span>
         </a-form-item>
+        <a-alert v-if="!datasetForm.knowledgeId" type="warning" show-icon message="请先在测试数据集页选择目标知识库，才能可视化选择文档和分块。" style="margin-bottom:12px" />
+        <a-form-item label="相关文档" extra="支持多选；选择后为每篇文档设置 1-3 级相关性。">
+          <a-select v-model:value="newItemForm.expectedDocumentIds" mode="multiple" show-search option-filter-prop="label" :options="labelDocumentOptions" :loading="loadingLabelOptions" :disabled="!datasetForm.knowledgeId" placeholder="搜索并选择知识库文档" @change="syncRelevanceGrades" />
+        </a-form-item>
+        <a-form-item v-if="newItemForm.expectedDocumentIds.length" label="相关性等级">
+          <div class="relevance-list"><div v-for="documentId in newItemForm.expectedDocumentIds" :key="documentId" class="relevance-row"><span>{{ documentTitle(documentId) }}</span><a-input-number v-model:value="newItemForm.relevanceJudgments[String(documentId)]" :min="1" :max="3" /></div></div>
+        </a-form-item>
+        <a-form-item label="标准来源分块" extra="可选，用于精确分块命中评测。">
+          <a-select v-model:value="newItemForm.sourceChunkId" allow-clear show-search option-filter-prop="label" :options="labelChunkOptions" :loading="loadingLabelOptions" :disabled="!datasetForm.knowledgeId" placeholder="选择最能直接回答问题的分块" />
+        </a-form-item>
+        <a-form-item label="场景 / 难度"><a-input-group compact><a-input v-model:value="newItemForm.category" placeholder="semantic / multi_hop" style="width:65%" /><a-select v-model:value="newItemForm.difficulty" style="width:35%"><a-select-option value="EASY">简单</a-select-option><a-select-option value="MEDIUM">中等</a-select-option><a-select-option value="HARD">困难</a-select-option></a-select></a-input-group></a-form-item>
+        <a-form-item label="业务线 / 用户角色" extra="用于评测实验室中的业务切片统计。"><a-input-group compact><a-input v-model:value="newItemForm.businessLine" placeholder="例如：售后服务" style="width:50%" /><a-input v-model:value="newItemForm.userRole" placeholder="例如：一线客服" style="width:50%" /></a-input-group></a-form-item>
       </a-form>
     </a-modal>
 
@@ -516,7 +587,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   DatabaseOutlined, ClockCircleOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined,
@@ -527,14 +598,15 @@ import {
   generateTestset, getEvaluationList, getEvaluationQaList, deleteEvaluationTask,
   importTestset, downloadTemplate, exportEvaluationReport,
 } from '@/api/evaluation'
-import { getKnowledgeBaseList } from '@/api/knowledgeBase'
+import { getKnowledgeBaseList, getKnowledgeBaseDocuments, getKnowledgeBaseChunks, type KnowledgeDocumentVO, type KnowledgeChunk } from '@/api/knowledgeBase'
 import type { TestDataset, TestDatasetItem } from '@/api/dataset'
 import {
-  getDatasetList, getDatasetItems, createDataset, updateDataset, deleteDataset,
-  addDatasetItem, removeDatasetItem, importDataset, runDatasetEvaluation,
+  getDatasetList, getDatasetItems, createDataset, updateDataset, deleteDataset, cloneDataset,
+  addDatasetItem, addDatasetItems, updateDatasetItem, removeDatasetItem, importDataset, runDatasetEvaluation,
 } from '@/api/dataset'
 
 const activeTab = ref('generate')
+const runConfig = reactive({ evaluationMode: 'RETRIEVAL' as 'RETRIEVAL'|'GENERATION'|'FULL', topK: 5, judgeModel: '', baselineTaskId: undefined as number|undefined })
 const knowledgeBases = ref<any[]>([])
 const loadingKbList = ref(false)
 const generating = ref(false)
@@ -572,11 +644,15 @@ const currentDatasetName = ref('')
 const currentDatasetItems = ref<TestDatasetItem[]>([])
 const loadingDatasetItems = ref(false)
 const editingDataset = ref<TestDataset | null>(null)
+const editingDatasetItem = ref<TestDatasetItem | null>(null)
 
 // 添加问题
 const addItemVisible = ref(false)
 const addingItem = ref(false)
-const newItemForm = reactive({ question: '', expectedAnswer: '', isNegative: false })
+const newItemForm = reactive({ question: '', expectedAnswer: '', isNegative: false, expectedDocumentIds: [] as number[], relevanceJudgments: {} as Record<string, number>, sourceChunkId: undefined as string|undefined, category: 'semantic', difficulty: 'MEDIUM', businessLine: '', userRole: '' })
+const labelDocuments = ref<KnowledgeDocumentVO[]>([])
+const labelChunks = ref<KnowledgeChunk[]>([])
+const loadingLabelOptions = ref(false)
 
 // 导入数据集
 const importDatasetVisible = ref(false)
@@ -595,9 +671,11 @@ const taskColumns = [
   { title: '知识库', dataIndex: 'knowledgeName', key: 'knowledgeName', width: 120 },
   { title: '类型', key: 'datasetType', width: 90 },
   { title: 'QA数量', dataIndex: 'qaCount', key: 'qaCount', width: 80 },
-  { title: '分块命中率', key: 'hitRate', width: 100 },
+  { title: 'Recall@K', key: 'hitRate', width: 100 },
   { title: '负样本错误率', key: 'negativeHitRate', width: 110 },
   { title: 'MRR', key: 'mrr', width: 80 },
+  { title: '忠实度', key: 'faithfulness', width: 90 },
+  { title: '基线', key: 'regressionStatus', width: 90 },
   { title: '状态', key: 'status', width: 80 },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 },
   { title: '操作', key: 'action', width: 170 },
@@ -608,14 +686,20 @@ const qaColumns = [
   { title: '类型', key: 'isNegative', width: 80 },
   { title: '命中', key: 'hit', width: 100 },
   { title: '排名', key: 'hitRank', width: 80 },
+  { title: 'Recall', key: 'recallAtK', width: 80 },
+  { title: '忠实度', key: 'faithfulness', width: 80 },
   { title: '操作', key: 'action', width: 80 },
 ]
 
 const datasetItemColumns = [
-  { title: '问题', dataIndex: 'question', key: 'question', ellipsis: true, width: 350 },
-  { title: '期望答案', dataIndex: 'expectedAnswer', key: 'expectedAnswer', ellipsis: true, width: 200 },
+  { title: '问题', dataIndex: 'question', key: 'question', ellipsis: true, width: 300 },
+  { title: '场景', dataIndex: 'category', key: 'category', width: 110 },
+  { title: '难度', dataIndex: 'difficulty', key: 'difficulty', width: 80 },
+  { title: '业务线', dataIndex: 'businessLine', key: 'businessLine', width: 110 },
+  { title: '角色', dataIndex: 'userRole', key: 'userRole', width: 100 },
+  { title: '相关文档', key: 'labels', width: 100 },
   { title: '类型', key: 'isNegative', width: 80 },
-  { title: '操作', key: 'action', width: 80 },
+  { title: '操作', key: 'action', width: 120 },
 ]
 
 const hitCount = computed(() => qaList.value.filter(q => !q.isNegative && q.hit).length)
@@ -626,6 +710,37 @@ const filteredQaList = computed(() => {
   const search = qaSearchText.value.toLowerCase()
   return qaList.value.filter(q => q.question.toLowerCase().includes(search))
 })
+const selectedKnowledgeId = computed(() => activeTab.value === 'generate'
+  ? generateForm.knowledgeId
+  : activeTab.value === 'import' ? importForm.knowledgeId : datasetForm.knowledgeId)
+const baselineOptions = computed(() => tasks.value.filter(task => task.status === 2
+  && (!selectedKnowledgeId.value || task.knowledgeId === selectedKnowledgeId.value)
+  && (task.topK || 5) === runConfig.topK
+  && (task.evaluationMode || 'RETRIEVAL') === runConfig.evaluationMode))
+const retrievalMetrics = computed(() => [
+  { label: `Recall@${currentTask.value?.topK || 5}`, value: currentTask.value?.recallAtK || 0 },
+  { label: `Precision@${currentTask.value?.topK || 5}`, value: currentTask.value?.precisionAtK || 0 },
+  { label: `NDCG@${currentTask.value?.topK || 5}`, value: currentTask.value?.ndcgAtK || 0 },
+  { label: 'MAP', value: currentTask.value?.mapScore || 0 },
+])
+const generationMetrics = computed(() => [
+  { label: 'Context Precision', value: currentTask.value?.contextPrecision || 0 },
+  { label: 'Context Recall', value: currentTask.value?.contextRecall || 0 },
+  { label: 'Faithfulness', value: currentTask.value?.faithfulness || 0 },
+  { label: 'Answer Relevancy', value: currentTask.value?.answerRelevancy || 0 },
+  { label: 'Completeness', value: currentTask.value?.completeness || 0 },
+  { label: 'Fluency', value: currentTask.value?.fluency || 0 },
+  { label: 'Overall', value: currentTask.value?.overallScore || 0 },
+])
+const labelDocumentOptions = computed(() => labelDocuments.value.map(doc => ({ value: doc.id, label: `#${doc.id} ${doc.title}` })))
+const labelChunkOptions = computed(() => labelChunks.value.filter(chunk => chunk.vectorId).map(chunk => ({ value: chunk.vectorId, label: `${chunk.documentTitle} · 分块 ${chunk.chunkIndex + 1} · ${chunk.contentPreview || chunk.content.slice(0, 60)}` })))
+
+watch([selectedKnowledgeId, () => runConfig.topK, () => runConfig.evaluationMode, tasks], () => {
+  if (runConfig.baselineTaskId && !baselineOptions.value.some(task => task.id === runConfig.baselineTaskId)) {
+    runConfig.baselineTaskId = undefined
+  }
+})
+watch(() => datasetForm.knowledgeId, () => { if (addItemVisible.value) loadLabelOptions() })
 
 function statusText(status: number) {
   const map: Record<number, string> = { 0: '待运行', 1: '运行中', 2: '完成', 3: '失败' }
@@ -646,6 +761,10 @@ function datasetTypeColor(type: string | null) {
   const map: Record<string, string> = { generated: 'blue', imported: 'green', builtin: 'purple', custom: 'green' }
   return map[type || 'generated'] || 'blue'
 }
+
+function regressionText(value: string | null) { return ({PASSED:'通过',FAILED:'退化',NOT_COMPARED:'未对比'} as Record<string,string>)[value || 'NOT_COMPARED'] || '未对比' }
+function scoreText(value: number | null) { return value === null || value === undefined ? '-' : `${(value * 100).toFixed(1)}%` }
+function failureText(value: string | null) { return ({UNLABELED:'缺少标注',RETRIEVAL_MISS:'检索遗漏',CONTEXT_NOISE:'上下文噪声',HALLUCINATION:'生成幻觉',INCOMPLETE:'回答不完整',NEGATIVE_FALSE_POSITIVE:'拒答失败'} as Record<string,string>)[value || ''] || value || '无明显失败' }
 
 async function loadKnowledgeBases() {
   loadingKbList.value = true
@@ -701,7 +820,7 @@ async function handleGenerate() {
   if (!generateForm.knowledgeId) { message.warning('请选择知识库'); return }
   generating.value = true
   try {
-    const res = await generateTestset({ knowledgeId: generateForm.knowledgeId!, qaCount: generateForm.qaCount, taskName: generateForm.taskName || undefined })
+    const res = await generateTestset({ knowledgeId: generateForm.knowledgeId!, qaCount: generateForm.qaCount, taskName: generateForm.taskName || undefined, ...evaluationOptions() })
     if (res.code === 200) {
       message.success('评估任务已创建')
       generateForm.taskName = ''
@@ -746,6 +865,10 @@ async function handleImport() {
     formData.append('file', file)
     formData.append('knowledgeId', String(importForm.knowledgeId))
     if (importForm.taskName) formData.append('taskName', importForm.taskName)
+    formData.append('evaluationMode', runConfig.evaluationMode)
+    formData.append('topK', String(runConfig.topK))
+    if (runConfig.judgeModel) formData.append('judgeModel', runConfig.judgeModel)
+    if (runConfig.baselineTaskId) formData.append('baselineTaskId', String(runConfig.baselineTaskId))
 
     const res = await importTestset(formData)
     if (res.code === 200) {
@@ -830,6 +953,21 @@ async function handleDeleteDataset(ds: TestDataset) {
   }
 }
 
+async function handleCloneDataset(ds: TestDataset) {
+  try {
+    const res = await cloneDataset(ds.id)
+    if (res.code === 200) {
+      message.success('已复制为可编辑的业务数据集，请在问题列表中绑定相关文档')
+      await loadDatasets()
+      if (res.data) handlePreviewDataset(res.data)
+    } else {
+      message.error(res.message || '复制失败')
+    }
+  } catch (error: any) {
+    message.error(error.message || '复制失败')
+  }
+}
+
 async function handlePreviewDataset(ds: TestDataset) {
   editingDataset.value = ds
   currentDatasetName.value = ds.name + ' - 问题列表'
@@ -849,7 +987,7 @@ async function handleRunDataset(datasetId: number) {
   if (!datasetForm.knowledgeId) { message.warning('请先选择知识库'); return }
   runningDataset.value = datasetId
   try {
-    const res = await runDatasetEvaluation(datasetId, datasetForm.knowledgeId!)
+    const res = await runDatasetEvaluation(datasetId, datasetForm.knowledgeId!, evaluationOptions())
     if (res.code === 200) {
       message.success('评估任务已创建')
       loadTasks()
@@ -865,25 +1003,112 @@ async function handleRunDataset(datasetId: number) {
 }
 
 function showAddItemModal() {
+  editingDatasetItem.value = null
   newItemForm.question = ''
   newItemForm.expectedAnswer = ''
   newItemForm.isNegative = false
+  newItemForm.expectedDocumentIds = []
+  newItemForm.relevanceJudgments = {}
+  newItemForm.sourceChunkId = undefined
+  newItemForm.category = 'semantic'
+  newItemForm.difficulty = 'MEDIUM'
+  newItemForm.businessLine = ''
+  newItemForm.userRole = ''
   addItemVisible.value = true
+  loadLabelOptions()
+}
+
+function showEditItemModal(item: TestDatasetItem) {
+  editingDatasetItem.value = item
+  newItemForm.question = item.question
+  newItemForm.expectedAnswer = item.expectedAnswer || ''
+  newItemForm.isNegative = Boolean(item.isNegative)
+  newItemForm.expectedDocumentIds = parseDocumentIds(item.expectedDocumentIds)
+  newItemForm.relevanceJudgments = parseRelevance(item.relevanceJudgments)
+  newItemForm.sourceChunkId = item.sourceChunkId || undefined
+  newItemForm.category = item.category || 'semantic'
+  newItemForm.difficulty = item.difficulty || 'MEDIUM'
+  newItemForm.businessLine = item.businessLine || ''
+  newItemForm.userRole = item.userRole || ''
+  addItemVisible.value = true
+  loadLabelOptions()
+}
+
+function parseDocumentIds(value: TestDatasetItem['expectedDocumentIds']): number[] {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Boolean) : []
+  } catch { return [] }
+}
+
+function parseRelevance(value: TestDatasetItem['relevanceJudgments']): Record<string, number> {
+  if (!value) return {}
+  if (typeof value !== 'string') return { ...value }
+  try { return JSON.parse(value) } catch { return {} }
+}
+
+function syncRelevanceGrades() {
+  const selected = new Set(newItemForm.expectedDocumentIds.map(String))
+  Object.keys(newItemForm.relevanceJudgments).forEach(key => { if (!selected.has(key)) delete newItemForm.relevanceJudgments[key] })
+  newItemForm.expectedDocumentIds.forEach(id => { if (!newItemForm.relevanceJudgments[String(id)]) newItemForm.relevanceJudgments[String(id)] = 3 })
+}
+
+function documentTitle(id: number) { return labelDocuments.value.find(doc => doc.id === id)?.title || `文档 #${id}` }
+
+async function loadLabelOptions() {
+  if (!datasetForm.knowledgeId) { labelDocuments.value = []; labelChunks.value = []; return }
+  loadingLabelOptions.value = true
+  try {
+    const [documents, chunks] = await Promise.all([
+      getKnowledgeBaseDocuments(datasetForm.knowledgeId, { page: 1, pageSize: 200 }),
+      getKnowledgeBaseChunks(datasetForm.knowledgeId, { page: 1, pageSize: 200 }),
+    ])
+    labelDocuments.value = documents.data?.records || []
+    labelChunks.value = chunks.data?.records || []
+  } finally { loadingLabelOptions.value = false }
+}
+
+function hasLabels(item: TestDatasetItem) {
+  const values = [item.expectedDocumentIds, item.relevanceJudgments]
+  return values.some(value => {
+    if (!value) return false
+    if (typeof value !== 'string') return Object.keys(value).length > 0
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed.length > 0 : parsed && Object.keys(parsed).length > 0
+    } catch { return false }
+  })
 }
 
 async function handleAddItem() {
   if (!newItemForm.question.trim()) { message.warning('请输入问题内容'); return }
   if (!editingDataset.value) return
 
+  syncRelevanceGrades()
+
   addingItem.value = true
   try {
-    const res = await addDatasetItem(editingDataset.value.id, {
+    const payload = {
+      ...(editingDatasetItem.value || {}),
       question: newItemForm.question,
       expectedAnswer: newItemForm.expectedAnswer,
       isNegative: newItemForm.isNegative,
-    } as TestDatasetItem)
+      sourceDocumentId: newItemForm.expectedDocumentIds[0] || null,
+      sourceChunkId: newItemForm.sourceChunkId || null,
+      expectedDocumentIds: JSON.stringify(newItemForm.expectedDocumentIds),
+      relevanceJudgments: Object.keys(newItemForm.relevanceJudgments).length ? JSON.stringify(newItemForm.relevanceJudgments) : null,
+      category: newItemForm.category,
+      difficulty: newItemForm.difficulty,
+      businessLine: newItemForm.businessLine || null,
+      userRole: newItemForm.userRole || null,
+    } as TestDatasetItem
+    const res = editingDatasetItem.value?.id
+      ? await updateDatasetItem(editingDataset.value.id, editingDatasetItem.value.id, payload)
+      : await addDatasetItem(editingDataset.value.id, payload)
     if (res.code === 200) {
-      message.success('添加成功')
+      message.success(editingDatasetItem.value ? '标注已更新' : '添加成功')
       addItemVisible.value = false
       // 刷新问题列表
       handlePreviewDataset(editingDataset.value)
@@ -896,6 +1121,10 @@ async function handleAddItem() {
   } finally {
     addingItem.value = false
   }
+}
+
+function evaluationOptions() {
+  return { evaluationMode: runConfig.evaluationMode, topK: runConfig.topK, judgeModel: runConfig.judgeModel || undefined, baselineTaskId: runConfig.baselineTaskId }
 }
 
 async function handleRemoveItem(item: TestDatasetItem) {
@@ -925,10 +1154,11 @@ async function handleBatchImportItems(file: File) {
     reader.onload = async (e) => {
       try {
         const text = e.target?.result as string
-        let items: Array<{ question: string; expectedAnswer?: string; isNegative?: boolean }> = []
+        let items: TestDatasetItem[] = []
 
         if (file.name.endsWith('.json')) {
-          items = JSON.parse(text)
+          const parsed = JSON.parse(text)
+          items = Array.isArray(parsed) ? parsed : parsed.items
         } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
           message.warning('暂不支持Excel格式，请使用JSON格式')
           return
@@ -939,7 +1169,7 @@ async function handleBatchImportItems(file: File) {
           return
         }
 
-        const res: any = await addDatasetItem(editingDataset.value!.id, items as any)
+        const res: any = await addDatasetItems(editingDataset.value!.id, items)
         if (res.code === 200) {
           message.success(`成功导入 ${items.length} 条问题`)
           handlePreviewDataset(editingDataset.value!)
@@ -1066,6 +1296,14 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .evaluation-page {
+  .evaluation-guide-tip { margin-bottom: 14px; }
+  .evaluation-config {
+    padding: 12px 14px 0;
+    margin-bottom: 4px;
+    border: 1px solid #e6f4ff;
+    border-radius: 8px;
+    background: #f7fbff;
+  }
   .text-ellipsis {
     display: inline-block;
     max-width: 260px;
@@ -1102,6 +1340,8 @@ onMounted(() => {
   .dataset-desc { font-size: 13px; color: #666; margin-bottom: 12px; line-height: 1.5; }
   .dataset-stats { margin-bottom: 12px; }
   .dataset-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .relevance-list { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+  .relevance-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #fafafa; border-radius: 6px; }
 }
 </style>
 
@@ -1153,6 +1393,18 @@ onMounted(() => {
       &.status-2 .status-dot { background: #73d13d; }
       &.status-3 .status-dot { background: #ff7875; }
     }
+  }
+
+  .layered-metrics-panel {
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 0 24px 20px;
+
+    .panel-title { margin-bottom: 14px; font-size: 13px; font-weight: 600; color: #595959; }
+    .ant-statistic { padding: 10px 12px; border-radius: 8px; background: #fafafa; }
+    .ant-statistic-title { min-height: 22px; }
   }
 
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }

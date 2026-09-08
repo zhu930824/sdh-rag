@@ -38,6 +38,14 @@ public class TestDataset implements Serializable {
     @TableField("file_name")
     private String fileName;
 
+    private Integer version;
+
+    @TableField("parent_dataset_id")
+    private Long parentDatasetId;
+
+    @TableField("change_note")
+    private String changeNote;
+
     @TableField("user_id")
     private Long userId;
 

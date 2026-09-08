@@ -32,6 +32,7 @@ public class AgentActionService {
     private final AgentToolHttpClient httpClient;
     private final InternalToolDispatcher internalDispatcher;
     private final ObjectMapper objectMapper;
+    private final AgentImprovementService improvementService;
 
     public record ActionCommand(Long toolId, Map<String, Object> parameters, Object evidence,
                                 String idempotencyKey, Long workflowId, String nodeId,
@@ -105,6 +106,14 @@ public class AgentActionService {
                 .orderByAsc(AgentAction::getRequestedAt));
     }
 
+    /** 按工作流执行记录查动作，供受保护的手工续跑校验与结果注入。 */
+    public List<AgentAction> listByWorkflowExecution(Long executionId) {
+        if (executionId == null) return List.of();
+        return actions.selectList(new LambdaQueryWrapper<AgentAction>()
+                .eq(AgentAction::getWorkflowExecutionId, executionId)
+                .orderByAsc(AgentAction::getRequestedAt));
+    }
+
     public AgentAction get(Long id) {
         AgentAction action = requireAccessible(id, requireActor());
         return action;
@@ -160,6 +169,7 @@ public class AgentActionService {
         feedback.setComment(limitNullable(command.comment(), 1000, "反馈说明"));
         feedback.setReusableKnowledge(Boolean.TRUE.equals(command.reusableKnowledge()) ? 1 : 0);
         if (feedback.getId() == null) feedbacks.insert(feedback); else feedbacks.updateById(feedback);
+        improvementService.captureFeedback(action, feedback);
         return feedback;
     }
 
@@ -187,7 +197,7 @@ public class AgentActionService {
             log.warn("Agent action {} execution failed: {}", executing.getId(), e.getMessage());
             executing.setStatus("FAILED");
             executing.setExecutedAt(LocalDateTime.now());
-            executing.setErrorMessage(limitNullable(e.getMessage(), 1000, "执行错误"));
+            executing.setErrorMessage(truncateNullable(e.getMessage(), 1000));
         }
         executing.setUpdateTime(LocalDateTime.now());
         actions.updateById(executing);
@@ -255,6 +265,12 @@ public class AgentActionService {
         String normalized = value.trim();
         if (normalized.length() > max) throw new BusinessException(400, label + "不能超过 " + max + " 个字符");
         return normalized;
+    }
+
+    private String truncateNullable(String value, int max) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim();
+        return normalized.length() > max ? normalized.substring(0, max) : normalized;
     }
 
     private Long requireActor() {

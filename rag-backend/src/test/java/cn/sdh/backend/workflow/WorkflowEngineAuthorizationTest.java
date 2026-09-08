@@ -2,7 +2,9 @@ package cn.sdh.backend.workflow;
 
 import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.entity.Workflow;
+import cn.sdh.backend.entity.WorkflowExecution;
 import cn.sdh.backend.service.KnowledgeAccessService;
+import cn.sdh.backend.service.WorkflowExecutionService;
 import cn.sdh.backend.workflow.executor.NodeExecutorFactory;
 import cn.sdh.backend.workflow.executor.WorkflowEngine;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,12 +22,18 @@ import static org.mockito.Mockito.*;
 class WorkflowEngineAuthorizationTest {
     @Mock KnowledgeAccessService access;
     @Mock NodeExecutorFactory executors;
+    @Mock WorkflowExecutionService workflowExecutions;
     WorkflowEngine engine;
 
     @BeforeEach void setup() {
         engine = new WorkflowEngine();
         ReflectionTestUtils.setField(engine, "knowledgeAccess", access);
         ReflectionTestUtils.setField(engine, "executorFactory", executors);
+        ReflectionTestUtils.setField(engine, "workflowExecutionService", workflowExecutions);
+        WorkflowExecution execution = new WorkflowExecution();
+        execution.setId(9L);
+        execution.setWorkflowId(3L);
+        lenient().when(workflowExecutions.create(anyLong(), anyLong(), anyString())).thenReturn(execution);
     }
 
     @Test void onlyWorkflowOwnerCanExecute() {
@@ -33,7 +41,7 @@ class WorkflowEngineAuthorizationTest {
         BusinessException denied = assertThrows(BusinessException.class,
             () -> engine.executeWithCallback(workflow, "", null, 2L));
         assertEquals(403, denied.getCode());
-        verifyNoInteractions(access, executors);
+        verifyNoInteractions(access, executors, workflowExecutions);
     }
 
     @Test void revokedKnowledgeAccessStopsRetrievalBeforeExecutor() {

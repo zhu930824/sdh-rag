@@ -21,6 +21,8 @@ export interface AgentTool {
   createdBy: number
   createTime: string
   updateTime: string
+  inputSchema?: string
+  isSystem?: number
 }
 
 export interface AgentToolForm {
@@ -39,6 +41,7 @@ export interface AgentToolForm {
   allowPrivateNetwork: boolean
   allowInsecureHttp: boolean
   status: number
+  inputSchema?: string
 }
 
 export interface AgentAction {
@@ -74,3 +77,32 @@ export const rejectAgentAction = (id: number, reason: string): Promise<ApiRespon
 export const retryAgentAction = (id: number): Promise<ApiResponse<AgentAction>> => request.post(`/api/agent-actions/${id}/retry`)
 export const feedbackAgentAction = (id: number, data: { outcome: string; comment?: string; reusableKnowledge: boolean }): Promise<ApiResponse<void>> =>
   request.post(`/api/agent-actions/${id}/feedback`, data)
+
+export interface AgentOpsReport {
+  days: number
+  overview: Record<string, number>
+  tools: Array<Record<string, string | number>>
+  trend: Array<Record<string, string | number>>
+}
+
+export interface AgentImprovementItem {
+  id: number
+  sourceType: string
+  runId?: number
+  actionId?: number
+  knowledgeId?: number
+  category: string
+  priority: 'LOW' | 'MEDIUM' | 'HIGH'
+  title: string
+  detail?: string
+  status: 'OPEN' | 'RESOLVED' | 'IGNORED'
+  reviewNote?: string
+  createdAt: string
+}
+
+export const getAgentOpsReport = (days = 30): Promise<ApiResponse<AgentOpsReport>> =>
+  request.get('/api/agent/ops/report', { params: { days } })
+export const getAgentImprovements = (status?: string): Promise<ApiResponse<AgentImprovementItem[]>> =>
+  request.get('/api/agent/ops/improvements', { params: status ? { status } : undefined })
+export const reviewAgentImprovement = (id: number, status: string, note?: string): Promise<ApiResponse<AgentImprovementItem>> =>
+  request.post(`/api/agent/ops/improvements/${id}`, { status, note })

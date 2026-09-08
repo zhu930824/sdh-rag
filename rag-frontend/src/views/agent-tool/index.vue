@@ -16,7 +16,7 @@
     <a-table :columns="columns" :data-source="tools" :loading="loading" row-key="id" :pagination="false">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'name'">
-          <div class="tool-name">{{ record.name }} <a-tag>{{ record.code }}</a-tag></div>
+          <div class="tool-name">{{ record.name }} <a-tag>{{ record.code }}</a-tag><a-tag v-if="record.isSystem === 1" color="cyan">内置</a-tag></div>
           <div class="muted ellipsis">{{ record.description || record.endpoint }}</div>
         </template>
         <template v-else-if="column.key === 'method'"><a-tag color="blue">{{ record.httpMethod }}</a-tag></template>
@@ -28,7 +28,8 @@
           <a-badge :status="record.status === 1 ? 'success' : 'default'" :text="record.status === 1 ? '启用' : '停用'" />
         </template>
         <template v-else-if="column.key === 'action'">
-          <a-space><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button v-if="record.status === 1" danger type="link" size="small" @click="disable(record)">停用</a-button></a-space>
+          <a-space v-if="record.isSystem !== 1"><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button v-if="record.status === 1" danger type="link" size="small" @click="disable(record)">停用</a-button></a-space>
+          <span v-else class="muted">平台维护</span>
         </template>
       </template>
     </a-table>
@@ -40,6 +41,10 @@
           <a-col :span="12"><a-form-item label="工具编码" required><a-input v-model:value="form.code" placeholder="create_ticket" /></a-form-item></a-col>
         </a-row>
         <a-form-item label="说明"><a-input v-model:value="form.description" placeholder="说明适用业务场景和使用边界" /></a-form-item>
+        <a-form-item label="参数 JSON Schema">
+          <a-textarea v-model:value="form.inputSchema" :rows="5" class="code-input" placeholder='{"type":"object","properties":{"customerId":{"type":"string"}},"required":["customerId"]}' />
+          <div class="muted">用于约束模型生成的工具参数；留空时使用宽松对象结构。</div>
+        </a-form-item>
         <a-row :gutter="16">
           <a-col :span="6"><a-form-item label="方法"><a-select v-model:value="form.httpMethod"><a-select-option v-for="method in methods" :key="method" :value="method">{{ method }}</a-select-option></a-select></a-form-item></a-col>
           <a-col :span="18"><a-form-item label="固定 endpoint" required><a-input v-model:value="form.endpoint" placeholder="https://business.example.com/api/tickets" /></a-form-item></a-col>
@@ -82,12 +87,13 @@ const columns = [
   { title: '风险与审批', key: 'risk', width: 210 }, { title: '状态', key: 'status', width: 90 },
   { title: '操作', key: 'action', width: 130 },
 ]
-const defaults = (): AgentToolForm => ({ name: '', code: '', description: '', endpoint: '', httpMethod: 'POST', credentialRef: '', authType: 'none', authHeader: '', riskLevel: 'MEDIUM', approvalMode: 'HIGH_RISK', approverId: undefined, timeoutSeconds: 30, allowPrivateNetwork: false, allowInsecureHttp: false, status: 1 })
+const defaults = (): AgentToolForm => ({ name: '', code: '', description: '', endpoint: '', httpMethod: 'POST', credentialRef: '', authType: 'none', authHeader: '', riskLevel: 'MEDIUM', approvalMode: 'HIGH_RISK', approverId: undefined, timeoutSeconds: 30, allowPrivateNetwork: false, allowInsecureHttp: false, status: 1, inputSchema: '' })
 const form = reactive<AgentToolForm>(defaults())
 
 async function load() { loading.value = true; try { tools.value = (await getAgentTools()).data || [] } finally { loading.value = false } }
 function openCreate() { editingId.value = undefined; Object.assign(form, defaults()); modalOpen.value = true }
-function openEdit(tool: AgentTool) {
+function openEdit(value: any) {
+  const tool = value as AgentTool
   editingId.value = tool.id
   Object.assign(form, { ...tool, allowPrivateNetwork: tool.allowPrivateNetwork === 1, allowInsecureHttp: tool.allowInsecureHttp === 1 })
   modalOpen.value = true
@@ -101,7 +107,8 @@ async function save() {
     message.success('业务工具已保存'); modalOpen.value = false; await load()
   } finally { saving.value = false }
 }
-function disable(tool: AgentTool) {
+function disable(value: any) {
+  const tool = value as AgentTool
   Modal.confirm({ title: `停用“${tool.name}”？`, content: '已有动作审计会保留，新工作流调用将被阻止。', okType: 'danger', async onOk() { await disableAgentTool(tool.id); message.success('工具已停用'); await load() } })
 }
 function riskText(value: string) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险' } as Record<string,string>)[value] || value }
@@ -115,4 +122,5 @@ onMounted(load)
 .page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:16px; }
 .page-header h2 { margin:0 0 6px; }.page-header p,.muted { color:#8c8c8c; }.header-actions { display:flex; gap:8px; }
 .security-tip { margin-bottom:18px; }.tool-name { font-weight:600; margin-bottom:4px; }.ellipsis { max-width:290px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.code-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 </style>

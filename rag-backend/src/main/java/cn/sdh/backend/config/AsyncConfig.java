@@ -63,4 +63,18 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /** Bounded pool for workflow SSE execution and approval-triggered resume. */
+    @Bean("workflowExecutor")
+    public Executor workflowExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("workflow-");
+        executor.setKeepAliveSeconds(60);
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
 }

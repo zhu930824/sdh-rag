@@ -98,7 +98,10 @@ import {
   TeamOutlined,
   DatabaseOutlined,
   RadarChartOutlined,
+  FileDoneOutlined,
   SafetyCertificateOutlined,
+  FundProjectionScreenOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons-vue'
 
 interface MenuItem {
@@ -139,6 +142,8 @@ const menuConfig: MenuItem[] = [
       { key: '/document', label: '文档管理', icon: FileTextOutlined, permission: '/document' },
       { key: '/graph', label: '知识图谱', icon: ApartmentOutlined, permission: '/graph' },
       { key: '/evaluation', label: '检索评估', icon: RadarChartOutlined, permission: '/knowledge' },
+      { key: '/evaluation-lab', label: '评测实验室', icon: ExperimentOutlined, permission: '/knowledge' },
+      { key: '/knowledge-publishing', label: '知识审核与发布', icon: FileDoneOutlined, permission: '/knowledge' },
     ],
   },
   {
@@ -157,6 +162,12 @@ const menuConfig: MenuItem[] = [
     key: '/agent-actions',
     label: 'Agent审批与执行',
     icon: SafetyCertificateOutlined,
+    permission: '/workflow',
+  },
+  {
+    key: '/agent-ops',
+    label: 'Agent运营与改进',
+    icon: FundProjectionScreenOutlined,
     permission: '/workflow',
   },
   {
@@ -237,7 +248,7 @@ function filterMenu(items: MenuItem[]): MenuItem[] {
 const filteredMenu = computed(() => filterMenu(menuConfig))
 
 const subMenuMap: Record<string, string[]> = {
-  'knowledge': ['/knowledge', '/document', '/graph', '/evaluation'],
+  'knowledge': ['/knowledge', '/document', '/graph', '/evaluation', '/evaluation-lab', '/knowledge-publishing'],
   'system': ['/user', '/role', '/log', '/sensitive', '/announcement', '/settings']
 }
 

@@ -10,11 +10,31 @@ export interface EvaluationTask {
   hitRate: number | null
   docHitRate: number | null
   mrr: number | null
+  evaluationMode: 'RETRIEVAL' | 'GENERATION' | 'FULL'
+  topK: number
+  labeledCount: number
+  judgedCount: number
+  recallAtK: number | null
+  precisionAtK: number | null
+  ndcgAtK: number | null
+  mapScore: number | null
+  contextPrecision: number | null
+  contextRecall: number | null
+  faithfulness: number | null
+  answerRelevancy: number | null
+  completeness: number | null
+  fluency: number | null
+  overallScore: number | null
+  judgeModel: string | null
+  baselineTaskId: number | null
+  regressionStatus: 'PASSED' | 'FAILED' | 'NOT_COMPARED' | null
   avgHitRank: number | null
   topKHits: string | null
   negativeCount: number | null
   negativeHitRate: number | null
   datasetType: string | null       // generated/imported/builtin/custom
+  datasetId: number | null
+  datasetVersion: number | null
   status: number
   configSnapshot: string | null
   userId: number
@@ -33,10 +53,41 @@ export interface EvaluationQa {
   sourceDocumentId: number | null
   sourceChunkContent: string
   retrievedChunkIds: string
+  expectedDocumentIds: string | null
+  relevanceJudgments: string | null
+  retrievedDocumentIds: string | null
+  retrievedContext: string | null
+  actualAnswer: string | null
   hit: boolean
   docHit: boolean
   hitRank: number | null
   docHitRank: number | null
+  recallAtK: number | null
+  precisionAtK: number | null
+  reciprocalRank: number | null
+  ndcgAtK: number | null
+  averagePrecision: number | null
+  contextPrecision: number | null
+  contextRecall: number | null
+  faithfulness: number | null
+  answerRelevancy: number | null
+  completeness: number | null
+  fluency: number | null
+  overallScore: number | null
+  judgeReason: string | null
+  failureCategory: string | null
+  failureSuggestion: string | null
+  category: string | null
+  difficulty: string | null
+  businessLine: string | null
+  userRole: string | null
+  humanReviewStatus: 'PENDING' | 'COMPLETED' | 'SKIPPED' | null
+  humanFaithfulness: number | null
+  humanAnswerRelevancy: number | null
+  humanCompleteness: number | null
+  humanFluency: number | null
+  humanOverallScore: number | null
+  humanReviewNote: string | null
   isNegative: boolean | null
   sourceType: string | null
   externalId: string | null
@@ -85,11 +136,22 @@ export interface DatasetInfo {
   fileName: string
 }
 
+export interface EvaluationRunOptions {
+  evaluationMode?: 'RETRIEVAL' | 'GENERATION' | 'FULL'
+  topK?: number
+  judgeModel?: string
+  baselineTaskId?: number
+}
+
 // 生成测试集并运行评估
 export function generateTestset(data: {
   knowledgeId: number
   qaCount?: number
   taskName?: string
+  evaluationMode?: string
+  topK?: number
+  judgeModel?: string
+  baselineTaskId?: number
 }): Promise<ApiResponse<EvaluationTask>> {
   return request.post('/api/evaluation/generate-testset', data)
 }
@@ -110,6 +172,10 @@ export function downloadTemplate() {
 export function runBuiltinDataset(data: {
   datasetName: string
   knowledgeId: number
+  evaluationMode?: string
+  topK?: number
+  judgeModel?: string
+  baselineTaskId?: number
 }): Promise<ApiResponse<EvaluationTask>> {
   return request.post('/api/evaluation/builtin', data)
 }
@@ -142,4 +208,141 @@ export function deleteEvaluationTask(id: number): Promise<ApiResponse<void>> {
 // 导出评估报告
 export function exportEvaluationReport(taskId: number) {
   return request.get(`/api/evaluation/task/${taskId}/export`, { responseType: 'blob' })
+}
+
+export interface EvaluationExperimentVariant {
+  id: number
+  experimentId: number
+  name: string
+  evaluationMode: 'RETRIEVAL' | 'GENERATION' | 'FULL'
+  topK: number
+  judgeModel: string | null
+  baselineTaskId: number | null
+  sortOrder: number
+}
+
+export interface EvaluationExperiment {
+  id: number
+  name: string
+  description: string | null
+  knowledgeId: number
+  datasetId: number
+  status: 'ACTIVE' | 'PAUSED'
+  scheduleEnabled: boolean
+  cronExpression: string | null
+  nextRunTime: string | null
+  judgeBudget: number
+  maxRetries: number
+  alertOnRegression: boolean
+  lastRunTime: string | null
+  createTime: string
+}
+
+export interface EvaluationExperimentRun {
+  id: number
+  experimentId: number
+  triggerType: 'MANUAL' | 'SCHEDULED'
+  status: 'LAUNCHING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  errorMessage: string | null
+  startTime: string
+  completeTime: string | null
+}
+
+export interface EvaluationExperimentDetail {
+  experiment: EvaluationExperiment
+  variants: EvaluationExperimentVariant[]
+  runs: Array<{
+    run: EvaluationExperimentRun
+    results: Array<{ variant: EvaluationExperimentVariant; task: EvaluationTask; attempt: number }>
+  }>
+}
+
+export interface EvaluationSliceMetric {
+  dimension: string
+  value: string
+  sampleCount: number
+  failureCount: number
+  recallAtK: number | null
+  mrr: number | null
+  faithfulness: number | null
+  answerRelevancy: number | null
+  overallScore: number | null
+}
+
+export interface EvaluationJudgeAlignment {
+  taskId: number
+  reviewedCount: number
+  faithfulnessMae: number | null
+  answerRelevancyMae: number | null
+  completenessMae: number | null
+  fluencyMae: number | null
+  overallMae: number | null
+  withinOneLevelRate: number | null
+}
+
+export interface EvaluationExperimentInput {
+  name: string
+  description?: string
+  knowledgeId: number
+  datasetId: number
+  scheduleEnabled: boolean
+  cronExpression?: string
+  judgeBudget: number
+  maxRetries: number
+  alertOnRegression: boolean
+  variants: Array<{
+    name: string
+    evaluationMode: 'RETRIEVAL' | 'GENERATION' | 'FULL'
+    topK: number
+    judgeModel?: string
+    baselineTaskId?: number
+  }>
+}
+
+export function listEvaluationExperiments(): Promise<ApiResponse<EvaluationExperiment[]>> {
+  return request.get('/api/evaluation/experiment/list')
+}
+
+export function getEvaluationExperiment(id: number): Promise<ApiResponse<EvaluationExperimentDetail>> {
+  return request.get(`/api/evaluation/experiment/${id}`)
+}
+
+export function createEvaluationExperiment(data: EvaluationExperimentInput): Promise<ApiResponse<EvaluationExperiment>> {
+  return request.post('/api/evaluation/experiment', data)
+}
+
+export function toggleEvaluationExperiment(id: number): Promise<ApiResponse<void>> {
+  return request.post(`/api/evaluation/experiment/${id}/toggle`)
+}
+
+export function runEvaluationExperiment(id: number): Promise<ApiResponse<EvaluationExperimentRun>> {
+  return request.post(`/api/evaluation/experiment/${id}/run`)
+}
+
+export function deleteEvaluationExperiment(id: number): Promise<ApiResponse<void>> {
+  return request.delete(`/api/evaluation/experiment/${id}`)
+}
+
+export function getEvaluationSlices(taskId: number, dimension: string): Promise<ApiResponse<EvaluationSliceMetric[]>> {
+  return request.get(`/api/evaluation/operations/task/${taskId}/slices`, { params: { dimension } })
+}
+
+export function getHumanReviewQueue(params: { taskId?: number; status?: string; page?: number; pageSize?: number }) {
+  return request.get<ApiResponse<{ records: EvaluationQa[]; total: number }>>('/api/evaluation/operations/review/queue', { params })
+}
+
+export function submitHumanReview(qaId: number, data: {
+  status: 'COMPLETED' | 'SKIPPED'
+  faithfulness?: number
+  answerRelevancy?: number
+  completeness?: number
+  fluency?: number
+  overallScore?: number
+  note?: string
+}): Promise<ApiResponse<void>> {
+  return request.post(`/api/evaluation/operations/review/${qaId}`, data)
+}
+
+export function getJudgeAlignment(taskId: number): Promise<ApiResponse<EvaluationJudgeAlignment>> {
+  return request.get(`/api/evaluation/operations/task/${taskId}/alignment`)
 }

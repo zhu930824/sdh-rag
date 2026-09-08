@@ -8,6 +8,9 @@ export interface TestDataset {
   negativeCount: number
   datasetType: string  // builtin/custom
   fileName: string | null
+  version: number
+  parentDatasetId: number | null
+  changeNote: string | null
   userId: number | null
   createTime: string
   updateTime: string
@@ -20,8 +23,15 @@ export interface TestDatasetItem {
   expectedAnswer: string | null
   sourceChunkId: string | null
   sourceDocumentId: number | null
+  expectedDocumentIds: string | number[] | null
+  relevanceJudgments: string | Record<string, number> | null
   isNegative: boolean | null
   externalId: string | null
+  sourceFeedbackId: number | null
+  category: string | null
+  difficulty: string | null
+  businessLine: string | null
+  userRole: string | null
   sortOrder: number | null
   createTime: string | null
 }
@@ -84,8 +94,16 @@ export function importDataset(formData: FormData) {
 }
 
 // 运行数据集评估
-export function runDatasetEvaluation(datasetId: number, knowledgeId: number) {
-  return request.post(`/api/evaluation/dataset/${datasetId}`, { knowledgeId })
+export function runDatasetEvaluation(datasetId: number, knowledgeId: number, options: Record<string, unknown> = {}) {
+  return request.post(`/api/evaluation/dataset/${datasetId}`, { knowledgeId, ...options })
+}
+
+export function cloneDataset(id: number) {
+  return request.post<TestDataset>(`/api/dataset/${id}/clone`)
+}
+
+export function addFeedbackToDataset(id: number, feedbackId: number) {
+  return request.post<TestDatasetItem>(`/api/dataset/${id}/feedback/${feedbackId}`)
 }
 
 // 导出评估报告

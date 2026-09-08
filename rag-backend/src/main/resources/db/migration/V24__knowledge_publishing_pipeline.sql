@@ -1,0 +1,41 @@
+CREATE TABLE knowledge_draft (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    improvement_id BIGINT NULL COMMENT '来源改进项',
+    knowledge_id BIGINT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content MEDIUMTEXT NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT/IN_REVIEW/APPROVED/REJECTED/PUBLISHING/PUBLISHED/PUBLISH_FAILED/ROLLED_BACK',
+    regression_queries TEXT NULL COMMENT '回归问题 JSON 数组',
+    published_document_id BIGINT NULL,
+    content_checksum VARCHAR(64) NOT NULL,
+    validation_status VARCHAR(20) NOT NULL DEFAULT 'NOT_RUN' COMMENT 'NOT_RUN/PASSED/FAILED',
+    validation_result MEDIUMTEXT NULL,
+    review_note VARCHAR(1000) NULL,
+    error_message VARCHAR(2000) NULL,
+    created_by BIGINT NOT NULL,
+    reviewed_by BIGINT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    reviewed_at DATETIME NULL,
+    published_at DATETIME NULL,
+    rolled_back_at DATETIME NULL,
+    UNIQUE KEY uk_knowledge_draft_improvement (improvement_id),
+    KEY idx_knowledge_draft_owner (created_by, status, created_at),
+    KEY idx_knowledge_draft_base (knowledge_id, status, updated_at),
+    KEY idx_knowledge_draft_document (published_document_id)
+) COMMENT='业务经验转知识的审核发布草稿';
+
+CREATE TABLE knowledge_publish_record (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    draft_id BIGINT NOT NULL,
+    knowledge_id BIGINT NOT NULL,
+    document_id BIGINT NULL,
+    action VARCHAR(20) NOT NULL COMMENT 'PUBLISH/VALIDATE/ROLLBACK',
+    status VARCHAR(20) NOT NULL COMMENT 'SUBMITTED/COMPLETED/FAILED/PASSED',
+    detail MEDIUMTEXT NULL,
+    operator_id BIGINT NOT NULL,
+    created_at DATETIME NOT NULL,
+    KEY idx_publish_record_draft (draft_id, created_at),
+    KEY idx_publish_record_document (document_id),
+    CONSTRAINT fk_publish_record_draft FOREIGN KEY (draft_id) REFERENCES knowledge_draft(id) ON DELETE CASCADE
+) COMMENT='知识发布、验证与回滚审计记录';

@@ -7,6 +7,7 @@ import cn.sdh.backend.dto.DatasetInfo;
 import cn.sdh.backend.dto.EvaluationExportOverview;
 import cn.sdh.backend.dto.EvaluationExportQaDetail;
 import cn.sdh.backend.dto.EvaluationQaItem;
+import cn.sdh.backend.dto.EvaluationRunConfig;
 import cn.sdh.backend.dto.KnowledgeQualityReport;
 import cn.sdh.backend.entity.EvaluationQa;
 import cn.sdh.backend.entity.EvaluationTask;
@@ -52,7 +53,7 @@ public class EvaluationController {
         int qaCount = params.containsKey("qaCount") ? Integer.parseInt(params.get("qaCount").toString()) : 10;
         String taskName = params.containsKey("taskName") ? params.get("taskName").toString() : null;
 
-        EvaluationTask task = evaluationService.generateAndRun(knowledgeId, qaCount, taskName);
+        EvaluationTask task = evaluationService.generateAndRun(knowledgeId, qaCount, taskName, runConfig(params));
         return Result.success(task);
     }
 
@@ -63,7 +64,11 @@ public class EvaluationController {
     public Result<EvaluationTask> importTestset(
             @RequestParam("file") MultipartFile file,
             @RequestParam("knowledgeId") Long knowledgeId,
-            @RequestParam(value = "taskName", required = false) String taskName) {
+            @RequestParam(value = "taskName", required = false) String taskName,
+            @RequestParam(value = "evaluationMode", defaultValue = "RETRIEVAL") String evaluationMode,
+            @RequestParam(value = "topK", defaultValue = "5") Integer topK,
+            @RequestParam(value = "judgeModel", required = false) String judgeModel,
+            @RequestParam(value = "baselineTaskId", required = false) Long baselineTaskId) {
 
         if (file.isEmpty()) {
             return Result.error("文件不能为空");
@@ -95,7 +100,12 @@ public class EvaluationController {
                 taskName = "导入测试-" + originalFilename;
             }
 
-            EvaluationTask task = evaluationService.importAndRun(knowledgeId, items, taskName);
+            EvaluationRunConfig config = new EvaluationRunConfig();
+            config.setEvaluationMode(evaluationMode);
+            config.setTopK(topK);
+            config.setJudgeModel(judgeModel);
+            config.setBaselineTaskId(baselineTaskId);
+            EvaluationTask task = evaluationService.importAndRun(knowledgeId, items, taskName, config);
             return Result.success(task);
 
         } catch (RuntimeException e) {
@@ -118,8 +128,15 @@ public class EvaluationController {
                     "question": "示例问题1",
                     "expectedAnswer": "期望答案1",
                     "sourceChunkId": "",
+                    "sourceDocumentId": 1001,
+                    "expectedDocumentIds": [1001, 1002],
+                    "relevanceJudgments": {"1001": 3, "1002": 1},
                     "isNegative": false,
-                    "externalId": ""
+                    "externalId": "biz-001",
+                    "category": "semantic",
+                    "difficulty": "MEDIUM",
+                    "businessLine": "售后服务",
+                    "userRole": "一线客服"
                   },
                   {
                     "question": "示例问题2（答案不在知识库中）",
@@ -155,7 +172,7 @@ public class EvaluationController {
             return Result.error("请选择数据集");
         }
 
-        EvaluationTask task = evaluationService.runBuiltinDataset(datasetName, knowledgeId);
+        EvaluationTask task = evaluationService.runBuiltinDataset(datasetName, knowledgeId, runConfig(params));
         return Result.success(task);
     }
 
@@ -171,7 +188,7 @@ public class EvaluationController {
         knowledgeAccess.requireEdit(knowledgeId, UserContext.getCurrentUserId());
 
         try {
-            EvaluationTask task = evaluationService.runDatasetEvaluation(datasetId, knowledgeId);
+            EvaluationTask task = evaluationService.runDatasetEvaluation(datasetId, knowledgeId, runConfig(params));
             return Result.success(task);
         } catch (RuntimeException e) {
             return Result.error(e.getMessage());
@@ -274,7 +291,26 @@ public class EvaluationController {
         list.add(new EvaluationExportOverview("知识库", task.getKnowledgeName() != null ? task.getKnowledgeName() : "-"));
         list.add(new EvaluationExportOverview("创建时间", task.getCreateTime() != null ? task.getCreateTime().toString() : "-"));
         list.add(new EvaluationExportOverview("数据集类型", task.getDatasetType() != null ? task.getDatasetType() : "-"));
+        list.add(new EvaluationExportOverview("数据集 ID", task.getDatasetId() != null ? String.valueOf(task.getDatasetId()) : "-"));
+        list.add(new EvaluationExportOverview("数据集版本", task.getDatasetVersion() != null ? "v" + task.getDatasetVersion() : "-"));
+        list.add(new EvaluationExportOverview("评测层级", task.getEvaluationMode() != null ? task.getEvaluationMode() : "RETRIEVAL"));
+        list.add(new EvaluationExportOverview("Top K", String.valueOf(task.getTopK() != null ? task.getTopK() : 5)));
         list.add(new EvaluationExportOverview("QA数量", String.valueOf(task.getQaCount() != null ? task.getQaCount() : 0)));
+        list.add(new EvaluationExportOverview("有检索标注样本", String.valueOf(task.getLabeledCount() != null ? task.getLabeledCount() : 0)));
+        list.add(new EvaluationExportOverview("已自动评审样本", String.valueOf(task.getJudgedCount() != null ? task.getJudgedCount() : 0)));
+        list.add(new EvaluationExportOverview("Recall@K", metric(task.getRecallAtK())));
+        list.add(new EvaluationExportOverview("Precision@K", metric(task.getPrecisionAtK())));
+        list.add(new EvaluationExportOverview("NDCG@K", metric(task.getNdcgAtK())));
+        list.add(new EvaluationExportOverview("MAP", metric(task.getMapScore())));
+        list.add(new EvaluationExportOverview("Context Precision", metric(task.getContextPrecision())));
+        list.add(new EvaluationExportOverview("Context Recall", metric(task.getContextRecall())));
+        list.add(new EvaluationExportOverview("Faithfulness", metric(task.getFaithfulness())));
+        list.add(new EvaluationExportOverview("Answer Relevancy", metric(task.getAnswerRelevancy())));
+        list.add(new EvaluationExportOverview("Completeness", metric(task.getCompleteness())));
+        list.add(new EvaluationExportOverview("Fluency", metric(task.getFluency())));
+        list.add(new EvaluationExportOverview("总体分", metric(task.getOverallScore())));
+        list.add(new EvaluationExportOverview("基线任务", task.getBaselineTaskId() != null ? String.valueOf(task.getBaselineTaskId()) : "-"));
+        list.add(new EvaluationExportOverview("回归结论", task.getRegressionStatus() != null ? task.getRegressionStatus() : "NOT_COMPARED"));
         list.add(new EvaluationExportOverview("分块命中率", task.getHitRate() != null ? (task.getHitRate().doubleValue() * 100) + "%" : "-"));
         list.add(new EvaluationExportOverview("文档命中率", task.getDocHitRate() != null ? (task.getDocHitRate().doubleValue() * 100) + "%" : "-"));
         list.add(new EvaluationExportOverview("MRR", task.getMrr() != null ? task.getMrr().toPlainString() : "-"));
@@ -308,10 +344,36 @@ public class EvaluationController {
             detail.setHitRank(qa.getHitRank() != null ? String.valueOf(qa.getHitRank()) : "-");
             detail.setDocHitRank(qa.getDocHitRank() != null ? String.valueOf(qa.getDocHitRank()) : "-");
             detail.setRetrievedChunkIds(qa.getRetrievedChunkIds());
+            detail.setRelevanceJudgments(qa.getRelevanceJudgments() != null ? qa.getRelevanceJudgments() : qa.getExpectedDocumentIds());
+            detail.setRetrievedDocumentIds(qa.getRetrievedDocumentIds());
+            detail.setRecallAtK(metric(qa.getRecallAtK()));
+            detail.setPrecisionAtK(metric(qa.getPrecisionAtK()));
+            detail.setReciprocalRank(metric(qa.getReciprocalRank()));
+            detail.setNdcgAtK(metric(qa.getNdcgAtK()));
+            detail.setAveragePrecision(metric(qa.getAveragePrecision()));
+            detail.setActualAnswer(qa.getActualAnswer());
+            detail.setFaithfulness(metric(qa.getFaithfulness()));
+            detail.setAnswerRelevancy(metric(qa.getAnswerRelevancy()));
+            detail.setCompleteness(metric(qa.getCompleteness()));
+            detail.setFluency(metric(qa.getFluency()));
+            detail.setOverallScore(metric(qa.getOverallScore()));
+            detail.setJudgeReason(qa.getJudgeReason());
+            detail.setFailureCategory(qa.getFailureCategory());
+            detail.setFailureSuggestion(qa.getFailureSuggestion());
+            detail.setCategory(qa.getCategory());
+            detail.setDifficulty(qa.getDifficulty());
+            detail.setBusinessLine(qa.getBusinessLine());
+            detail.setUserRole(qa.getUserRole());
+            detail.setHumanOverallScore(metric(qa.getHumanOverallScore()));
+            detail.setHumanReviewNote(qa.getHumanReviewNote());
 
             list.add(detail);
         }
         return list;
+    }
+
+    private String metric(java.math.BigDecimal value) {
+        return value == null ? "-" : value.toPlainString();
     }
 
     private String formatStatus(Integer status) {
@@ -345,5 +407,17 @@ public class EvaluationController {
         if (task == null) throw new BusinessException(404, "评估任务不存在");
         knowledgeAccess.requireRead(task.getKnowledgeId(), UserContext.getCurrentUserId());
         return task;
+    }
+
+    private EvaluationRunConfig runConfig(Map<String, Object> params) {
+        EvaluationRunConfig config = new EvaluationRunConfig();
+        if (params == null) return config;
+        if (params.get("evaluationMode") != null) config.setEvaluationMode(params.get("evaluationMode").toString());
+        if (params.get("topK") != null) config.setTopK(Integer.parseInt(params.get("topK").toString()));
+        if (params.get("judgeModel") != null) config.setJudgeModel(params.get("judgeModel").toString());
+        if (params.get("baselineTaskId") != null && !params.get("baselineTaskId").toString().isBlank()) {
+            config.setBaselineTaskId(Long.parseLong(params.get("baselineTaskId").toString()));
+        }
+        return config;
     }
 }

@@ -117,6 +117,8 @@ const availableEvents = [
   { value: 'task.complete', label: '任务完成' },
   { value: 'task.fail', label: '任务失败' },
   { value: 'system.alert', label: '系统告警' },
+  { value: 'evaluation.regression', label: '评测回归' },
+  { value: 'evaluation.run_failed', label: '评测失败' },
 ]
 
 const loadWebhooks = async () => {

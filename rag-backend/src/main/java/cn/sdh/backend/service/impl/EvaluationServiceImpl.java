@@ -3,6 +3,7 @@ package cn.sdh.backend.service.impl;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.dto.DatasetInfo;
 import cn.sdh.backend.dto.EvaluationQaItem;
+import cn.sdh.backend.dto.EvaluationRunConfig;
 import cn.sdh.backend.dto.KnowledgeQualityReport;
 import cn.sdh.backend.entity.*;
 import cn.sdh.backend.mapper.EvaluationQaMapper;
@@ -23,6 +24,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -62,6 +65,22 @@ public class EvaluationServiceImpl implements EvaluationService {
         """;
 
     private static final String DATASETS_PATH = "datasets/";
+    private static final Set<String> EVALUATION_MODES = Set.of("RETRIEVAL", "GENERATION", "FULL");
+    private static final String ANSWER_PROMPT = """
+            你是企业知识库问答助手。请只根据给定 Context 回答问题；没有依据时明确回答“根据现有知识无法回答”。
+            问题：%s
+            Context：
+            %s
+            """;
+    private static final String JUDGE_PROMPT = """
+            你是严格的 RAG 评测员。请根据问题、Context、待评估答案和参考答案评分。
+            每项输出 1-5 的整数；忠实度要求答案内容能在 Context 找到依据。
+            问题：%s
+            Context：%s
+            待评估答案：%s
+            参考答案：%s
+            只输出 JSON：{"contextPrecision":1,"contextRecall":1,"faithfulness":1,"answerRelevancy":1,"completeness":1,"fluency":1,"overall":1,"reason":"一句话理由"}
+            """;
 
     public EvaluationServiceImpl(
             EvaluationTaskMapper taskMapper,
@@ -89,16 +108,22 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     @Transactional
     public EvaluationTask generateAndRun(Long knowledgeId, int qaCount, String taskName) {
+        return generateAndRun(knowledgeId, qaCount, taskName, new EvaluationRunConfig());
+    }
+
+    @Override
+    @Transactional
+    public EvaluationTask generateAndRun(Long knowledgeId, int qaCount, String taskName, EvaluationRunConfig config) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             throw new RuntimeException("用户未登录");
         }
         knowledgeAccess.requireEdit(knowledgeId, userId);
 
-        EvaluationTask task = createTask(knowledgeId, taskName, qaCount, "generated", userId);
+        EvaluationTask task = createTask(knowledgeId, taskName, qaCount, "generated", userId, config);
         taskMapper.insert(task);
 
-        evaluationExecutor.execute(() -> runEvaluation(task.getId()));
+        submitAfterCommit(() -> runEvaluation(task.getId()));
 
         return task;
     }
@@ -106,6 +131,12 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     @Transactional
     public EvaluationTask importAndRun(Long knowledgeId, List<EvaluationQaItem> items, String taskName) {
+        return importAndRun(knowledgeId, items, taskName, new EvaluationRunConfig());
+    }
+
+    @Override
+    @Transactional
+    public EvaluationTask importAndRun(Long knowledgeId, List<EvaluationQaItem> items, String taskName, EvaluationRunConfig config) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             throw new RuntimeException("用户未登录");
@@ -115,10 +146,10 @@ public class EvaluationServiceImpl implements EvaluationService {
             throw new RuntimeException("导入数据不能为空");
         }
 
-        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "imported", userId);
+        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "imported", userId, config);
         taskMapper.insert(task);
 
-        evaluationExecutor.execute(() -> runImportedEvaluation(task.getId(), items));
+        submitAfterCommit(() -> runImportedEvaluation(task.getId(), items));
 
         return task;
     }
@@ -126,6 +157,12 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     @Transactional
     public EvaluationTask runBuiltinDataset(String datasetName, Long knowledgeId) {
+        return runBuiltinDataset(datasetName, knowledgeId, new EvaluationRunConfig());
+    }
+
+    @Override
+    @Transactional
+    public EvaluationTask runBuiltinDataset(String datasetName, Long knowledgeId, EvaluationRunConfig config) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             throw new RuntimeException("用户未登录");
@@ -141,10 +178,10 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
 
         String taskName = "内置数据集-" + datasetName;
-        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "builtin", userId);
+        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "builtin", userId, config);
         taskMapper.insert(task);
 
-        evaluationExecutor.execute(() -> runImportedEvaluation(task.getId(), items));
+        submitAfterCommit(() -> runImportedEvaluation(task.getId(), items));
 
         return task;
     }
@@ -152,9 +189,25 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     @Transactional
     public EvaluationTask runDatasetEvaluation(Long datasetId, Long knowledgeId) {
+        return runDatasetEvaluation(datasetId, knowledgeId, new EvaluationRunConfig());
+    }
+
+    @Override
+    @Transactional
+    public EvaluationTask runDatasetEvaluation(Long datasetId, Long knowledgeId, EvaluationRunConfig config) {
         Long userId = UserContext.getCurrentUserId();
         if (userId == null) {
             throw new RuntimeException("用户未登录");
+        }
+        return runDatasetEvaluationForUser(datasetId, knowledgeId, config, userId, null);
+    }
+
+    @Override
+    @Transactional
+    public EvaluationTask runDatasetEvaluationForUser(Long datasetId, Long knowledgeId, EvaluationRunConfig config,
+                                                      Long userId, String requestedTaskName) {
+        if (userId == null) {
+            throw new RuntimeException("评测任务缺少执行用户");
         }
         if (knowledgeId == null) {
             throw new RuntimeException("请选择知识库");
@@ -169,13 +222,18 @@ public class EvaluationServiceImpl implements EvaluationService {
 
         // 获取数据集信息
         TestDataset dataset = testDatasetService.getDatasetDetail(datasetId);
-        String taskName = dataset != null ? dataset.getName() + "-评估" : "数据集评估-" + datasetId;
+        String taskName = requestedTaskName != null && !requestedTaskName.isBlank()
+                ? requestedTaskName
+                : (dataset != null ? dataset.getName() + "-评估" : "数据集评估-" + datasetId);
         String datasetType = dataset != null ? dataset.getDatasetType() : "custom";
 
-        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), datasetType, userId);
+        EvaluationTask task = createTask(knowledgeId, taskName, items.size(), datasetType, userId, config);
+        task.setDatasetId(datasetId);
+        task.setDatasetVersion(dataset == null || dataset.getVersion() == null ? 1 : dataset.getVersion());
+        enrichDatasetSnapshot(task, dataset);
         taskMapper.insert(task);
 
-        evaluationExecutor.execute(() -> runImportedEvaluation(task.getId(), items));
+        submitAfterCommit(() -> runImportedEvaluation(task.getId(), items));
 
         return task;
     }
@@ -184,7 +242,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     public List<DatasetInfo> listBuiltinDatasets() {
         List<DatasetInfo> datasets = new ArrayList<>();
 
-        String[] datasetFiles = {"rag_scenarios.json"};
+        String[] datasetFiles = {"rag_scenarios.json", "rag_evaluation_mvp.json"};
         for (String fileName : datasetFiles) {
             try {
                 Resource resource = new ClassPathResource(DATASETS_PATH + fileName);
@@ -217,27 +275,83 @@ public class EvaluationServiceImpl implements EvaluationService {
         return datasets;
     }
 
-    private EvaluationTask createTask(Long knowledgeId, String taskName, int qaCount, String datasetType, Long userId) {
+    private EvaluationTask createTask(Long knowledgeId, String taskName, int qaCount, String datasetType,
+                                      Long userId, EvaluationRunConfig requestedConfig) {
+        EvaluationRunConfig config = normalizeConfig(requestedConfig);
         EvaluationTask task = new EvaluationTask();
         task.setKnowledgeId(knowledgeId);
         task.setTaskName(taskName != null ? taskName : "评估任务-" + System.currentTimeMillis());
         task.setQaCount(qaCount);
         task.setDatasetType(datasetType);
+        task.setEvaluationMode(config.getEvaluationMode());
+        task.setTopK(config.getTopK());
+        task.setLabeledCount(0);
+        task.setJudgedCount(0);
+        task.setJudgeModel(config.getJudgeModel());
+        task.setBaselineTaskId(config.getBaselineTaskId());
+        task.setRegressionStatus(config.getBaselineTaskId() == null ? "NOT_COMPARED" : null);
         task.setStatus(0);
         task.setUserId(userId);
         task.setCreateTime(LocalDateTime.now());
         task.setUpdateTime(LocalDateTime.now());
 
+        if (config.getBaselineTaskId() != null) {
+            EvaluationTask baseline = taskMapper.selectById(config.getBaselineTaskId());
+            if (baseline == null || !Objects.equals(baseline.getKnowledgeId(), knowledgeId)) {
+                throw new IllegalArgumentException("基线任务不存在或不属于当前知识库");
+            }
+            if (!Objects.equals(baseline.getStatus(), 2)) {
+                throw new IllegalArgumentException("基线任务尚未完成");
+            }
+            if (!Objects.equals(Optional.ofNullable(baseline.getTopK()).orElse(5), config.getTopK())) {
+                throw new IllegalArgumentException("基线任务与当前任务的 Top K 不一致");
+            }
+            String baselineMode = Optional.ofNullable(baseline.getEvaluationMode()).orElse("RETRIEVAL");
+            if (!Objects.equals(baselineMode, config.getEvaluationMode())) {
+                throw new IllegalArgumentException("基线任务与当前任务的评测层级不一致");
+            }
+        }
+
         KnowledgeBase kb = knowledgeBaseService.getKnowledgeBaseById(knowledgeId);
         if (kb != null) {
             try {
-                task.setConfigSnapshot(objectMapper.writeValueAsString(kb));
+                Map<String, Object> snapshot = new LinkedHashMap<>();
+                snapshot.put("knowledgeBase", kb);
+                snapshot.put("evaluationMode", config.getEvaluationMode());
+                snapshot.put("topK", config.getTopK());
+                snapshot.put("judgeModel", config.getJudgeModel());
+                task.setConfigSnapshot(objectMapper.writeValueAsString(snapshot));
             } catch (JsonProcessingException e) {
                 log.warn("保存配置快照失败", e);
             }
         }
 
         return task;
+    }
+
+    private EvaluationRunConfig normalizeConfig(EvaluationRunConfig requested) {
+        EvaluationRunConfig config = requested == null ? new EvaluationRunConfig() : requested;
+        String mode = config.getEvaluationMode() == null ? "RETRIEVAL" : config.getEvaluationMode().trim().toUpperCase(Locale.ROOT);
+        if (!EVALUATION_MODES.contains(mode)) throw new IllegalArgumentException("评测模式不正确");
+        config.setEvaluationMode(mode);
+        config.setTopK(Math.max(1, Math.min(config.getTopK() == null ? 5 : config.getTopK(), 20)));
+        if (config.getJudgeModel() != null && config.getJudgeModel().isBlank()) config.setJudgeModel(null);
+        return config;
+    }
+
+    private void enrichDatasetSnapshot(EvaluationTask task, TestDataset dataset) {
+        if (dataset == null) return;
+        try {
+            Map<String, Object> snapshot = task.getConfigSnapshot() == null
+                    ? new LinkedHashMap<>()
+                    : objectMapper.readValue(task.getConfigSnapshot(), new TypeReference<LinkedHashMap<String, Object>>() {});
+            snapshot.put("datasetId", dataset.getId());
+            snapshot.put("datasetName", dataset.getName());
+            snapshot.put("datasetVersion", dataset.getVersion() == null ? 1 : dataset.getVersion());
+            task.setConfigSnapshot(objectMapper.writeValueAsString(snapshot));
+        } catch (Exception e) {
+            log.warn("保存数据集版本快照失败: datasetId={}", dataset.getId(), e);
+        }
     }
 
     private List<EvaluationQaItem> loadBuiltinDataset(String datasetName) {
@@ -255,19 +369,7 @@ public class EvaluationServiceImpl implements EvaluationService {
                 }
 
                 List<EvaluationQaItem> result = new ArrayList<>();
-                for (Map<String, Object> item : items) {
-                    EvaluationQaItem qaItem = new EvaluationQaItem();
-                    qaItem.setQuestion((String) item.get("question"));
-                    qaItem.setExpectedAnswer((String) item.get("expectedAnswer"));
-                    qaItem.setIsNegative(Boolean.TRUE.equals(item.get("isNegative")));
-                    if (item.get("sourceChunkId") != null) {
-                        qaItem.setSourceChunkId((String) item.get("sourceChunkId"));
-                    }
-                    if (item.get("externalId") != null) {
-                        qaItem.setExternalId((String) item.get("externalId"));
-                    }
-                    result.add(qaItem);
-                }
+                for (Map<String, Object> item : items) result.add(objectMapper.convertValue(item, EvaluationQaItem.class));
                 return result;
             }
         } catch (Exception e) {
@@ -332,24 +434,26 @@ public class EvaluationServiceImpl implements EvaluationService {
                 }
             }
 
+            List<EvaluationQa> evaluatedQaList = new ArrayList<>();
             for (EvaluationQa qa : qaList) {
                 try {
-                    evaluateQa(qa, task.getKnowledgeId());
+                    evaluateQa(qa, task);
                     qaMapper.insert(qa);
+                    evaluatedQaList.add(qa);
                 } catch (Exception e) {
                     log.warn("评估QA失败: question={}", qa.getQuestion(), e);
                 }
             }
 
-            calculateMetrics(task, qaList);
+            calculateMetrics(task, evaluatedQaList);
 
             task.setStatus(2);
-            task.setQaCount(qaList.size());
+            task.setQaCount(evaluatedQaList.size());
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
 
             log.info("评估任务完成: taskId={}, qaCount={}, hitRate={}, mrr={}",
-                    taskId, qaList.size(), task.getHitRate(), task.getMrr());
+                    taskId, evaluatedQaList.size(), task.getHitRate(), task.getMrr());
 
         } catch (Exception e) {
             log.error("评估任务执行失败: taskId={}", taskId, e);
@@ -388,15 +492,24 @@ public class EvaluationServiceImpl implements EvaluationService {
                 qa.setExpectedAnswer(item.getExpectedAnswer() != null ? item.getExpectedAnswer().trim() : "");
                 qa.setSourceChunkId(item.getSourceChunkId());
                 qa.setSourceDocumentId(item.getSourceDocumentId());
+                qa.setExpectedDocumentIds(writeJson(item.getExpectedDocumentIds()));
+                qa.setRelevanceJudgments(writeJson(item.getRelevanceJudgments()));
                 qa.setIsNegative(item.getIsNegative() != null ? item.getIsNegative() : false);
                 qa.setSourceType(task.getDatasetType());
                 qa.setExternalId(item.getExternalId());
+                qa.setCategory(item.getCategory());
+                qa.setDifficulty(item.getDifficulty());
+                qa.setBusinessLine(item.getBusinessLine());
+                qa.setUserRole(item.getUserRole());
                 qa.setHit(false);
                 qa.setDocHit(false);
                 qa.setCreateTime(LocalDateTime.now());
 
                 try {
-                    evaluateQa(qa, task.getKnowledgeId());
+                    evaluateQa(qa, task);
+                    if (qa.getOverallScore() != null) {
+                        qa.setHumanReviewStatus("PENDING");
+                    }
                     qaMapper.insert(qa);
                     qaList.add(qa);
                 } catch (Exception e) {
@@ -425,7 +538,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 
     private EvaluationQa generateQaFromDocument(Document doc, Long taskId, String modelId) {
         String content = doc.getText();
-        String vectorId = (String) doc.getMetadata().get("id");
+        String vectorId = Objects.toString(doc.getMetadata().get("id"), null);
         Object docIdObj = doc.getMetadata().get("document_id");
         Long documentId = null;
         if (docIdObj instanceof Number) {
@@ -455,6 +568,10 @@ public class EvaluationServiceImpl implements EvaluationService {
             qa.setExpectedAnswer(answer != null ? answer.trim() : "");
             qa.setSourceChunkId(vectorId);
             qa.setSourceDocumentId(documentId);
+            if (documentId != null) {
+                qa.setExpectedDocumentIds(writeJson(List.of(documentId)));
+                qa.setRelevanceJudgments(writeJson(Map.of(documentId, 3)));
+            }
             qa.setSourceChunkContent(content);
             qa.setIsNegative(false);
             qa.setHit(false);
@@ -483,95 +600,130 @@ public class EvaluationServiceImpl implements EvaluationService {
         return answerObj.toString();
     }
 
-    private void evaluateQa(EvaluationQa qa, Long knowledgeId) {
+    private void evaluateQa(EvaluationQa qa, EvaluationTask task) {
         RagSearchService.RagSearchResult result = ragSearchService.search(
-                qa.getQuestion(), knowledgeId, null
+                qa.getQuestion(), task.getKnowledgeId(), null
         );
 
-        List<Document> docs = result.getDocuments();
-        if (docs == null || docs.isEmpty()) {
-            qa.setRetrievedChunkIds("[]");
+        List<Document> docs = result.getDocuments() == null ? List.of() : result.getDocuments();
+        int topK = task.getTopK() == null ? 5 : task.getTopK();
+        List<Document> topDocs = docs.stream().limit(topK).toList();
 
-            if (Boolean.TRUE.equals(qa.getIsNegative())) {
-                // 负样本：检索无结果 = 正确未命中
-                qa.setHit(false);
-                qa.setDocHit(false);
-                qa.setHitRank(null);
-                qa.setDocHitRank(null);
-                log.debug("负样本正确未命中: question={}", qa.getQuestion());
-            } else {
-                qa.setHit(false);
-                qa.setDocHit(false);
-                qa.setHitRank(null);
-                qa.setDocHitRank(null);
-                log.debug("评估QA检索无结果: question={}", qa.getQuestion());
-            }
-            return;
-        }
-
-        // 提取检索到的分块ID和文档ID
         List<String> retrievedIds = new ArrayList<>();
         List<Long> retrievedDocIds = new ArrayList<>();
-
-        for (Document doc : docs) {
-            String id = (String) doc.getMetadata().get("id");
-            if (id != null) {
-                retrievedIds.add(id);
-            }
-            Object docIdObj = doc.getMetadata().get("document_id");
-            if (docIdObj instanceof Number) {
-                retrievedDocIds.add(((Number) docIdObj).longValue());
-            } else {
-                retrievedDocIds.add(null);
-            }
+        StringBuilder context = new StringBuilder();
+        for (Document doc : topDocs) {
+            Object id = doc.getMetadata().get("id");
+            if (id != null) retrievedIds.add(id.toString());
+            Long documentId = longValue(doc.getMetadata().get("document_id"));
+            retrievedDocIds.add(documentId);
+            if (context.length() > 0) context.append("\n\n---\n\n");
+            context.append("[文档 ").append(documentId == null ? "未知" : documentId).append("]\n")
+                    .append(Objects.toString(doc.getText(), ""));
         }
-
         qa.setRetrievedChunkIds(toJsonArray(retrievedIds));
-
-        // 负样本：检索到结果 = 错误命中（应该检索不到）
-        if (Boolean.TRUE.equals(qa.getIsNegative())) {
-            qa.setHit(false);
-            qa.setDocHit(false);
-            qa.setHitRank(null);
-            qa.setDocHitRank(null);
-            log.debug("负样本错误命中: question={}, retrievedCount={}", qa.getQuestion(), retrievedIds.size());
-            return;
-        }
-
-        String sourceId = qa.getSourceChunkId();
-        Long sourceDocId = qa.getSourceDocumentId();
-
-        // 1. 检查分块级命中（精确匹配）
-        if (sourceId != null && !sourceId.isEmpty()) {
-            for (int i = 0; i < retrievedIds.size(); i++) {
-                if (sourceId.equals(retrievedIds.get(i))) {
-                    qa.setHit(true);
-                    qa.setHitRank(i + 1);
-                    qa.setDocHit(true);
-                    qa.setDocHitRank(i + 1);
-                    log.debug("评估QA分块命中: question={}, rank={}, sourceId={}", qa.getQuestion(), i + 1, sourceId);
-                    return;
-                }
-            }
-        }
-
-        // 2. 检查文档级命中（同一文档的其他分块）
-        if (sourceDocId != null) {
-            for (int i = 0; i < retrievedDocIds.size(); i++) {
-                if (sourceDocId.equals(retrievedDocIds.get(i))) {
-                    qa.setDocHit(true);
-                    qa.setDocHitRank(i + 1);
-                    log.debug("评估QA文档命中: question={}, rank={}, docId={}", qa.getQuestion(), i + 1, sourceDocId);
-                    return;
-                }
-            }
-        }
-
-        log.debug("评估QA未命中: question={}, sourceId={}, retrievedCount={}", qa.getQuestion(), sourceId, retrievedIds.size());
+        qa.setRetrievedDocumentIds(writeJson(retrievedDocIds));
+        qa.setRetrievedContext(context.toString());
         qa.setHit(false);
         qa.setDocHit(false);
         qa.setHitRank(null);
         qa.setDocHitRank(null);
+
+        if (Boolean.TRUE.equals(qa.getIsNegative())) {
+            if (generationEnabled(task) && qa.getExpectedAnswer() != null && !qa.getExpectedAnswer().isBlank()) {
+                evaluateGeneration(qa, task);
+            }
+            classifyFailure(qa);
+            return;
+        }
+
+        String sourceId = qa.getSourceChunkId();
+        if (sourceId != null && !sourceId.isBlank()) {
+            for (int i = 0; i < retrievedIds.size(); i++) {
+                if (sourceId.equals(retrievedIds.get(i))) {
+                    qa.setHit(true);
+                    qa.setHitRank(i + 1);
+                    break;
+                }
+            }
+        }
+
+        Map<Long, Integer> judgments = readJudgments(qa.getRelevanceJudgments());
+        for (Long id : readLongList(qa.getExpectedDocumentIds())) judgments.putIfAbsent(id, 1);
+        if (qa.getSourceDocumentId() != null) judgments.putIfAbsent(qa.getSourceDocumentId(), 3);
+        if (!judgments.isEmpty()) {
+            RagEvaluationMetrics.Result metrics = RagEvaluationMetrics.calculate(retrievedDocIds, judgments, topK);
+            qa.setRecallAtK(decimal(metrics.recall()));
+            qa.setPrecisionAtK(decimal(metrics.precision()));
+            qa.setReciprocalRank(decimal(metrics.reciprocalRank()));
+            qa.setNdcgAtK(decimal(metrics.ndcg()));
+            qa.setAveragePrecision(decimal(metrics.averagePrecision()));
+            qa.setDocHit(metrics.hit());
+            qa.setDocHitRank(metrics.firstRank());
+        }
+
+        if (generationEnabled(task) && qa.getExpectedAnswer() != null && !qa.getExpectedAnswer().isBlank()) {
+            evaluateGeneration(qa, task);
+        }
+        classifyFailure(qa);
+    }
+
+    private void evaluateGeneration(EvaluationQa qa, EvaluationTask task) {
+        try {
+            String context = Objects.toString(qa.getRetrievedContext(), "");
+            String answer = chatService.chat(String.format(ANSWER_PROMPT, qa.getQuestion(), context), task.getJudgeModel());
+            qa.setActualAnswer(answer);
+            String judgeResponse = chatService.chat(String.format(JUDGE_PROMPT, qa.getQuestion(), context,
+                    Objects.toString(answer, ""), qa.getExpectedAnswer()), task.getJudgeModel());
+            Map<String, Object> scores = objectMapper.readValue(extractJson(judgeResponse), new TypeReference<Map<String, Object>>() {});
+            qa.setContextPrecision(score(scores, "contextPrecision"));
+            qa.setContextRecall(score(scores, "contextRecall"));
+            qa.setFaithfulness(score(scores, "faithfulness"));
+            qa.setAnswerRelevancy(score(scores, "answerRelevancy"));
+            qa.setCompleteness(score(scores, "completeness"));
+            qa.setFluency(score(scores, "fluency"));
+            qa.setOverallScore(score(scores, "overall"));
+            qa.setJudgeReason(cap(Objects.toString(scores.get("reason"), ""), 1000));
+        } catch (Exception e) {
+            qa.setJudgeReason(cap("自动评审失败：" + Objects.toString(e.getMessage(), "未知错误"), 1000));
+            log.warn("生成质量评审失败: question={}, error={}", qa.getQuestion(), e.getMessage());
+        }
+    }
+
+    private void classifyFailure(EvaluationQa qa) {
+        qa.setFailureCategory(null);
+        qa.setFailureSuggestion(null);
+        if (Boolean.TRUE.equals(qa.getIsNegative())) {
+            if (hasRetrieved(qa)) {
+                fail(qa, "NEGATIVE_FALSE_POSITIVE", "提高相似度阈值或增加无答案识别，生成阶段必须明确拒答。");
+            } else if (low(qa.getFaithfulness(), 0.6) || low(qa.getAnswerRelevancy(), 0.6)) {
+                fail(qa, "HALLUCINATION", "负样本回答未正确拒答，应强化仅依据 Context 回答的约束。");
+            }
+            return;
+        }
+        boolean labeled = qa.getSourceDocumentId() != null
+                || !readLongList(qa.getExpectedDocumentIds()).isEmpty()
+                || !readJudgments(qa.getRelevanceJudgments()).isEmpty();
+        if (!labeled) {
+            fail(qa, "UNLABELED", "补充相关文档或分级相关性标注后再判断检索质量。");
+        } else if (qa.getRecallAtK() != null && qa.getRecallAtK().signum() == 0) {
+            fail(qa, "RETRIEVAL_MISS", "检查知识是否缺失，并调整切分、查询改写、召回或重排配置。");
+        } else if (low(qa.getContextPrecision(), 0.6) || low(qa.getPrecisionAtK(), 0.2)) {
+            fail(qa, "CONTEXT_NOISE", "减少无关候选，优化相似度阈值、混合检索权重或重排模型。");
+        } else if (low(qa.getFaithfulness(), 0.6)) {
+            fail(qa, "HALLUCINATION", "正确证据已进入 Context，建议收紧生成 Prompt 或更换生成模型。");
+        } else if (low(qa.getCompleteness(), 0.6)) {
+            fail(qa, "INCOMPLETE", "补充参考答案要点，并优化 Context 拼装或回答结构要求。");
+        }
+    }
+
+    private boolean low(BigDecimal score, double threshold) {
+        return score != null && score.compareTo(BigDecimal.valueOf(threshold)) < 0;
+    }
+
+    private void fail(EvaluationQa qa, String category, String suggestion) {
+        qa.setFailureCategory(category);
+        qa.setFailureSuggestion(suggestion);
     }
 
     private void calculateMetrics(EvaluationTask task, List<EvaluationQa> qaList) {
@@ -583,31 +735,32 @@ public class EvaluationServiceImpl implements EvaluationService {
         int hitCount = 0;
         int docHitCount = 0;
         double mrrSum = 0.0;
-        double docMrrSum = 0.0;
         double hitRankSum = 0.0;
         int top1 = 0, top3 = 0, top5 = 0, top10 = 0;
-
-        // 负样本统计
         int negativeCount = 0;
-        int negativeWrongHitCount = 0; // 负样本中被错误命中的数量
+        int negativeWrongHitCount = 0;
+        int positiveCount = 0;
+        int labeledCount = 0;
+        int judgedCount = 0;
+        double recallSum = 0, precisionSum = 0, ndcgSum = 0, mapSum = 0;
+        double contextPrecisionSum = 0, contextRecallSum = 0, faithfulnessSum = 0;
+        double answerRelevancySum = 0, completenessSum = 0, fluencySum = 0, overallSum = 0;
 
         for (EvaluationQa qa : qaList) {
             if (Boolean.TRUE.equals(qa.getIsNegative())) {
                 negativeCount++;
-                // 负样本：检索到结果就是错误命中
-                String retrieved = qa.getRetrievedChunkIds();
+                String retrieved = qa.getRetrievedDocumentIds();
                 if (retrieved != null && !retrieved.equals("[]") && !retrieved.isEmpty()) {
                     negativeWrongHitCount++;
                 }
-                continue; // 负样本不参与正样本指标计算
+                continue;
             }
+            positiveCount++;
 
-            // 分块级指标
             if (Boolean.TRUE.equals(qa.getHit())) {
                 hitCount++;
                 int rank = qa.getHitRank() != null ? qa.getHitRank() : 0;
                 if (rank > 0) {
-                    mrrSum += 1.0 / rank;
                     hitRankSum += rank;
 
                     if (rank <= 1) top1++;
@@ -616,41 +769,45 @@ public class EvaluationServiceImpl implements EvaluationService {
                     if (rank <= 10) top10++;
                 }
             }
-
-            // 文档级指标
             if (Boolean.TRUE.equals(qa.getDocHit())) {
                 docHitCount++;
-                int docRank = qa.getDocHitRank() != null ? qa.getDocHitRank() : 0;
-                if (docRank > 0) {
-                    docMrrSum += 1.0 / docRank;
-                }
+            }
+            if (qa.getRecallAtK() != null) {
+                labeledCount++;
+                recallSum += qa.getRecallAtK().doubleValue();
+                precisionSum += value(qa.getPrecisionAtK());
+                mrrSum += value(qa.getReciprocalRank());
+                ndcgSum += value(qa.getNdcgAtK());
+                mapSum += value(qa.getAveragePrecision());
+            }
+            if (qa.getOverallScore() != null) {
+                judgedCount++;
+                contextPrecisionSum += value(qa.getContextPrecision());
+                contextRecallSum += value(qa.getContextRecall());
+                faithfulnessSum += value(qa.getFaithfulness());
+                answerRelevancySum += value(qa.getAnswerRelevancy());
+                completenessSum += value(qa.getCompleteness());
+                fluencySum += value(qa.getFluency());
+                overallSum += value(qa.getOverallScore());
             }
         }
 
-        int positiveCount = totalQa - negativeCount;
-
-        // 分块级命中率（只算正样本）
         if (positiveCount > 0) {
-            BigDecimal hitRate = BigDecimal.valueOf((double) hitCount / positiveCount)
-                    .setScale(4, RoundingMode.HALF_UP);
-            task.setHitRate(hitRate);
-
-            BigDecimal docHitRate = BigDecimal.valueOf((double) docHitCount / positiveCount)
-                    .setScale(4, RoundingMode.HALF_UP);
-            task.setDocHitRate(docHitRate);
-
-            BigDecimal mrr = BigDecimal.valueOf(mrrSum / positiveCount)
-                    .setScale(4, RoundingMode.HALF_UP);
-            task.setMrr(mrr);
+            task.setHitRate(decimal((double) hitCount / positiveCount));
+            task.setDocHitRate(decimal((double) docHitCount / positiveCount));
+        }
+        if (labeledCount > 0) {
+            task.setRecallAtK(decimal(recallSum / labeledCount));
+            task.setPrecisionAtK(decimal(precisionSum / labeledCount));
+            task.setMrr(decimal(mrrSum / labeledCount));
+            task.setNdcgAtK(decimal(ndcgSum / labeledCount));
+            task.setMapScore(decimal(mapSum / labeledCount));
         }
 
-        // 平均命中排名
         BigDecimal avgHitRank = hitCount > 0
                 ? BigDecimal.valueOf(hitRankSum / hitCount).setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
         task.setAvgHitRank(avgHitRank);
-
-        // Top-K 命中分布
         Map<String, Integer> topKHits = new HashMap<>();
         topKHits.put("top1", top1);
         topKHits.put("top3", top3);
@@ -662,16 +819,101 @@ public class EvaluationServiceImpl implements EvaluationService {
             log.warn("序列化Top-K命中分布失败", e);
         }
 
-        // 负样本指标
         task.setNegativeCount(negativeCount);
+        task.setLabeledCount(labeledCount);
+        task.setJudgedCount(judgedCount);
         if (negativeCount > 0) {
-            BigDecimal negativeHitRate = BigDecimal.valueOf((double) negativeWrongHitCount / negativeCount)
-                    .setScale(4, RoundingMode.HALF_UP);
-            task.setNegativeHitRate(negativeHitRate);
+            task.setNegativeHitRate(decimal((double) negativeWrongHitCount / negativeCount));
         }
+        if (judgedCount > 0) {
+            task.setContextPrecision(decimal(contextPrecisionSum / judgedCount));
+            task.setContextRecall(decimal(contextRecallSum / judgedCount));
+            task.setFaithfulness(decimal(faithfulnessSum / judgedCount));
+            task.setAnswerRelevancy(decimal(answerRelevancySum / judgedCount));
+            task.setCompleteness(decimal(completenessSum / judgedCount));
+            task.setFluency(decimal(fluencySum / judgedCount));
+            task.setOverallScore(decimal(overallSum / judgedCount));
+        }
+        compareBaseline(task);
 
-        log.info("评估指标计算完成: totalQa={}, positiveCount={}, negativeCount={}, hitRate={}, docHitRate={}, mrr={}, negativeHitRate={}",
-                totalQa, positiveCount, negativeCount, task.getHitRate(), task.getDocHitRate(), task.getMrr(), task.getNegativeHitRate());
+        log.info("分层评估完成: total={}, labeled={}, judged={}, recall@{}={}, mrr={}, faithfulness={}",
+                totalQa, labeledCount, judgedCount, task.getTopK(), task.getRecallAtK(), task.getMrr(), task.getFaithfulness());
+    }
+
+    private void compareBaseline(EvaluationTask task) {
+        if (task.getBaselineTaskId() == null) {
+            task.setRegressionStatus("NOT_COMPARED");
+            return;
+        }
+        EvaluationTask baseline = taskMapper.selectById(task.getBaselineTaskId());
+        if (baseline == null || !Objects.equals(baseline.getKnowledgeId(), task.getKnowledgeId())) {
+            task.setRegressionStatus("FAILED");
+            return;
+        }
+        boolean passed = notLower(task.getRecallAtK(), baseline.getRecallAtK())
+                && notLower(task.getMrr(), baseline.getMrr())
+                && notLower(task.getFaithfulness(), baseline.getFaithfulness())
+                && notLower(task.getAnswerRelevancy(), baseline.getAnswerRelevancy());
+        task.setRegressionStatus(passed ? "PASSED" : "FAILED");
+    }
+
+    private boolean notLower(BigDecimal current, BigDecimal baseline) {
+        return baseline == null || (current != null && current.compareTo(baseline) >= 0);
+    }
+
+    private boolean generationEnabled(EvaluationTask task) {
+        return "GENERATION".equals(task.getEvaluationMode()) || "FULL".equals(task.getEvaluationMode());
+    }
+
+    private BigDecimal score(Map<String, Object> values, String key) {
+        Object raw = values.get(key);
+        if (!(raw instanceof Number number)) return null;
+        double normalized = Math.max(1, Math.min(5, number.doubleValue())) / 5.0;
+        return decimal(normalized);
+    }
+
+    private BigDecimal decimal(double value) {
+        return BigDecimal.valueOf(value).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private double value(BigDecimal value) { return value == null ? 0 : value.doubleValue(); }
+
+    private Long longValue(Object raw) {
+        if (raw instanceof Number number) return number.longValue();
+        if (raw != null) try { return Long.parseLong(raw.toString()); } catch (NumberFormatException ignored) { }
+        return null;
+    }
+
+    private String writeJson(Object value) {
+        if (value == null) return null;
+        try { return objectMapper.writeValueAsString(value); }
+        catch (JsonProcessingException e) { return null; }
+    }
+
+    private List<Long> readLongList(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try { return objectMapper.readValue(json, new TypeReference<List<Long>>() {}); }
+        catch (Exception e) { return List.of(); }
+    }
+
+    private Map<Long, Integer> readJudgments(String json) {
+        Map<Long, Integer> result = new LinkedHashMap<>();
+        if (json == null || json.isBlank()) return result;
+        try { result.putAll(objectMapper.readValue(json, new TypeReference<Map<Long, Integer>>() {})); }
+        catch (Exception ignored) { }
+        return result;
+    }
+
+    private String extractJson(String response) {
+        if (response == null) throw new IllegalArgumentException("评审模型未返回结果");
+        int start = response.indexOf('{');
+        int end = response.lastIndexOf('}');
+        if (start < 0 || end <= start) throw new IllegalArgumentException("评审模型返回格式不正确");
+        return response.substring(start, end + 1);
+    }
+
+    private String cap(String value, int max) {
+        return value.length() > max ? value.substring(0, max) : value;
     }
 
     private String toJsonArray(List<String> list) {
@@ -765,6 +1007,19 @@ public class EvaluationServiceImpl implements EvaluationService {
         taskMapper.deleteById(taskId);
     }
 
+    private void submitAfterCommit(Runnable work) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    evaluationExecutor.execute(work);
+                }
+            });
+        } else {
+            evaluationExecutor.execute(work);
+        }
+    }
+
     @Override
     public KnowledgeQualityReport getQualityReport(Long knowledgeId, int issueLimit) {
         knowledgeAccess.requireRead(knowledgeId, UserContext.getCurrentUserId());
@@ -787,16 +1042,23 @@ public class EvaluationServiceImpl implements EvaluationService {
         List<KnowledgeQualityReport.QualityIssue> allIssues = new ArrayList<>();
         for (EvaluationQa qa : qaList) {
             boolean falsePositive = Boolean.TRUE.equals(qa.getIsNegative()) && hasRetrieved(qa);
-            boolean documentMiss = !Boolean.TRUE.equals(qa.getIsNegative()) && !Boolean.TRUE.equals(qa.getDocHit());
-            boolean chunkMiss = !Boolean.TRUE.equals(qa.getIsNegative()) && !Boolean.TRUE.equals(qa.getHit());
+            boolean hasDocumentLabel = qa.getSourceDocumentId() != null
+                    || !readLongList(qa.getExpectedDocumentIds()).isEmpty()
+                    || !readJudgments(qa.getRelevanceJudgments()).isEmpty();
+            boolean hasChunkLabel = qa.getSourceChunkId() != null && !qa.getSourceChunkId().isBlank();
+            boolean documentMiss = !Boolean.TRUE.equals(qa.getIsNegative()) && hasDocumentLabel && !Boolean.TRUE.equals(qa.getDocHit());
+            boolean chunkMiss = !Boolean.TRUE.equals(qa.getIsNegative()) && hasChunkLabel && !Boolean.TRUE.equals(qa.getHit());
+            boolean generatedFailure = Set.of("CONTEXT_NOISE", "HALLUCINATION", "INCOMPLETE")
+                    .contains(Objects.toString(qa.getFailureCategory(), ""));
             if (chunkMiss) chunkMisses++;
             if (documentMiss) documentMisses++;
             if (falsePositive) negativeFalsePositives++;
-            if ((falsePositive || chunkMiss) && (qa.getIssueStatus() == null || "open".equals(qa.getIssueStatus()))) openIssueCount++;
-            if (falsePositive || chunkMiss) {
+            if ((falsePositive || documentMiss || chunkMiss || generatedFailure) && (qa.getIssueStatus() == null || "open".equals(qa.getIssueStatus()))) openIssueCount++;
+            if (falsePositive || documentMiss || chunkMiss || generatedFailure) {
                 String status = qa.getIssueStatus() == null ? "open" : qa.getIssueStatus();
-                String reason = falsePositive ? "负样本被错误召回" : documentMiss ? "未召回来源文档" : "召回了文档但未命中正确分块";
-                String severity = falsePositive || documentMiss ? "high" : "medium";
+                String reason = generatedFailure ? failureReason(qa.getFailureCategory())
+                        : falsePositive ? "负样本被错误召回" : documentMiss ? "未召回来源文档" : "召回了文档但未命中正确分块";
+                String severity = falsePositive || documentMiss || "HALLUCINATION".equals(qa.getFailureCategory()) ? "high" : "medium";
                 allIssues.add(new KnowledgeQualityReport.QualityIssue(qa.getId(), qa.getTaskId(), qa.getQuestion(),
                         qa.getExpectedAnswer(), qa.getSourceDocumentId(), reason, severity, status, qa.getIssueNote()));
             }
@@ -813,6 +1075,15 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (recommendations.isEmpty()) recommendations.add("当前质量稳定，建议持续加入真实业务问题做回归评估");
         return new KnowledgeQualityReport(knowledgeId, tasks.size(), total, chunkMisses, documentMisses,
                 negativeFalsePositives, openIssueCount, recommendations, issues);
+    }
+
+    private String failureReason(String category) {
+        return switch (Objects.toString(category, "")) {
+            case "CONTEXT_NOISE" -> "检索上下文噪声过多";
+            case "HALLUCINATION" -> "回答存在无依据内容或拒答失败";
+            case "INCOMPLETE" -> "回答未覆盖关键要点";
+            default -> "评测未通过";
+        };
     }
 
     @Override

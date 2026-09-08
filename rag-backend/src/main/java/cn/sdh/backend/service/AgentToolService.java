@@ -24,11 +24,14 @@ public class AgentToolService {
     public record ToolCommand(String name, String code, String description, String endpoint, String httpMethod,
                               String credentialRef, String authType, String authHeader, String riskLevel,
                               String approvalMode, Long approverId, Integer timeoutSeconds,
-                              Boolean allowPrivateNetwork, Boolean allowInsecureHttp, Integer status) {}
+                              Boolean allowPrivateNetwork, Boolean allowInsecureHttp, Integer status,
+                              String inputSchema) {}
 
     public List<AgentTool> list() {
+        Long actor = requireActor();
         return tools.selectList(new LambdaQueryWrapper<AgentTool>()
-                .eq(AgentTool::getCreatedBy, requireActor()).orderByDesc(AgentTool::getCreateTime));
+                .and(w -> w.eq(AgentTool::getCreatedBy, actor).or().eq(AgentTool::getIsSystem, 1))
+                .orderByDesc(AgentTool::getIsSystem).orderByDesc(AgentTool::getCreateTime));
     }
 
     /** Agent 可调用集:启用状态 且 (本人创建 或 系统内置全员可用) */
@@ -101,6 +104,10 @@ public class AgentToolService {
         tool.setCode(code);
         tool.setDescription(limitNullable(command.description(), 500, "工具描述"));
         tool.setEndpoint(limit(command.endpoint().trim(), 2000, "endpoint"));
+        if (tool.getEndpoint().toLowerCase(Locale.ROOT).startsWith("internal://")
+                && !Integer.valueOf(1).equals(tool.getIsSystem())) {
+            throw new BusinessException(403, "internal:// 仅允许平台内置工具使用");
+        }
         tool.setHttpMethod(command.httpMethod());
         tool.setCredentialRef(limitNullable(command.credentialRef(), 200, "凭据引用"));
         tool.setAuthType(command.authType());
@@ -114,6 +121,7 @@ public class AgentToolService {
         tool.setAllowPrivateNetwork(Boolean.TRUE.equals(command.allowPrivateNetwork()) ? 1 : 0);
         tool.setAllowInsecureHttp(Boolean.TRUE.equals(command.allowInsecureHttp()) ? 1 : 0);
         tool.setStatus(command.status() == null || command.status() != 0 ? 1 : 0);
+        tool.setInputSchema(validateInputSchema(command.inputSchema()));
         httpClient.validateDefinition(tool);
         return tool;
     }
@@ -145,6 +153,18 @@ public class AgentToolService {
     private String limitNullable(String value, int max, String label) {
         if (blank(value)) return null;
         return limit(value.trim(), max, label);
+    }
+
+    private String validateInputSchema(String value) {
+        if (blank(value)) return null;
+        String schema = limit(value.trim(), 64 * 1024, "参数 Schema");
+        try {
+            Object parsed = com.alibaba.fastjson2.JSON.parse(schema);
+            if (!(parsed instanceof java.util.Map<?, ?>)) throw new IllegalArgumentException();
+            return schema;
+        } catch (Exception e) {
+            throw new BusinessException(400, "参数 Schema 必须是 JSON 对象");
+        }
     }
 
     private boolean blank(String value) { return value == null || value.isBlank(); }

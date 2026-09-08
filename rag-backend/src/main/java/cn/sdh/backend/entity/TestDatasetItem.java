@@ -30,11 +30,26 @@ public class TestDatasetItem implements Serializable {
     @TableField("source_document_id")
     private Long sourceDocumentId;
 
+    @TableField("expected_document_ids") private String expectedDocumentIds;
+    @TableField("relevance_judgments") private String relevanceJudgments;
+
     @TableField("is_negative")
     private Boolean isNegative;
 
     @TableField("external_id")
     private String externalId;
+
+    @TableField("source_feedback_id")
+    private Long sourceFeedbackId;
+
+    private String category;
+    private String difficulty;
+
+    @TableField("business_line")
+    private String businessLine;
+
+    @TableField("user_role")
+    private String userRole;
 
     @TableField("sort_order")
     private Integer sortOrder;

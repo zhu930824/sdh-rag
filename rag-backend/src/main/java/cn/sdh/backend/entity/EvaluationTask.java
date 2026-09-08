@@ -65,6 +65,28 @@ public class EvaluationTask implements Serializable {
     @TableField("dataset_type")
     private String datasetType;
 
+    @TableField("dataset_id") private Long datasetId;
+    @TableField("dataset_version") private Integer datasetVersion;
+
+    @TableField("evaluation_mode") private String evaluationMode;
+    @TableField("top_k") private Integer topK;
+    @TableField("labeled_count") private Integer labeledCount;
+    @TableField("judged_count") private Integer judgedCount;
+    @TableField("recall_at_k") private BigDecimal recallAtK;
+    @TableField("precision_at_k") private BigDecimal precisionAtK;
+    @TableField("ndcg_at_k") private BigDecimal ndcgAtK;
+    @TableField("map_score") private BigDecimal mapScore;
+    @TableField("context_precision") private BigDecimal contextPrecision;
+    @TableField("context_recall") private BigDecimal contextRecall;
+    private BigDecimal faithfulness;
+    @TableField("answer_relevancy") private BigDecimal answerRelevancy;
+    private BigDecimal completeness;
+    private BigDecimal fluency;
+    @TableField("overall_score") private BigDecimal overallScore;
+    @TableField("judge_model") private String judgeModel;
+    @TableField("baseline_task_id") private Long baselineTaskId;
+    @TableField("regression_status") private String regressionStatus;
+
     /**
      * 状态: 0-待运行, 1-运行中, 2-完成, 3-失败
      */

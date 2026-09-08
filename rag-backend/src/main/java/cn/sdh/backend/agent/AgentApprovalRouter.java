@@ -2,12 +2,14 @@ package cn.sdh.backend.agent;
 
 import cn.sdh.backend.entity.AgentAction;
 import cn.sdh.backend.entity.AgentRun;
+import cn.sdh.backend.service.AgentActionService;
 import cn.sdh.backend.workflow.executor.WorkflowEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * 审批动作决定后的续跑路由器:
@@ -21,6 +23,7 @@ public class AgentApprovalRouter {
 
     private final AgentAskService agentAskService;
     private final RunStateService runStateService;
+    private final AgentActionService agentActionService;
     private final WorkflowEngine workflowEngine;
 
     /**
@@ -45,9 +48,21 @@ public class AgentApprovalRouter {
             log.warn("Agent 动作 {} 关联的运行已不存在,跳过续跑", action.getId());
             return;
         }
-        if ("REJECTED".equals(action.getStatus())) {
-            // 确定性收尾,不回调 LLM
-            agentAskService.finalizeRejected(action);
+        List<AgentAction> runActions = agentActionService.listByRun(run.getId());
+        AgentAction pending = runActions.stream()
+                .filter(item -> "PENDING_APPROVAL".equals(item.getStatus()))
+                .findFirst().orElse(null);
+        if (pending != null) {
+            run.setPendingActionId(pending.getId());
+            runStateService.save(run);
+            return;
+        }
+        AgentAction rejected = runActions.stream()
+                .filter(item -> "REJECTED".equals(item.getStatus()))
+                .findFirst().orElse(null);
+        if (rejected != null) {
+            // 多动作场景中任一拒绝均确定性收尾，不让其余动作的批准掩盖拒绝。
+            agentAskService.finalizeRejected(rejected);
             return;
         }
         // SUCCEEDED/FAILED:后台续跑至终态,答案落 chat_history

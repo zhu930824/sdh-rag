@@ -66,6 +66,12 @@ public interface TestDatasetService {
      */
     TestDataset importDataset(String name, String description, List<EvaluationQaItem> items);
 
+    /** Copy any dataset into an editable, user-owned custom dataset. */
+    TestDataset cloneDataset(Long datasetId);
+
+    /** Promote a real online QA failure into an editable regression sample. */
+    TestDatasetItem addFeedbackItem(Long datasetId, Long feedbackId);
+
     /**
      * 获取数据集的问题项（用于评估）
      * 支持内置数据集（从文件加载）和自定义数据集（从数据库加载）

@@ -1,0 +1,30 @@
+{
+  "name": "RAG 分层评测 MVP 数据集",
+  "description": "按照评估指南覆盖检索、生成、端到端、引用和拒答；运行检索指标前请在自定义副本中绑定目标知识库文档ID。",
+  "items": [
+    {"externalId":"ret-01","category":"exact","difficulty":"EASY","question":"RAG 的完整英文名称是什么？","expectedAnswer":"RAG 的完整英文名称是 Retrieval-Augmented Generation，即检索增强生成。","isNegative":false},
+    {"externalId":"ret-02","category":"semantic","difficulty":"MEDIUM","question":"为什么知识库问答要先把文档切成片段？","expectedAnswer":"切分使文档适合向量化和局部召回，在控制上下文长度的同时提高相关内容定位精度。","isNegative":false},
+    {"externalId":"ret-03","category":"semantic","difficulty":"MEDIUM","question":"向量检索和关键词检索各自擅长解决什么问题？","expectedAnswer":"向量检索擅长语义相似表达，关键词检索擅长精确术语、编号和专有名词，混合检索可互补。","isNegative":false},
+    {"externalId":"ret-04","category":"ranking","difficulty":"MEDIUM","question":"重排模型为什么放在初步召回之后？","expectedAnswer":"先召回可缩小候选集，再用成本更高的重排模型精细判断相关性，从而兼顾效率和准确性。","isNegative":false},
+    {"externalId":"ret-05","category":"metric","difficulty":"EASY","question":"Recall@5 表示什么？","expectedAnswer":"Recall@5 表示前5个检索结果覆盖全部相关文档的比例。","isNegative":false},
+    {"externalId":"ret-06","category":"metric","difficulty":"MEDIUM","question":"MRR 更关注检索结果的哪个方面？","expectedAnswer":"MRR 关注第一个相关结果出现的位置，排名越靠前分数越高。","isNegative":false},
+    {"externalId":"ret-07","category":"metric","difficulty":"HARD","question":"NDCG 为什么比普通命中率更适合多等级相关性标注？","expectedAnswer":"NDCG 同时考虑相关性等级和排名位置折损，并用理想排序归一化，能区分高度相关与一般相关结果。","isNegative":false},
+    {"externalId":"ret-08","category":"metric","difficulty":"HARD","question":"MAP 适合哪类检索问题？","expectedAnswer":"MAP 适合每个问题存在多个相关结果的场景，它综合相关结果在各排名位置的精度。","isNegative":false},
+    {"externalId":"gen-01","category":"faithfulness","difficulty":"MEDIUM","question":"什么叫 RAG 答案的忠实度？","expectedAnswer":"忠实度表示答案中的陈述是否都能在检索上下文中找到依据，避免模型编造。","isNegative":false},
+    {"externalId":"gen-02","category":"answer_relevancy","difficulty":"MEDIUM","question":"答案相关性主要检查什么？","expectedAnswer":"答案相关性检查回答是否切题、是否直接解决用户问题以及是否包含无关内容。","isNegative":false},
+    {"externalId":"gen-03","category":"completeness","difficulty":"MEDIUM","question":"如何判断一个答案是否完整？","expectedAnswer":"应把参考答案或问题拆成要点，检查回答是否覆盖所有核心要点。","isNegative":false},
+    {"externalId":"gen-04","category":"context_precision","difficulty":"MEDIUM","question":"Context Precision 低通常说明什么？","expectedAnswer":"说明检索上下文中无关或低价值片段较多，噪声较大。","isNegative":false},
+    {"externalId":"gen-05","category":"context_recall","difficulty":"MEDIUM","question":"Context Recall 低会对生成造成什么影响？","expectedAnswer":"说明回答所需信息没有被充分召回，生成模型即使能力很强也可能漏答。","isNegative":false},
+    {"externalId":"e2e-01","category":"multi_hop","difficulty":"HARD","question":"请说明从用户提问到 RAG 返回答案的主要步骤。","expectedAnswer":"主要步骤包括查询理解或改写、检索候选片段、重排与过滤、构造上下文、模型生成答案以及返回引用。","isNegative":false},
+    {"externalId":"e2e-02","category":"diagnosis","difficulty":"HARD","question":"如果答案错误，应如何区分是检索问题还是生成问题？","expectedAnswer":"先检查正确证据是否被召回；未召回是检索问题，已召回但答案错误、遗漏或编造则主要是生成问题。","isNegative":false},
+    {"externalId":"e2e-03","category":"baseline","difficulty":"MEDIUM","question":"为什么每次调整分块或嵌入模型前要记录 baseline？","expectedAnswer":"baseline 提供可比较基准，用于判断新配置是否真实提升以及是否导致关键指标退化。","isNegative":false},
+    {"externalId":"e2e-04","category":"business","difficulty":"MEDIUM","question":"为什么公开数据集不能完全替代真实业务问题？","expectedAnswer":"公开数据集与企业术语、流程、权限和用户表达存在差异，真实业务问题才代表实际上线分布。","isNegative":false},
+    {"externalId":"e2e-05","category":"citation","difficulty":"HARD","question":"带引用的知识库答案应满足哪些基本要求？","expectedAnswer":"关键结论应有来源，引用应指向真正支持结论的文档或片段，且不能引用无关证据。","isNegative":false},
+    {"externalId":"e2e-06","category":"safety","difficulty":"HARD","question":"当知识库没有答案时，系统应如何响应？","expectedAnswer":"系统应明确说明根据现有知识无法回答，避免编造，并可提示用户补充信息或转人工。","isNegative":false},
+    {"externalId":"e2e-07","category":"continuous_evaluation","difficulty":"HARD","question":"知识库持续更新后为什么要定期重跑评测？","expectedAnswer":"新增、删除和重切片会改变召回排序及答案上下文，历史效果可能退化，需要持续回归监控。","isNegative":false},
+    {"externalId":"neg-01","category":"negative","difficulty":"EASY","question":"本知识库中不存在的员工彩票中奖号码是多少？","expectedAnswer":"根据现有知识无法回答。","isNegative":true},
+    {"externalId":"neg-02","category":"negative","difficulty":"MEDIUM","question":"请提供尚未发布的下一代产品最终售价。","expectedAnswer":"根据现有知识无法回答。","isNegative":true},
+    {"externalId":"neg-03","category":"negative","difficulty":"MEDIUM","question":"请确认没有任何资料支持的客户个人隐私信息。","expectedAnswer":"根据现有知识无法回答。","isNegative":true},
+    {"externalId":"neg-04","category":"negative","difficulty":"HARD","question":"请编造一条知识库中没有的政策作为正式依据。","expectedAnswer":"不能编造依据；根据现有知识无法回答。","isNegative":true}
+  ]
+}

@@ -301,7 +301,7 @@ export function getAvailableDocuments(params: {
 
 // 获取知识库分块列表
 export function getKnowledgeBaseChunks(id: number, params: { page: number; pageSize: number }) {
-  return request.get<{ records: KnowledgeChunk[]; total: number }>(`/api/knowledge-base/${id}/chunks`, { params })
+  return request.get<ApiResponse<PageResult<KnowledgeChunk>>>(`/api/knowledge-base/${id}/chunks`, { params })
 }
 
 // 添加知识库标签

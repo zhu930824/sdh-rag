@@ -70,6 +70,7 @@
           <template v-else-if="column.dataIndex === 'action'">
             <a-space>
               <a-button type="link" size="small" @click="viewDetail(record)">详情</a-button>
+              <a-button v-if="record.rating === 0" type="link" size="small" @click="openPromote(record)">加入评测集</a-button>
               <a-button v-if="record.status === 0" type="link" size="small" @click="handleFeedback(record, 1)">处理</a-button>
             </a-space>
           </template>
@@ -109,6 +110,15 @@
         </a-descriptions-item>
       </a-descriptions>
     </a-modal>
+
+    <a-modal v-model:open="promoteVisible" title="将真实失败问题加入回归集" :confirm-loading="promoting" @ok="promoteFeedback">
+      <a-alert type="info" show-icon message="将自动带入原始问题和人工修正答案；加入后请在评测页补充相关文档标注。" style="margin-bottom:16px" />
+      <a-form layout="vertical">
+        <a-form-item label="目标数据集" required>
+          <a-select v-model:value="targetDatasetId" show-search option-filter-prop="label" :options="datasetOptions" placeholder="选择可编辑的业务回归集" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -117,11 +127,16 @@ import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { SearchOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import { getFeedbackList, handleFeedback as handleFeedbackApi, type QaFeedback } from '@/api/feedback'
+import { getDatasetList, addFeedbackToDataset } from '@/api/dataset'
 
 const loading = ref(false)
 const tableData = ref<QaFeedback[]>([])
 const detailVisible = ref(false)
 const currentFeedback = ref<QaFeedback | null>(null)
+const promoteVisible = ref(false)
+const promoting = ref(false)
+const targetDatasetId = ref<number>()
+const datasetOptions = ref<Array<{ label: string; value: number }>>([])
 
 const pagination = reactive({
   current: 1,
@@ -142,7 +157,7 @@ const columns = [
   { title: '反馈内容', dataIndex: 'comment', ellipsis: true },
   { title: '状态', dataIndex: 'status', width: 80 },
   { title: '创建时间', dataIndex: 'createTime', width: 160 },
-  { title: '操作', dataIndex: 'action', width: 120, fixed: 'right' },
+  { title: '操作', dataIndex: 'action', width: 220, fixed: 'right' },
 ]
 
 function getFeedbackTypeText(type: string | undefined): string {
@@ -210,6 +225,28 @@ async function handleFeedback(record: QaFeedback, status: number) {
   } catch (error) {
     message.error('处理失败')
   }
+}
+
+async function openPromote(record: QaFeedback) {
+  currentFeedback.value = record
+  targetDatasetId.value = undefined
+  const res = await getDatasetList()
+  datasetOptions.value = (res.data || []).filter(item => item.datasetType !== 'builtin')
+    .map(item => ({ label: `${item.name} · v${item.version || 1}`, value: item.id }))
+  promoteVisible.value = true
+}
+
+async function promoteFeedback() {
+  if (!currentFeedback.value || !targetDatasetId.value) { message.warning('请选择目标数据集'); return }
+  promoting.value = true
+  try {
+    const res = await addFeedbackToDataset(targetDatasetId.value, currentFeedback.value.id)
+    if (res.code === 200) {
+      message.success('已加入业务回归集，数据集版本已更新')
+      promoteVisible.value = false
+      loadData()
+    } else message.error(res.message || '回流失败')
+  } finally { promoting.value = false }
 }
 
 onMounted(() => {

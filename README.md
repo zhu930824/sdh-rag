@@ -1,102 +1,56 @@
-# SDH-RAG 智能知识库管理系统
+# SDH-RAG 企业知识与业务 Agent 平台
 
-基于 Spring AI 和 Vue 3 的企业级 RAG（检索增强生成）知识库管理系统，提供智能问答、文档管理、知识检索等功能。
+基于 Spring AI 和 Vue 3 的企业知识平台，覆盖知识接入、RAG 问答、质量评测、知识发布以及受控 Agent 业务执行。
 
-## 项目简介
+当前采用 **Vue SPA + Spring Boot 模块化单体**，不是微服务架构。完整现状、数据流与演进方向见 [平台架构与设计](docs/architecture.md)。
 
-SDH-RAG 是一个功能完整的智能知识库管理系统，集成了以下核心能力：
+## 当前能力
 
-- **智能问答**: 基于大语言模型的智能对话，支持上下文记忆
-- **文档管理**: 支持多种格式的文档上传、解析和分类管理
-- **知识检索**: 基于 Elasticsearch 的向量检索，提供精准的知识匹配
-- **用户管理**: 完整的用户认证授权体系，支持多角色管理
-- **会话管理**: 支持多会话切换，保存完整的对话历史
+- **知识接入**：文件上传、API Push、带 API Key 的系统集成、REST JSON 定时增量同步。
+- **知识加工**：去重与版本、结构化解析、多种分块、Embedding、摘要粗索引和知识图谱。
+- **RAG 问答**：知识库意图路由、查询改写、Query Expansion、HyDE、向量与 BM25 混合检索、RRF、Rerank、引用与拒答。
+- **知识治理**：知识库成员权限、草稿审核、索引发布、回归门禁、回滚与审计。
+- **质量运营**：版本化测试集、检索/生成/完整评测、多变体实验、业务切片、定时回归、人工复核与 Webhook 告警。
+- **Agent 执行**：业务工具注册、JSON Schema 参数、风险分级、人工审批、幂等调用、运行轨迹和业务结果反馈。
+- **工作流与记忆**：DAG 工作流、审批后续跑，以及 Working/Episodic/Semantic/Abstract/Pattern 多层记忆。
 
 ## 技术栈
 
-### 后端技术
+### 后端
 
-- **Java 17**: 基础开发语言
-- **Spring Boot 3.x**: 应用框架
-- **Spring AI**: AI 集成框架
-- **通义千问**: 大语言模型服务
-- **Elasticsearch**: 向量数据库和全文检索
-- **MySQL 8.0**: 关系型数据库
-- **Redis 6.0**: 缓存和会话存储
-- **MyBatis Plus**: ORM 框架
-- **JWT**: 用户认证
-- **Druid**: 数据库连接池
+- Java 21、Spring Boot 3.5.2、Spring AI 1.1.2
+- MyBatis Plus、Flyway、Druid、JWT
+- DashScope/OpenAI 兼容 Chat、Embedding 与 Rerank 模型
 
-### 前端技术
+### 前端
 
-- **Vue 3**: 前端框架
-- **TypeScript**: 类型安全
-- **Vite**: 构建工具
-- **Element Plus**: UI 组件库
-- **Pinia**: 状态管理
-- **Vue Router**: 路由管理
-- **Axios**: HTTP 客户端
-- **Marked**: Markdown 解析
-- **Highlight.js**: 代码高亮
+- Vue 3、TypeScript、Vite
+- Ant Design Vue、Pinia、Vue Router
+- AntV G6、Vue Flow
 
 ### 基础设施
 
-- **Docker**: 容器化部署
-- **Docker Compose**: 多容器编排
-- **Nginx**: 反向代理和静态资源服务
+- MySQL 8：业务主数据
+- Elasticsearch 8：全文、向量、摘要和语义记忆索引
+- Redis：缓存、工作记忆、限流和分布式锁
+- Neo4j：知识图谱和模式记忆
+- MinIO：原始文档与发布文件
+- Docker Compose、Nginx
 
-## 功能特性
+## 架构文档
 
-### 核心功能
-
-#### 1. 智能问答
-- 支持自然语言提问
-- 基于知识库的精准回答
-- 引用来源展示
-- 支持多轮对话
-- 会话历史管理
-
-#### 2. 文档管理
-- 支持多种文档格式（PDF、Word、TXT 等）
-- 文档自动解析和分块
-- 文档分类管理
-- 文档上传和下载
-- 文档状态跟踪
-
-#### 3. 知识检索
-- 向量相似度检索
-- 全文检索
-- 混合检索策略
-- 相关性排序
-- 结果高亮显示
-
-#### 4. 用户管理
-- 用户注册和登录
-- JWT 认证
-- 角色权限管理
-- 用户信息管理
-- 密码加密存储
-
-#### 5. 系统管理
-- 分类管理
-- 系统配置
-- 日志查看
-- 数据统计
-
-### 技术特性
-
-- **高性能**: 基于 Elasticsearch 的向量检索，毫秒级响应
-- **可扩展**: 微服务架构，支持水平扩展
-- **易部署**: Docker 容器化，一键部署
-- **高可用**: 支持负载均衡和故障转移
-- **安全性**: JWT 认证，HTTPS 加密，SQL 注入防护
-- **易维护**: 完善的日志和监控体系
+- [平台架构与设计](docs/architecture.md)
+- [RAG 检索设计](docs/rag-retrieval-design.md)
+- [知识源连接器](docs/knowledge-source-connectors.md)
+- [知识发布流水线](docs/knowledge-publishing-pipeline.md)
+- [分层 RAG 评测](docs/layered-rag-evaluation-implementation.md)
+- [Agent 业务闭环](docs/agent-business-loop.md)
 
 ## 快速开始
 
 ### 环境要求
 
-- **Java**: JDK 17+
+- **Java**: JDK 21+
 - **Node.js**: 18+
 - **MySQL**: 8.0+
 - **Redis**: 6.0+
