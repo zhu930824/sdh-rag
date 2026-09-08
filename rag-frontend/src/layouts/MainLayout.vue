@@ -6,7 +6,13 @@
       <!-- 公告跑马灯 -->
       <AnnouncementMarquee />
       <a-layout-content class="app-content">
-        <router-view />
+        <!-- 过渡动画只作用于右侧内容区（key=当前页完整路径），
+             菜单切换时整个布局保持常驻，不再整体重建 -->
+        <router-view v-slot="{ Component, route }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" :key="route.path" />
+          </transition>
+        </router-view>
       </a-layout-content>
     </a-layout>
 
@@ -46,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { CloseOutlined } from '@ant-design/icons-vue'
@@ -72,6 +78,16 @@ const mobileMenuOpen = computed(() => appStore.mobileMenuOpen)
 function closeMobileMenu(): void {
   appStore.setMobileMenuOpen(false)
 }
+
+// 布局常驻后，路由切换时手动把内容区滚动回顶部
+// （此前整个布局随导航重建，DOM 新建天然回顶；改为常驻后需自行重置）
+watch(
+  () => route.path,
+  async () => {
+    await nextTick()
+    document.querySelector('.app-content')?.scrollTo({ top: 0 })
+  }
+)
 
 onMounted(() => {
   checkMobile()

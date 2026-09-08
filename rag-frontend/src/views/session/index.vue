@@ -47,7 +47,8 @@
                   <a-button type="link" size="small" @click="handleArchive(record)">
                     {{ record.isArchived ? '取消归档' : '归档' }}
                   </a-button>
-                  <a-button type="link" size="small" @click="showShareModal(record)">分享</a-button>
+                  <!-- 公开展示页(/shared/:code)尚未上线,暂隐藏分享入口;后端接口已就绪 -->
+                  <a-button v-if="false" type="link" size="small" @click="showShareModal(record)">分享</a-button>
                   <a-button type="link" size="small" @click="handleExport(record)">导出</a-button>
                   <a-popconfirm title="确定删除?" @confirm="handleDelete(record.sessionId)">
                     <a-button type="link" size="small" danger>删除</a-button>

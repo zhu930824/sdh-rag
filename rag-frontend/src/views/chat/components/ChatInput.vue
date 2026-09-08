@@ -91,6 +91,19 @@
         </div>
 
         <div class="toolbar-right">
+          <!-- Agent 模式开关 -->
+          <a-tooltip title="Agent 模式：AI可调用受控业务工具完成任务；高风险操作需人工审批">
+            <div class="agent-toggle" :class="{ active: localAgentEnabled }">
+              <RobotOutlined :style="{ color: localAgentEnabled ? '#1677ff' : '#999' }" />
+              <a-switch
+                v-model:checked="localAgentEnabled"
+                size="small"
+                :disabled="sending || isGenerating"
+                @change="handleAgentChange"
+              />
+            </div>
+          </a-tooltip>
+
           <!-- 记忆增强开关 -->
           <a-tooltip title="记忆增强：AI会记住您的偏好和历史对话">
             <div class="memory-toggle">
@@ -163,6 +176,7 @@ import {
   PauseOutlined,
   BulbOutlined,
   FilterOutlined,
+  RobotOutlined,
 } from '@ant-design/icons-vue'
 import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
 import { getActiveChatModels } from '@/api/model'
@@ -178,6 +192,7 @@ const props = withDefaults(
     knowledgeId?: number | null
     modelId?: number | null
     memoryEnabled?: boolean
+    agentEnabled?: boolean
   }>(),
   {
     disabled: false,
@@ -187,6 +202,7 @@ const props = withDefaults(
     knowledgeId: null,
     modelId: null,
     memoryEnabled: true,
+    agentEnabled: false,
   }
 )
 
@@ -201,6 +217,7 @@ const emit = defineEmits<{
   (e: 'knowledgeChange', knowledgeId: number | null): void
   (e: 'modelChange', modelId: number | null): void
   (e: 'memoryChange', enabled: boolean): void
+  (e: 'agentChange', enabled: boolean): void
 }>()
 
 const textareaRef = ref()
@@ -208,6 +225,7 @@ const inputText = ref('')
 const selectedKnowledgeId = ref<number | null>(props.knowledgeId)
 const selectedModelId = ref<number | null>(props.modelId)
 const localMemoryEnabled = ref(props.memoryEnabled)
+const localAgentEnabled = ref(props.agentEnabled)
 const knowledgeList = ref<KnowledgeBase[]>([])
 const modelList = ref<ModelConfig[]>([])
 const knowledgeLoading = ref(false)
@@ -259,6 +277,10 @@ function handleModelChange(value: number | null): void {
 
 function handleMemoryChange(value: boolean): void {
   emit('memoryChange', value)
+}
+
+function handleAgentChange(value: boolean): void {
+  emit('agentChange', value)
 }
 
 function adjustHeight(): void {
@@ -401,6 +423,7 @@ defineExpose({
         align-items: center;
         gap: 8px;
 
+        .agent-toggle,
         .memory-toggle {
           display: flex;
           align-items: center;
@@ -410,6 +433,11 @@ defineExpose({
           :deep(.anticon) {
             font-size: 14px;
           }
+        }
+
+        .agent-toggle.active {
+          background: rgba(22, 119, 255, 0.08);
+          border-radius: 6px;
         }
 
         .model-select {

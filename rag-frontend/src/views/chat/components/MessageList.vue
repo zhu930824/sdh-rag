@@ -49,6 +49,39 @@
           <span v-if="isGenerating && message === lastAssistantMessage" class="typing-cursor"></span>
         </div>
 
+        <!-- Agent 工具过程卡(运行态 agentSteps / 回放 agentTrace 共用) -->
+        <div v-if="agentStepsOf(message).length > 0" class="agent-steps">
+          <div class="agent-steps-header">
+            <RobotOutlined />
+            <span>Agent 执行过程({{ agentStepsOf(message).length }})</span>
+          </div>
+          <AgentToolCard
+            v-for="(step, idx) in agentStepsOf(message)"
+            :key="`${message.id}-agent-${step.seq || idx}`"
+            :step="step"
+          />
+        </div>
+
+        <!-- Agent 待审批卡(实时) -->
+        <template v-if="message.pendingApprovals && message.pendingApprovals.length > 0">
+          <ApprovalCard
+            v-for="approval in message.pendingApprovals"
+            :key="`${message.id}-approval-${approval.actionId}`"
+            :approval="approval"
+            :message="message"
+          />
+        </template>
+
+        <!-- 已暂停但无内联卡(外带审批路径):状态提示 + 手动刷新 -->
+        <div
+          v-else-if="message.agentStatus === 'WAITING_APPROVAL'"
+          class="agent-waiting-strip"
+        >
+          <BulbOutlined />
+          <span>运行已暂停等待审批;审批通过后将在后台自动继续执行。</span>
+          <a-button type="link" size="small" @click="refreshMessages">检查最新状态</a-button>
+        </div>
+
         <!-- 在 message-sources 之前添加 -->
         <div
           v-if="message.routerInfo && message.routerInfo.used"
@@ -156,9 +189,14 @@ import {
   DislikeFilled,
   BulbOutlined,
 } from '@ant-design/icons-vue'
-import type { ChatMessage, Source } from '@/api/chat'
+import type { AgentStepView, ChatMessage, Source } from '@/api/chat'
 import SourceCard from './SourceCard.vue'
+import AgentToolCard from './AgentToolCard.vue'
+import ApprovalCard from './ApprovalCard.vue'
+import { useChatStore } from '@/stores/chat'
 import { createFeedback } from '@/api/feedback'
+
+const chatStore = useChatStore()
 
 const renderer = new marked.Renderer()
 
@@ -204,6 +242,15 @@ const lastAssistantMessage = computed(() => {
   const assistantMessages = props.messages.filter((m) => m.role === 'assistant')
   return assistantMessages[assistantMessages.length - 1]
 })
+
+// 步骤展示源:运行态优先,回放走 agentTrace
+function agentStepsOf(message: ChatMessage): AgentStepView[] {
+  return message.agentSteps ?? message.agentTrace?.steps ?? []
+}
+
+async function refreshMessages(): Promise<void> {
+  await chatStore.refreshSessionMessages()
+}
 
 function renderedContent(content: string): string {
   if (!content) return ''
@@ -701,6 +748,33 @@ defineExpose({
         }
       }
     }
+  }
+
+  .agent-steps {
+    margin-top: 8px;
+
+    .agent-steps-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+  }
+
+  .agent-waiting-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--bg-page);
+    border: 1px dashed var(--border-lighter);
+    color: var(--text-secondary);
+    font-size: 13px;
   }
 }
 </style>

@@ -31,6 +31,14 @@ public class AgentToolService {
                 .eq(AgentTool::getCreatedBy, requireActor()).orderByDesc(AgentTool::getCreateTime));
     }
 
+    /** Agent 可调用集:启用状态 且 (本人创建 或 系统内置全员可用) */
+    public List<AgentTool> listUsable(Long actor) {
+        return tools.selectList(new LambdaQueryWrapper<AgentTool>()
+                .eq(AgentTool::getStatus, 1)
+                .and(w -> w.eq(AgentTool::getCreatedBy, actor).or().eq(AgentTool::getIsSystem, 1))
+                .orderByAsc(AgentTool::getCreateTime));
+    }
+
     public AgentTool create(ToolCommand command) {
         Long actor = requireActor();
         AgentTool tool = apply(new AgentTool(), command, actor);
@@ -59,8 +67,19 @@ public class AgentToolService {
     }
 
     public AgentTool requireUsable(Long id, Long actor) {
-        AgentTool tool = requireOwner(id, actor);
+        AgentTool tool = requireAccessible(id, actor);
         if (!Integer.valueOf(1).equals(tool.getStatus())) throw new BusinessException(400, "业务工具已停用");
+        return tool;
+    }
+
+    /** 可访问 = 本人创建 或 系统内置(is_system=1);变更类操作仍走 requireOwner */
+    public AgentTool requireAccessible(Long id, Long actor) {
+        AgentTool tool = tools.selectById(id);
+        boolean owned = tool != null && actor != null && actor.equals(tool.getCreatedBy());
+        boolean system = tool != null && Integer.valueOf(1).equals(tool.getIsSystem());
+        if (tool == null || actor == null || (!owned && !system)) {
+            throw new BusinessException(404, "业务工具不存在");
+        }
         return tool;
     }
 

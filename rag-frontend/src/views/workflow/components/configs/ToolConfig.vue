@@ -13,7 +13,7 @@
       </a-form-item>
       <a-form-item label="请求参数（JSON）" required>
         <a-textarea v-model:value="parameters" :rows="7" class="code-input" placeholder='{"customerId":"{{customerId}}","answer":"{{output}}"}' />
-        <div class="hint">支持 {{ '{{变量名}}' }}，字符串变量请放在 JSON 引号内。</div>
+        <div class="hint">{{ variableHint }}</div>
       </a-form-item>
       <a-form-item label="知识依据字段">
         <a-input v-model:value="evidenceKey" placeholder="documents" />
@@ -52,6 +52,8 @@ const evidenceKey = computed({ get: () => props.node.data.evidenceKey || 'docume
 const idempotencyKey = computed({ get: () => props.node.data.idempotencyKey || '', set: value => emit('update', { idempotencyKey: value }) })
 
 function riskLabel(value: string) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险' } as Record<string, string>)[value] || value }
+// 字面量花括号须经 JS 常量输出：模板中直接写 {{ '{{变量名}}' }} 会被编译器把引号内的 }} 误判为插值结束
+const variableHint = '支持 {{变量名}}，字符串变量请放在 JSON 引号内。'
 onMounted(async () => {
   loading.value = true
   try { tools.value = (await getAgentTools()).data?.filter(tool => tool.status === 1) || [] }

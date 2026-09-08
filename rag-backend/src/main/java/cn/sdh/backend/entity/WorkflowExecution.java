@@ -87,10 +87,16 @@ public class WorkflowExecution {
      */
     private LocalDateTime updateTime;
 
+    /**
+     * 暂停游标 JSON({nextNodeId, executed[]})，审批后 resume 用
+     */
+    private String pausedState;
+
     // 状态常量
     public static final String STATUS_PENDING = "pending";
     public static final String STATUS_RUNNING = "running";
     public static final String STATUS_SUCCESS = "success";
     public static final String STATUS_FAILED = "failed";
     public static final String STATUS_CANCELLED = "cancelled";
+    public static final String STATUS_WAITING_APPROVAL = "WAITING_APPROVAL";
 }

@@ -4,6 +4,7 @@ import cn.sdh.backend.common.exception.BusinessException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -27,6 +28,7 @@ public class RestJsonKnowledgeSourceConnector implements KnowledgeSourceConnecto
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
+    @Autowired
     public RestJsonKnowledgeSourceConnector(ObjectMapper objectMapper) {
         this(objectMapper, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER).build());

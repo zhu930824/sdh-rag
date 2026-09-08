@@ -1,12 +1,18 @@
 package cn.sdh.backend.controller;
 
+import cn.sdh.backend.agent.AgentAskService;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.AskRequest;
 import cn.sdh.backend.entity.ChatHistory;
+import cn.sdh.backend.entity.ChatSession;
 import cn.sdh.backend.service.ChatService;
+import cn.sdh.backend.service.ChatSessionService;
 import cn.sdh.backend.service.QaFeedbackService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -31,8 +37,17 @@ public class ChatController {
     @Autowired
     private QaFeedbackService qaFeedbackService;
 
+    @Autowired
+    private AgentAskService agentAskService;
+
+    @Autowired
+    private ChatSessionService chatSessionService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     /**
-     * 发起问答（流式响应）
+     * 发起问答（流式响应）。开启 Agent 模式且模型供应商受支持时走 Agent 决策循环。
      */
     @PostMapping(value = "/ask", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> ask(@RequestBody AskRequest request) {
@@ -48,12 +63,18 @@ public class ChatController {
         Map<String, Object> metadataFilters = request.getMetadataFilter() == null
                 ? Map.of()
                 : request.getMetadataFilter().toSearchFilters();
+
+        if (request.getAgent() != null && Boolean.TRUE.equals(request.getAgent().getEnabled())) {
+            return agentAskService.ask(request.getQuestion(), sessionId, userId, knowledgeId, modelId,
+                    memoryEnabled, metadataFilters, request.getAgent());
+        }
         return chatService.ask(request.getQuestion(), sessionId, userId, knowledgeId, modelId,
                 memoryEnabled, metadataFilters);
     }
 
     /**
-     * 获取会话列表（按session分组）
+     * 获取会话列表(chat_session 档案行为主,兼容历史会话的动态分组,两者同源)。
+     * 标题以档案行为准(用户可改名),messageCount/时间由档案行承担,缺失时回退首问分组。
      */
     @GetMapping("/sessions")
     public Result<Map<String, Object>> getSessions(
@@ -65,26 +86,46 @@ public class ChatController {
             return Result.unauthorized();
         }
 
-        // 获取所有聊天记录
+        // chat_session 档案行(未归档)
+        List<ChatSession> sessionRows = chatSessionService.list(new LambdaQueryWrapper<ChatSession>()
+                .eq(ChatSession::getUserId, userId)
+                .eq(ChatSession::getIsArchived, 0));
+        Map<String, ChatSession> rowBySession = sessionRows.stream()
+                .collect(Collectors.toMap(ChatSession::getSessionId, s -> s, (a, b) -> a));
+
+        // 历史消息按 session 分组(兼容 chat_session 建档前的会话)
         Page<ChatHistory> historyPage = chatService.getHistory(null, 1, 1000, userId);
         List<ChatHistory> records = historyPage.getRecords();
-
-        // 按 sessionId 分组
         Map<String, List<ChatHistory>> groupedBySession = records.stream()
                 .filter(h -> h.getSessionId() != null)
                 .collect(Collectors.groupingBy(ChatHistory::getSessionId, LinkedHashMap::new, Collectors.toList()));
 
-        // 转换为会话列表
-        List<Map<String, Object>> sessions = new ArrayList<>();
+        Map<String, Map<String, Object>> sessionsById = new LinkedHashMap<>();
+        for (ChatSession row : sessionRows) {
+            String sessionId = row.getSessionId();
+            List<ChatHistory> historyList = groupedBySession.getOrDefault(sessionId, List.of());
+            Map<String, Object> session = new HashMap<>();
+            session.put("id", sessionId);
+            session.put("title", blank(row.getTitle()) ? "新对话" : row.getTitle());
+            session.put("createTime", row.getCreateTime());
+            session.put("updateTime", row.getLastMessageTime() != null ? row.getLastMessageTime() : row.getUpdateTime());
+            session.put("messageCount", row.getMessageCount() != null && row.getMessageCount() > 0
+                    ? row.getMessageCount()
+                    : historyList.size());
+            session.put("isArchived", row.getIsArchived());
+            sessionsById.put(sessionId, session);
+        }
+
+        // 历史消息中存在但尚无档案行的会话(迁移前旧数据)按首问标题补齐
         for (Map.Entry<String, List<ChatHistory>> entry : groupedBySession.entrySet()) {
             String sessionId = entry.getKey();
+            if (sessionsById.containsKey(sessionId)) {
+                continue;
+            }
             List<ChatHistory> historyList = entry.getValue();
-
-            // 获取第一条消息作为标题
             String title = "新对话";
             LocalDateTime createTime = null;
             LocalDateTime updateTime = null;
-
             if (!historyList.isEmpty()) {
                 ChatHistory first = historyList.get(0);
                 if (first.getQuestion() != null && !first.getQuestion().isEmpty()) {
@@ -93,22 +134,30 @@ public class ChatController {
                             : first.getQuestion();
                 }
                 createTime = first.getCreateTime();
-
-                // 最后一条消息的时间作为更新时间
                 ChatHistory last = historyList.get(historyList.size() - 1);
                 updateTime = last.getCreateTime();
             }
-
             Map<String, Object> session = new HashMap<>();
             session.put("id", sessionId);
             session.put("title", title);
             session.put("createTime", createTime);
             session.put("updateTime", updateTime);
             session.put("messageCount", historyList.size());
-            sessions.add(session);
+            session.put("isArchived", 0);
+            sessionsById.put(sessionId, session);
         }
 
-        // 分页处理
+        // 按最近活动时间倒序
+        List<Map<String, Object>> sessions = new ArrayList<>(sessionsById.values());
+        sessions.sort((a, b) -> {
+            LocalDateTime timeA = toTime(a.get("updateTime"));
+            LocalDateTime timeB = toTime(b.get("updateTime"));
+            if (timeA == null && timeB == null) return 0;
+            if (timeA == null) return 1;
+            if (timeB == null) return -1;
+            return timeB.compareTo(timeA);
+        });
+
         int total = sessions.size();
         int fromIndex = (page - 1) * size;
         int toIndex = Math.min(fromIndex + size, total);
@@ -124,6 +173,14 @@ public class ChatController {
         result.put("size", size);
 
         return Result.success(result);
+    }
+
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private LocalDateTime toTime(Object value) {
+        return value instanceof LocalDateTime time ? time : null;
     }
 
     /**
@@ -176,6 +233,13 @@ public class ChatController {
                         aiMsg.put("content", h.getAnswer());
                         aiMsg.put("createTime", h.getCreateTime());
                         aiMsg.put("historyId", h.getId());
+                        // 证据链回放:来源 / 路由 / 所用知识库与模型 / Agent 痕迹
+                        aiMsg.put("sources", parseJson(h.getSources()));
+                        aiMsg.put("routerInfo", parseJson(h.getRouterInfo()));
+                        aiMsg.put("knowledgeId", h.getKnowledgeId());
+                        aiMsg.put("modelId", h.getModelId());
+                        aiMsg.put("agentRunKey", h.getAgentRunKey());
+                        aiMsg.put("agentTrace", parseJson(h.getAgentTrace()));
                         // 获取用户对该条消息的评价
                         Integer userRating = qaFeedbackService.getUserRating(h.getId(), userId);
                         aiMsg.put("userRating", userRating);
@@ -187,6 +251,19 @@ public class ChatController {
                 .collect(Collectors.toList());
 
         return Result.success(messages);
+    }
+
+    /** JSON 列回放解析(失败/为空返回 null,前端按缺省处理) */
+    private Object parseJson(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(raw);
+            return objectMapper.convertValue(node, Object.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -212,7 +289,7 @@ public class ChatController {
     }
 
     /**
-     * 更新会话标题
+     * 更新会话标题(chat_session 档案行不存在时按该标题建档,保证改名持久化)
      */
     @PostMapping("/session/{sessionId}/title")
     public Result<Void> updateSessionTitle(
@@ -223,13 +300,24 @@ public class ChatController {
         if (userId == null) {
             return Result.unauthorized();
         }
-
-        // TODO: 实现更新会话标题的逻辑
+        String title = request == null ? null : request.get("title");
+        if (title == null || title.isBlank()) {
+            return Result.paramError("标题不能为空");
+        }
+        ChatSession row = chatSessionService.getBySessionId(sessionId);
+        if (row == null) {
+            chatSessionService.createSessionFor(sessionId, userId, title.trim(), null);
+        } else {
+            if (!userId.equals(row.getUserId())) {
+                return Result.forbidden("无权修改该会话");
+            }
+            chatSessionService.updateSessionTitle(sessionId, title.trim());
+        }
         return Result.success("更新成功", null);
     }
 
     /**
-     * 删除对话
+     * 删除对话(chat_history + chat_session 档案行双清)
      */
     @PostMapping("/session/delete/{sessionId}")
     public Result<Void> deleteSession(@PathVariable String sessionId) {
@@ -239,6 +327,7 @@ public class ChatController {
         }
 
         chatService.deleteSession(sessionId, userId);
+        chatSessionService.deleteOwned(sessionId, userId);
         return Result.success("删除成功", null);
     }
 }

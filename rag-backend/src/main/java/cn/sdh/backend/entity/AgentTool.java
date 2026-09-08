@@ -28,6 +28,10 @@ public class AgentTool {
     @TableField("allow_insecure_http") private Integer allowInsecureHttp;
     private Integer status;
     @TableField("created_by") private Long createdBy;
+    /** 参数 JSON Schema(LLM 工具声明;缺失时按宽松 schema 声明) */
+    @TableField("input_schema") private String inputSchema;
+    /** 1=内置系统工具,全员可见可调用(仅创建者可改) */
+    @TableField("is_system") private Integer isSystem;
     @TableField("create_time") private LocalDateTime createTime;
     @TableField("update_time") private LocalDateTime updateTime;
 }

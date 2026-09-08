@@ -36,8 +36,11 @@ public class AgentToolHttpClient {
 
     public void validateDefinition(AgentTool tool) {
         URI uri = parseUri(tool.getEndpoint());
+        // 内置演示工具 internal:// 直调不经过 HTTP/SSRF 层
+        boolean internal = uri.getScheme() != null && "internal".equalsIgnoreCase(uri.getScheme());
         boolean allowHttp = Integer.valueOf(1).equals(tool.getAllowInsecureHttp());
-        if (!"https".equalsIgnoreCase(uri.getScheme()) && !(allowHttp && "http".equalsIgnoreCase(uri.getScheme()))) {
+        if (!internal && !"https".equalsIgnoreCase(uri.getScheme())
+                && !(allowHttp && "http".equalsIgnoreCase(uri.getScheme()))) {
             throw new BusinessException(400, "业务工具必须使用 HTTPS；测试 HTTP 需显式启用");
         }
         if (uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {

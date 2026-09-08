@@ -62,6 +62,7 @@ import java.util.stream.Collectors;
 public class ChatServiceImpl implements ChatService {
 
     private final ChatHistoryMapper chatHistoryMapper;
+    private final ChatSessionService chatSessionService;
     private final ModelConfigService modelConfigService;
     private final SensitiveWordService sensitiveWordService;
     private final KnowledgeBaseService knowledgeBaseService;
@@ -503,11 +504,13 @@ public class ChatServiceImpl implements ChatService {
 
             String context = buildHierarchicalContext(searchResult);
             String sourcesEvent = buildSourcesEvent(searchResult.getChunks());
+            List<Map<String, Object>> sources = buildSourcesList(searchResult.getChunks());
+            String sourcesPayloadJson = sources == null ? null : writeJson(sources);
 
             log.info("级联RAG检索完成: knowledgeId={}, 召回片段数={}, 总长度={}",
                     knowledgeId, searchResult.getChunks().size(), context.length());
 
-            return new RetrievalPayload(context, sourcesEvent, false);
+            return new RetrievalPayload(context, sourcesEvent, sourcesPayloadJson, false);
 
         } catch (Exception e) {
             log.error("RAG检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
@@ -520,6 +523,12 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private String buildSourcesEvent(List<SearchResult.RankedChunk> chunks) {
+        List<Map<String, Object>> sources = buildSourcesList(chunks);
+        return sources == null ? null : jsonEvent("sources", "sources", sources);
+    }
+
+    /** 来源列表(与 sources 事件同构,单独抽出供落库回放) */
+    private List<Map<String, Object>> buildSourcesList(List<SearchResult.RankedChunk> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return null;
         }
@@ -530,7 +539,7 @@ public class ChatServiceImpl implements ChatService {
                     : String.valueOf(chunk.getDocumentTitle());
             topChunkByDocument.putIfAbsent(key, chunk);
         }
-        List<Map<String, Object>> sources = topChunkByDocument.values().stream().map(chunk -> {
+        return topChunkByDocument.values().stream().map(chunk -> {
             Map<String, Object> source = new LinkedHashMap<>();
             source.put("documentId", chunk.getDocumentId());
             source.put("documentTitle", chunk.getDocumentTitle());
@@ -542,7 +551,6 @@ public class ChatServiceImpl implements ChatService {
             source.put("totalChunks", chunk.getTotalChunks());
             return source;
         }).toList();
-        return jsonEvent("sources", "sources", sources);
     }
 
     /**
@@ -687,13 +695,25 @@ public class ChatServiceImpl implements ChatService {
         return jsonEvent("error", "message", message);
     }
 
-    private record RetrievalPayload(String context, String sourcesEvent, boolean forbidden) {
+    private record RetrievalPayload(String context, String sourcesEvent, String sourcesPayloadJson,
+                                    boolean forbidden) {
         private static RetrievalPayload empty() {
-            return new RetrievalPayload("", null, false);
+            return new RetrievalPayload("", null, null, false);
         }
 
         private static RetrievalPayload forbiddenPayload() {
-            return new RetrievalPayload("", null, true);
+            return new RetrievalPayload("", null, null, true);
+        }
+    }
+
+    /** 序列化辅助(失败返回 null,不影响主流程) */
+    private String writeJson(Object value) {
+        if (value == null) return null;
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            log.warn("JSON 序列化失败: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -706,12 +726,24 @@ public class ChatServiceImpl implements ChatService {
             history.setSessionId(sessionId);
             history.setUserId(userId);
             history.setQuestion(question);
+            history.setKnowledgeId(knowledgeId);
             history.setCreateTime(LocalDateTime.now());
             chatHistoryMapper.insert(history);
+            ensureSessionRow(sessionId, userId, question, null);
             return history.getId();
         } catch (Exception e) {
             log.error("保存用户问题失败", e);
             return null;
+        }
+    }
+
+    /** 会话档案自动建档(chat_session 行;与 /api/chat/session 页面共用同一数据源) */
+    private void ensureSessionRow(String sessionId, Long userId, String firstQuestion, Long modelId) {
+        try {
+            if (sessionId == null || userId == null) return;
+            chatSessionService.touch(sessionId, userId, firstQuestion, modelId);
+        } catch (Exception e) {
+            log.warn("会话档案建档失败,不影响问答: {}", e.getMessage());
         }
     }
 
@@ -724,6 +756,78 @@ public class ChatServiceImpl implements ChatService {
             ChatHistory history = new ChatHistory();
             history.setId(historyId);
             history.setAnswer(answer);
+            history.setUpdateTime(LocalDateTime.now());
+            chatHistoryMapper.updateById(history);
+        } catch (Exception e) {
+            log.error("保存AI回答失败", e);
+        }
+    }
+
+    // ===================== Agent 复用接缝(供 cn.sdh.backend.agent 调用,不改动既有问答流程) =====================
+
+    /**
+     * Agent 复用:级联检索,返回证据文本 / sources 事件 / sources payload JSON 三者(各自可空)。
+     * forbidden=true 表示无权访问该知识库。
+     */
+    public AgentRetrieval retrieveForAgent(String question, Long knowledgeId, Long userId,
+                                           String sessionId, Map<String, Object> metadataFilters) {
+        RetrievalPayload payload = retrieveContext(question, knowledgeId, userId, sessionId, metadataFilters);
+        return new AgentRetrieval(payload.context(), payload.sourcesEvent(), payload.sourcesPayloadJson(),
+                payload.forbidden());
+    }
+
+    public record AgentRetrieval(String context, String sourcesEvent, String sourcesPayloadJson,
+                                 boolean forbidden) {
+    }
+
+    /** Agent 复用:注入记忆上下文段(带异常兜底,与普通问答一致) */
+    public String memoryPrompt(String basePrompt, Long userId, String sessionId,
+                               String question, boolean memoryEnabled) {
+        return withMemoryContext(basePrompt, userId, sessionId, question, memoryEnabled);
+    }
+
+    /** Agent 复用:完成后写入分层记忆(失败不影响主流程) */
+    public void storeMemoryAfterTurn(Long userId, String sessionId, String question,
+                                     String answer, boolean memoryEnabled) {
+        storeMemory(userId, sessionId, question, answer, memoryEnabled);
+    }
+
+    /** Agent 复用:落库用户问题(带知识库与模型) */
+    public Long saveQuestionRow(String question, String sessionId, Long userId,
+                                Long knowledgeId, Long modelConfigId) {
+        try {
+            ChatHistory history = new ChatHistory();
+            history.setSessionId(sessionId);
+            history.setUserId(userId);
+            history.setQuestion(question);
+            history.setKnowledgeId(knowledgeId);
+            history.setModelId(modelConfigId);
+            history.setCreateTime(LocalDateTime.now());
+            chatHistoryMapper.insert(history);
+            ensureSessionRow(sessionId, userId, question, modelConfigId);
+            return history.getId();
+        } catch (Exception e) {
+            log.error("保存用户问题失败", e);
+            return null;
+        }
+    }
+
+    /** Agent 复用:落库完整回答(答案 + 来源 + 路由 + Agent 运行痕迹) */
+    public void persistAnswerRow(Long historyId, String answer, Long knowledgeId, Long modelConfigId,
+                                 String sourcesPayloadJson, String routerInfoJson,
+                                 String agentRunKey, String agentTraceJson) {
+        if (historyId == null) return;
+        try {
+            ChatHistory history = new ChatHistory();
+            history.setId(historyId);
+            history.setAnswer(answer);
+            history.setKnowledgeId(knowledgeId);
+            history.setModelId(modelConfigId);
+            history.setSources(sourcesPayloadJson);
+            history.setRouterInfo(routerInfoJson);
+            history.setAgentRunKey(agentRunKey);
+            history.setAgentTrace(agentTraceJson);
+            history.setUpdateTime(LocalDateTime.now());
             chatHistoryMapper.updateById(history);
         } catch (Exception e) {
             log.error("保存AI回答失败", e);

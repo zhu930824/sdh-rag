@@ -33,4 +33,7 @@ public class AskRequest {
 
     /** 可选的文档元数据过滤条件。 */
     private MetadataFilter metadataFilter;
+
+    /** Agent 模式配置(为空或 enabled=false 时走普通问答链路)。 */
+    private AgentAskConfig agent;
 }

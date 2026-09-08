@@ -2,6 +2,7 @@ package cn.sdh.backend.service;
 
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.exception.BusinessException;
+import cn.sdh.backend.demo.InternalToolDispatcher;
 import cn.sdh.backend.entity.AgentAction;
 import cn.sdh.backend.entity.AgentActionFeedback;
 import cn.sdh.backend.entity.AgentTool;
@@ -29,10 +30,12 @@ public class AgentActionService {
     private final AgentActionFeedbackMapper feedbacks;
     private final AgentToolService toolService;
     private final AgentToolHttpClient httpClient;
+    private final InternalToolDispatcher internalDispatcher;
     private final ObjectMapper objectMapper;
 
     public record ActionCommand(Long toolId, Map<String, Object> parameters, Object evidence,
-                                String idempotencyKey, Long workflowId, String nodeId) {}
+                                String idempotencyKey, Long workflowId, String nodeId,
+                                Long runId, Long stepId, Long workflowExecutionId) {}
     public record DecisionCommand(String reason) {}
     public record FeedbackCommand(String outcome, String comment, Boolean reusableKnowledge) {}
 
@@ -57,6 +60,9 @@ public class AgentActionService {
         action.setIdempotencyKey(idempotencyKey);
         action.setRequestJson(toJson(command.parameters() == null ? Map.of() : command.parameters(), "请求参数"));
         action.setEvidenceJson(command.evidence() == null ? null : toJson(command.evidence(), "决策依据"));
+        action.setRunId(command.runId());
+        action.setStepId(command.stepId());
+        action.setWorkflowExecutionId(command.workflowExecutionId());
         action.setStatus(requiresApproval(tool) ? "PENDING_APPROVAL" : "READY");
         action.setRequestedAt(LocalDateTime.now());
         action.setUpdateTime(LocalDateTime.now());
@@ -84,6 +90,19 @@ public class AgentActionService {
                 .eq(AgentAction::getApproverId, actor)
                 .eq(AgentAction::getStatus, "PENDING_APPROVAL")
                 .orderByAsc(AgentAction::getRequestedAt).last("LIMIT 200"));
+    }
+
+    /** 幂等查询(供 Agent 决策循环复用:同幂等键已有动作直接复用其结果/状态) */
+    public AgentAction findIdempotent(Long toolId, Long actor, String idempotencyKey) {
+        return findByIdempotency(toolId, actor, idempotencyKey);
+    }
+
+    /** 按 Agent run 查动作(审批续跑注入/审计用) */
+    public List<AgentAction> listByRun(Long runId) {
+        if (runId == null) return List.of();
+        return actions.selectList(new LambdaQueryWrapper<AgentAction>()
+                .eq(AgentAction::getRunId, runId)
+                .orderByAsc(AgentAction::getRequestedAt));
     }
 
     public AgentAction get(Long id) {
@@ -151,7 +170,9 @@ public class AgentActionService {
             AgentTool tool = toolService.requireUsable(executing.getToolId(), executing.getRequestedBy());
             @SuppressWarnings("unchecked")
             Map<String, Object> parameters = objectMapper.readValue(executing.getRequestJson(), Map.class);
-            AgentToolHttpClient.ToolResponse response = httpClient.execute(tool, parameters);
+            AgentToolHttpClient.ToolResponse response = InternalToolDispatcher.isInternal(tool.getEndpoint())
+                    ? internalDispatcher.execute(tool, parameters, executing.getRequestedBy())
+                    : httpClient.execute(tool, parameters);
             executing.setResponseCode(response.statusCode());
             executing.setExecutedAt(LocalDateTime.now());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {

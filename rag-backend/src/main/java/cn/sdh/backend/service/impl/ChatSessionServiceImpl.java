@@ -111,6 +111,62 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void touch(String sessionId, Long userId, String firstQuestion, Long modelId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return;
+        }
+        ChatSession session = getBySessionId(sessionId);
+        if (session != null) {
+            chatSessionMapper.updateMessageStats(sessionId, 0);
+            if (modelId != null && session.getModelId() == null) {
+                session.setModelId(modelId);
+                session.setUpdateTime(LocalDateTime.now());
+                updateById(session);
+            }
+            return;
+        }
+        createSessionFor(sessionId, userId, generateSessionTitle(firstQuestion), modelId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ChatSession createSessionFor(String sessionId, Long userId, String title, Long modelId) {
+        ChatSession session = new ChatSession();
+        session.setSessionId(sessionId);
+        session.setUserId(userId);
+        session.setTitle(title != null ? title : "新对话");
+        session.setModelId(modelId);
+        session.setPromptTemplateId(null);
+        session.setMessageCount(1);
+        session.setTotalTokens(0);
+        session.setIsStarred((byte) 0);
+        session.setIsArchived((byte) 0);
+        session.setLastMessageTime(LocalDateTime.now());
+        session.setCreateTime(LocalDateTime.now());
+        session.setUpdateTime(LocalDateTime.now());
+        save(session);
+        return session;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteOwned(String sessionId, Long userId) {
+        ChatSession session = getBySessionId(sessionId);
+        if (session == null) {
+            // 无档案行(历史会话):仍清理该用户消息记录
+            LambdaQueryWrapper<ChatHistory> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ChatHistory::getSessionId, sessionId).eq(ChatHistory::getUserId, userId);
+            chatHistoryMapper.delete(wrapper);
+            return;
+        }
+        if (session.getUserId() == null || !session.getUserId().equals(userId)) {
+            throw new cn.sdh.backend.common.exception.BusinessException(403, "无权删除该会话");
+        }
+        deleteSession(sessionId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteSession(String sessionId) {
         ChatSession session = getBySessionId(sessionId);
         if (session != null) {

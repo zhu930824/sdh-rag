@@ -70,11 +70,13 @@
             :knowledge-id="chatStore.selectedKnowledgeId"
             :model-id="chatStore.selectedModelId"
             :memory-enabled="chatStore.memoryEnabled"
+            :agent-enabled="chatStore.agentEnabled"
             @send="handleSendMessage"
             @stop="handleStopGeneration"
             @knowledge-change="handleKnowledgeChange"
             @model-change="handleModelChange"
             @memory-change="handleMemoryChange"
+            @agent-change="handleAgentChange"
           />
         </div>
       </a-card>
@@ -204,6 +206,11 @@ function handleModelChange(modelId: number | null): void {
 
 function handleMemoryChange(enabled: boolean): void {
   chatStore.setMemoryEnabled(enabled)
+}
+
+function handleAgentChange(enabled: boolean): void {
+  chatStore.setAgentEnabled(enabled)
+  message.info(enabled ? 'Agent 模式已开启:AI 可调用受控业务工具,高风险操作需审批' : 'Agent 模式已关闭')
 }
 
 function goToDocument(): void {

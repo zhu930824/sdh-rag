@@ -136,13 +136,31 @@ public class WorkflowController {
             return Result.notFound("工作流不存在");
         }
 
-        String inputData = request != null && request.containsKey("inputs")
-            ? request.get("inputs").toString()
-            : "";
+        // 保持 JSON 序列化传入引擎(此前 Map.toString() 产生 {query=...} 形式,
+        // 引擎 JSON 解析失败会整串当纯文本,变量引用全部失效)
+        String inputData = "";
+        if (request != null && request.get("inputs") != null) {
+            Object inputs = request.get("inputs");
+            inputData = inputs instanceof String s ? s : JSON.toJSONString(inputs);
+        }
 
         workflowEngine.requireOwner(workflow, UserContext.getCurrentUserId());
         ExecutionResponse response = workflowEngine.execute(workflow, inputData);
         return Result.success(response);
+    }
+
+    /**
+     * 审批后续跑:从暂停游标继续执行下游节点(同步返回终态)。
+     * 审批中心 approve 已自动后台续跑;此端点用于前端手动补按/同步查看结果。
+     */
+    @PostMapping("/execution/{executionId}/resume")
+    public Result<ExecutionResponse> resumeExecution(@PathVariable Long executionId) {
+        Long actor = UserContext.getCurrentUserId();
+        if (actor == null) {
+            return Result.unauthorized();
+        }
+        ExecutionResponse response = workflowEngine.resume(executionId, actor, null);
+        return Result.success("工作流已继续执行", response);
     }
 
     /**

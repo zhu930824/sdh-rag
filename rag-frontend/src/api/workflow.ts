@@ -61,7 +61,7 @@ export interface WorkflowFormData {
 
 // 工作流执行结果
 export interface WorkflowExecution {
-  executionId?: string
+  executionId?: string | number
   status: string  // 'RUNNING' | 'SUCCESS' | 'FAILED' | 'WAITING_APPROVAL' (后端返回大写)
   startTime?: string
   endTime?: string
@@ -180,6 +180,11 @@ export function getNodeTypeDefinitions(): Promise<ApiResponse<NodeTypeDefinition
 }
 
 // 调试节点
+// 审批后继续执行暂停的工作流(同步返回续跑终态)
+export function resumeWorkflowExecution(executionId: number | string): Promise<ApiResponse<WorkflowExecution>> {
+  return request.post(`/api/workflow/execution/${executionId}/resume`)
+}
+
 export function debugNode(workflowId: number, nodeId: string, inputs: Record<string, any>): Promise<ApiResponse<any>> {
   return request.post(`/api/workflow/${workflowId}/debug-node`, { nodeId, inputs })
 }

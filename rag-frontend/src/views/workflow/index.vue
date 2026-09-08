@@ -107,6 +107,20 @@
           show-icon
           style="margin-bottom: 16px"
         />
+        <div
+          v-if="executionResult.status?.toUpperCase() === 'WAITING_APPROVAL'"
+          style="margin-bottom: 16px"
+        >
+          <a-space direction="vertical" style="width: 100%">
+            <div style="color: rgba(0,0,0,0.65); font-size: 13px">
+              请在“Agent 审批与执行”中心或对应工具审批完成后,点击下方按钮继续执行下游节点。
+            </div>
+            <a-button type="primary" size="small" :loading="resuming" @click="handleResumeExecution">
+              <template #icon><ReloadOutlined /></template>
+              已审批完成,继续执行
+            </a-button>
+          </a-space>
+        </div>
 
         <a-timeline>
           <a-timeline-item
@@ -146,6 +160,7 @@ import {
   SaveOutlined,
   PlayCircleOutlined,
   ApartmentOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import type { Node } from '@vue-flow/core'
 
@@ -155,6 +170,7 @@ import {
   createWorkflow,
   updateWorkflow,
   executeWorkflow,
+  resumeWorkflowExecution,
 } from '@/api/workflow'
 
 import NodePanel from './components/NodePanel.vue'
@@ -445,6 +461,33 @@ async function handleRun() {
     console.error(error)
   } finally {
     running.value = false
+  }
+}
+
+// 审批通过后继续执行暂停的工作流(同步返回续跑终态)
+const resuming = ref(false)
+
+async function handleResumeExecution(): Promise<void> {
+  const executionId = executionResult.value?.executionId
+  if (executionId === undefined || executionId === null) {
+    message.warning('缺少执行记录 ID,无法续跑')
+    return
+  }
+  resuming.value = true
+  try {
+    const res = await resumeWorkflowExecution(executionId)
+    executionResult.value = res.data
+    if (res.data?.status?.toUpperCase() === 'SUCCESS') {
+      message.success('工作流已继续执行完成')
+    } else if (res.data?.status?.toUpperCase() === 'WAITING_APPROVAL') {
+      message.warning('存在新的待审批动作,审批通过后可再次继续执行')
+    }
+  } catch (error) {
+    // 409 等错误已由 request 拦截器提示(如:已在后台续跑,请刷新)
+    console.error('续跑失败', error)
+    executionResult.value = null
+  } finally {
+    resuming.value = false
   }
 }
 

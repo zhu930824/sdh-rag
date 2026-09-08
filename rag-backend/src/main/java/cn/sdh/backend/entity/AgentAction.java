@@ -28,5 +28,11 @@ public class AgentAction {
     @TableField("requested_at") private LocalDateTime requestedAt;
     @TableField("decided_at") private LocalDateTime decidedAt;
     @TableField("executed_at") private LocalDateTime executedAt;
+    /** Agent run id(agent_run.id),审批 -> Agent 续跑路由 */
+    @TableField("run_id") private Long runId;
+    /** Agent step id(agent_step.id) */
+    @TableField("step_id") private Long stepId;
+    /** 工作流执行记录 id(workflow_execution.id),审批 -> workflow 续跑路由 */
+    @TableField("workflow_execution_id") private Long workflowExecutionId;
     @TableField("update_time") private LocalDateTime updateTime;
 }

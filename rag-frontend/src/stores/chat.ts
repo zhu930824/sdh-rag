@@ -1,7 +1,23 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ChatSession, Source, RouterInfo, AskRequest } from '@/api/chat'
-import { askQuestion, getChatSessions, getSessionMessages, deleteSession, createSession } from '@/api/chat'
+import type {
+  AgentPendingApproval,
+  AgentStepView,
+  ChatMessage,
+  ChatSession,
+  Source,
+  RouterInfo,
+  AskRequest,
+  StreamEvent,
+} from '@/api/chat'
+import {
+  askQuestion,
+  getChatSessions,
+  getSessionMessages,
+  deleteSession,
+  createSession,
+} from '@/api/chat'
+import { approveActionSkip, rejectActionSkip, resumeRun } from '@/api/agentRun'
 
 export const useChatStore = defineStore('chat', () => {
   // 当前会话ID
@@ -15,6 +31,12 @@ export const useChatStore = defineStore('chat', () => {
 
   // 记忆增强开关（默认开启）
   const memoryEnabled = ref(true)
+
+  // Agent 模式开关(会话级偏好,本地持久化)
+  const agentEnabled = ref(localStorage.getItem('chat.agentEnabled') === '1')
+
+  // 当前 Agent 运行 key(续流定位)
+  const currentRunKey = ref<string | null>(null)
 
   // 消息列表
   const messages = ref<ChatMessage[]>([])
@@ -191,46 +213,12 @@ export const useChatStore = defineStore('chat', () => {
       if (metadataFilter) {
         askRequest.metadataFilter = metadataFilter
       }
-      await askQuestion(askRequest,
-        (event) => {
-          // 处理流式事件
-          const targetMessage = messages.value.find((m) => m.id === aiMessageId)
-          if (!targetMessage) return
-
-          switch (event.type) {
-            case 'content':
-              if (event.content) {
-                generatingContent.value += event.content
-                targetMessage.content = generatingContent.value
-              }
-              break
-            case 'sources':
-              if (event.sources) {
-                generatingSources.value = event.sources
-                targetMessage.sources = generatingSources.value
-              }
-              break
-            case 'done':
-              if (event.historyId) {
-                targetMessage.historyId = event.historyId
-              }
-              isGenerating.value = false
-              break
-            case 'routerInfo':
-              if (event.routerInfo) {
-                lastRouterInfo.value = event.routerInfo
-                targetMessage.routerInfo = event.routerInfo
-              }
-              break
-            case 'error':
-              console.error('流式响应错误:', event.message)
-              targetMessage.content = event.message || '生成回复时发生错误'
-              isGenerating.value = false
-              break
-          }
-        },
-        abortController.signal
-      )
+      if (agentEnabled.value) {
+        askRequest.agent = { enabled: true }
+      }
+      const targetMessage = () => messages.value.find((m) => m.id === aiMessageId) ?? null
+      await askQuestion(askRequest, (event) => handleStreamEvent(targetMessage(), event),
+        abortController.signal)
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('发送消息失败:', error)
@@ -243,6 +231,188 @@ export const useChatStore = defineStore('chat', () => {
       isGenerating.value = false
       abortController = null
     }
+  }
+
+  // ===================== Agent 事件与审批 =====================
+
+  // 找到某工具尚未结束的过程卡(RUNNING/等待其 tool_result)
+  function findOpenToolStep(message: ChatMessage, toolCode: string, actionId?: number): AgentStepView | undefined {
+    const steps = message.agentSteps || []
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const step = steps[i]
+      if (step.type === 'tool' && step.toolCode === toolCode && step.status === 'RUNNING') {
+        if (actionId === undefined || step.actionId === undefined || step.actionId === actionId) {
+          return step
+        }
+      }
+    }
+    return undefined
+  }
+
+  /** ask/resume 共用的 SSE 事件分发(Agent 新增 6 类事件 + 原有 5 类) */
+  function handleStreamEvent(targetMessage: ChatMessage | null, event: StreamEvent): void {
+    if (!targetMessage) return
+    switch (event.type) {
+      case 'content':
+        if (event.content) {
+          generatingContent.value += event.content
+          targetMessage.content = generatingContent.value
+        }
+        break
+      case 'sources':
+        if (event.sources) {
+          generatingSources.value = event.sources
+          targetMessage.sources = generatingSources.value
+        }
+        break
+      case 'done':
+        if (event.historyId) {
+          targetMessage.historyId = event.historyId
+        }
+        targetMessage.agentStatus = 'COMPLETED'
+        currentRunKey.value = null
+        isGenerating.value = false
+        break
+      case 'routerInfo':
+        if (event.routerInfo) {
+          lastRouterInfo.value = event.routerInfo
+          targetMessage.routerInfo = event.routerInfo
+        }
+        break
+      case 'error':
+        console.error('流式响应错误:', event.code ?? 0, event.message)
+        if (event.code && event.code !== 200) {
+          // 业务码错误(如 resume 409):保留已有内容,仅提示刷新
+          if (!targetMessage.content) {
+            targetMessage.content = event.message || '操作失败,请刷新会话后重试'
+          }
+        } else {
+          targetMessage.content = event.message || '生成回复时发生错误'
+        }
+        currentRunKey.value = null
+        isGenerating.value = false
+        break
+
+      // ---------- Agent 事件 ----------
+      case 'agent_start':
+        currentRunKey.value = event.runId || null
+        targetMessage.agentRunKey = event.runId || null
+        targetMessage.agentStatus = 'RUNNING'
+        targetMessage.agentSteps = []
+        targetMessage.pendingApprovals = []
+        break
+      case 'agent_status':
+        targetMessage.agentStatus = event.status || targetMessage.agentStatus
+        if (event.status === 'WAITING_APPROVAL') {
+          // 流在此正常结束(无 done);等待用户审批后通过 resume 续流
+          currentRunKey.value = null
+          isGenerating.value = false
+        }
+        break
+      case 'tool_call':
+        targetMessage.agentSteps = targetMessage.agentSteps || []
+        targetMessage.agentSteps.push({
+          seq: (targetMessage.agentSteps.length + 1),
+          type: 'tool',
+          toolCode: event.toolCode,
+          status: 'RUNNING',
+          argsPreview: event.argsPreview,
+        })
+        break
+      case 'tool_result': {
+        targetMessage.agentSteps = targetMessage.agentSteps || []
+        const step = findOpenToolStep(targetMessage, event.toolCode || '', event.actionId)
+          || targetMessage.agentSteps[targetMessage.agentSteps.length - 1]
+        if (step) {
+          step.status = event.status || 'FAILED'
+          step.actionId = event.actionId ?? step.actionId
+          step.resultPreview = event.result || event.error
+          step.latencyMs = event.latencyMs
+        }
+        break
+      }
+      case 'approval_required': {
+        if (!event.actionId || !event.runId) break
+        targetMessage.pendingApprovals = targetMessage.pendingApprovals || []
+        const existing = targetMessage.pendingApprovals.find((a) => a.actionId === event.actionId)
+        const approval: AgentPendingApproval = {
+          runId: event.runId,
+          actionId: event.actionId,
+          toolCode: event.toolCode || '',
+          toolName: event.toolName || event.toolCode || '',
+          argsPreview: event.argsPreview,
+          evidencePreview: event.evidencePreview,
+          canApprove: event.canApprove ?? false,
+        }
+        if (existing) {
+          Object.assign(existing, approval)
+        } else {
+          targetMessage.pendingApprovals.push(approval)
+        }
+        break
+      }
+    }
+  }
+
+  /** 聊天卡内联审批:approve/reject(skip)后对同一消息发起 resume 续流 */
+  async function decideInline(
+    message: ChatMessage,
+    approval: AgentPendingApproval,
+    decision: 'approve' | 'reject',
+    reason?: string,
+  ): Promise<void> {
+    if (!message || !approval || isGenerating.value) return
+    try {
+      if (decision === 'approve') {
+        await approveActionSkip(approval.actionId)
+      } else {
+        await rejectActionSkip(approval.actionId, reason || '审批人拒绝')
+      }
+    } catch (error) {
+      console.error('审批操作失败:', error)
+      return
+    }
+
+    message.pendingApprovals = (message.pendingApprovals || []).filter(
+      (a) => a.actionId !== approval.actionId,
+    )
+    message.agentStatus = 'RUNNING'
+    currentRunKey.value = approval.runId
+    isGenerating.value = true
+
+    abortController = new AbortController()
+    try {
+      await resumeRun(approval.runId, approval.actionId, (event) =>
+        handleStreamEvent(messages.value.find((m) => m.id === message.id) ?? null, event),
+        abortController.signal,
+      )
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('续跑失败:', error)
+        message.content = message.content || '续跑失败,请刷新会话查看最新状态'
+        message.pendingApprovals = message.pendingApprovals || []
+      }
+    } finally {
+      isGenerating.value = false
+      abortController = null
+    }
+  }
+
+  /** 手动刷新会话消息(外带审批完成后拉取终态) */
+  async function refreshSessionMessages(): Promise<void> {
+    if (!currentSessionId.value) return
+    try {
+      const res = await getSessionMessages(currentSessionId.value)
+      messages.value = res.data || []
+    } catch (error) {
+      console.error('刷新会话消息失败:', error)
+    }
+  }
+
+  /** 切换 Agent 模式(本地持久化) */
+  function setAgentEnabled(enabled: boolean): void {
+    agentEnabled.value = enabled
+    localStorage.setItem('chat.agentEnabled', enabled ? '1' : '0')
   }
 
   // 停止生成
@@ -269,6 +439,7 @@ export const useChatStore = defineStore('chat', () => {
     generatingContent.value = ''
     generatingSources.value = []
     selectedKnowledgeId.value = null
+    currentRunKey.value = null
     if (abortController) {
       abortController.abort()
       abortController = null
@@ -306,6 +477,8 @@ export const useChatStore = defineStore('chat', () => {
     selectedKnowledgeId,
     selectedModelId,
     memoryEnabled,
+    agentEnabled,
+    currentRunKey,
 
     // 计算属性
     hasMoreSessions,
@@ -323,5 +496,8 @@ export const useChatStore = defineStore('chat', () => {
     setKnowledgeId,
     setModelId,
     setMemoryEnabled,
+    setAgentEnabled,
+    decideInline,
+    refreshSessionMessages,
   }
 })

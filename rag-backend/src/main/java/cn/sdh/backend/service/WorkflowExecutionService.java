@@ -19,6 +19,12 @@ public interface WorkflowExecutionService {
     void update(WorkflowExecution execution);
 
     /**
+     * 状态 CAS(审批续跑竞态控制):仅 expected 状态可迁到 next
+     * @return 是否迁移成功
+     */
+    boolean transition(Long id, String expected, String next);
+
+    /**
      * 根据ID获取执行记录
      */
     WorkflowExecution getById(Long id);

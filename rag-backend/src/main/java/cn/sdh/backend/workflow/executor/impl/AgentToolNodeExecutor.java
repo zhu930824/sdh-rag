@@ -46,10 +46,13 @@ public class AgentToolNodeExecutor implements NodeExecutor {
 
         Long actor = number(input.get("__actorId__"), "执行用户");
         Long workflowId = nullableNumber(input.get("__workflowId__"));
+        // 执行记录行 ID:审批通过后用于续跑同一工作流执行
+        Long workflowExecutionId = nullableNumber(input.get("__executionId__"));
         String idempotencyKey = replaceVariables(string(data.get("idempotencyKey"), ""), input);
         AgentAction action = actionService.request(new AgentActionService.ActionCommand(
                 toolId.longValue(), parameters, evidence,
-                idempotencyKey.isBlank() ? null : idempotencyKey, workflowId, node.getId()), actor);
+                idempotencyKey.isBlank() ? null : idempotencyKey, workflowId, node.getId(),
+                null, null, workflowExecutionId), actor);
         output.clear();
         output.put("actionId", action.getId());
         output.put("actionStatus", action.getStatus());

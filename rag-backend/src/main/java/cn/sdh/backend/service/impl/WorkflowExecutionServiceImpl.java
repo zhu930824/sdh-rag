@@ -44,6 +44,11 @@ public class WorkflowExecutionServiceImpl implements WorkflowExecutionService {
     }
 
     @Override
+    public boolean transition(Long id, String expected, String next) {
+        return workflowExecutionMapper.transition(id, expected, next) == 1;
+    }
+
+    @Override
     public WorkflowExecution getById(Long id) {
         return workflowExecutionMapper.selectById(id);
     }

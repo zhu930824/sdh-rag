@@ -46,6 +46,29 @@ public class ChatHistory implements Serializable {
      */
     private String sources;
 
+    /** 本次回答所用知识库 */
+    @TableField("knowledge_id")
+    private Long knowledgeId;
+
+    /** 本次回答所用模型(model_config.id) */
+    @TableField("model_id")
+    private Long modelId;
+
+    /** 意图路由信息 JSON */
+    @TableField("router_info")
+    private String routerInfo;
+
+    /** 关联 Agent 运行(agent_run.run_key) */
+    @TableField("agent_run_key")
+    private String agentRunKey;
+
+    /** Agent 轨迹摘要 JSON(服务端截断) */
+    @TableField("agent_trace")
+    private String agentTrace;
+
     @TableField("create_time")
     private LocalDateTime createTime;
+
+    @TableField("update_time")
+    private LocalDateTime updateTime;
 }

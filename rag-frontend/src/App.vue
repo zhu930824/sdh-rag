@@ -2,7 +2,9 @@
   <a-config-provider :locale="zhCN">
     <router-view v-slot="{ Component, route }">
       <transition name="fade" mode="out-in">
-        <component :is="Component" :key="route.path" />
+        <!-- key 取顶级路由记录而非完整路径：保证 /dashboard -> /chat 这类子路由切换时
+             只替换 MainLayout 内部的内容区，而不会卸载重建整个布局（避免整页闪烁刷新） -->
+        <component :is="Component" :key="route.matched[0]?.path" />
       </transition>
     </router-view>
   </a-config-provider>

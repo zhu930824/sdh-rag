@@ -8,11 +8,22 @@ export interface ChatMessage {
   id: number | string
   role: 'user' | 'assistant'
   content: string
-  sources?: Source[]
+  sources?: Source[] | null
   createTime: string
   historyId?: number // 聊天历史ID，用于评价
   userRating?: number // 用户评价：1-点赞，0-点踩，undefined-未评价
-  routerInfo?: RouterInfo // 路由信息
+  routerInfo?: RouterInfo | null // 路由信息
+  // ---- Agent 字段(回放来自 chat_history;运行态由 SSE 写入) ----
+  knowledgeId?: number | null
+  modelId?: number | null
+  agentRunKey?: string | null
+  agentTrace?: AgentTrace | null
+  /** 运行态:Agent 状态(RUNNING/WAITING_APPROVAL/COMPLETED/...) */
+  agentStatus?: string | null
+  /** 运行态:工具调用过程卡 */
+  agentSteps?: AgentStepView[]
+  /** 运行态:待审批动作 */
+  pendingApprovals?: AgentPendingApproval[]
 }
 
 // 引用来源类型
@@ -49,14 +60,77 @@ export interface ChatSession {
   messageCount?: number
 }
 
+// Agent 工具步骤(实时展示 / 历史回放共用)
+export interface AgentStepView {
+  seq: number
+  type: 'llm' | 'tool'
+  toolCode?: string
+  actionId?: number
+  status: string
+  argsPreview?: string
+  resultPreview?: string
+  latencyMs?: number
+}
+
+// Agent 运行轨迹(历史回放,来自 chat_history.agent_trace)
+export interface AgentTrace {
+  runId: string
+  status: string
+  steps: AgentStepView[]
+}
+
+// 待审批动作(实时事件 approval_required)
+export interface AgentPendingApproval {
+  runId: string
+  actionId: number
+  toolCode: string
+  toolName: string
+  argsPreview?: string
+  evidencePreview?: string
+  canApprove: boolean
+}
+
+// Agent 模式请求配置
+export interface AgentAskConfig {
+  enabled?: boolean
+  maxSteps?: number
+}
+
 // 流式响应事件类型
 export interface StreamEvent {
-  type: 'content' | 'sources' | 'done' | 'error' | 'routerInfo'
+  type:
+    | 'content'
+    | 'sources'
+    | 'done'
+    | 'error'
+    | 'routerInfo'
+    | 'agent_start'
+    | 'agent_status'
+    | 'tool_call'
+    | 'tool_result'
+    | 'approval_required'
   content?: string
   sources?: Source[]
   message?: string
+  /** 业务码(如 resume 前置校验 404/409/403) */
+  code?: number
   historyId?: number // 聊天历史ID，用于评价
   routerInfo?: RouterInfo // 路由信息
+  // ---- Agent 事件字段 ----
+  runId?: string
+  maxSteps?: number
+  status?: string
+  pendingActionIds?: number[]
+  stepSeq?: number
+  toolCode?: string
+  toolName?: string
+  argsPreview?: string
+  actionId?: number
+  result?: string
+  error?: string
+  latencyMs?: number
+  canApprove?: boolean
+  evidencePreview?: string
 }
 
 // 问答请求参数
@@ -69,6 +143,8 @@ export interface AskRequest {
   memoryEnabled?: boolean
   /** 元数据筛选条件 */
   metadataFilter?: MetadataFilter
+  /** Agent 模式(开启后 LLM 可调用受控业务工具;需审批时暂停等待) */
+  agent?: AgentAskConfig
 }
 
 // 发起问答（流式响应）
