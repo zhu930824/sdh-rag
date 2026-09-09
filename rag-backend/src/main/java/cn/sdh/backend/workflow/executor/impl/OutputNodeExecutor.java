@@ -94,8 +94,7 @@ public class OutputNodeExecutor implements NodeExecutor {
 
         if (responseContent != null && !responseContent.isEmpty()) {
             // 使用模板渲染输出
-            log.debug("输出节点配置 - responseContent: {}", responseContent);
-            log.debug("参数值映射: {}", paramValues);
+            log.debug("输出节点开始渲染，模板长度: {}，参数数量: {}", responseContent.length(), paramValues.size());
 
             // 替换模板中的 {{参数名}}
             String result = responseContent;

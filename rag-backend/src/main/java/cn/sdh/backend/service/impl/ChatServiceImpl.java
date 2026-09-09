@@ -301,8 +301,8 @@ public class ChatServiceImpl implements ChatService {
         // 添加日志观测 Advisor（最后执行，记录完整流程）
         LoggingAdvisor loggingAdvisor = LoggingAdvisor.builder()
                 .order(10000)  // 最低优先级，确保记录完整流程
-                .logRequestBody(true)
-                .logResponseBody(false)  // 响应内容通常较长，默认不记录
+                .logRequestBody(false)
+                .logResponseBody(false)
                 .maxContentLength(300)
                 .build();
         requestSpec = requestSpec.advisors(spec -> spec.advisors(loggingAdvisor));
@@ -396,8 +396,7 @@ public class ChatServiceImpl implements ChatService {
                 userId, currentSessionId, question, memoryEnabled);
 
         // 记录请求信息
-        log.info("[{}] 聊天请求开始(手动RAG) - 用户问题: {}", requestId,
-                question.length() > 200 ? question.substring(0, 200) + "..." : question);
+        log.info("[{}] 聊天请求开始(手动RAG) - 问题长度: {}", requestId, question.length());
 
         // 保存用户问题
         Long historyId = saveUserQuestion(question, currentSessionId, userId, knowledgeId);

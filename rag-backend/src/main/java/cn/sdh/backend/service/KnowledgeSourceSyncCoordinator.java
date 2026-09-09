@@ -17,12 +17,11 @@ public class KnowledgeSourceSyncCoordinator {
         finally { syncLock.release(handle); }
     }
 
-    public boolean pullScheduled(Long sourceId) {
+    public KnowledgeSourceService.IngestResult pullScheduled(Long sourceId) {
         KnowledgeSourceSyncLock.LockHandle handle = syncLock.acquire(sourceId);
-        if (handle == null) return false;
+        if (handle == null) return null;
         try {
-            sourceService.pullScheduled(sourceId);
-            return true;
+            return sourceService.pullScheduled(sourceId);
         } finally {
             syncLock.release(handle);
         }

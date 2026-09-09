@@ -23,7 +23,8 @@
       "Bash(JAVA_HOME=\"D:/develop/JDK21\" mvn compile)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git ls-tree *)"
+      "Bash(git ls-tree *)",
+      "Bash(unzip -o ~/.m2/repository/com/alibaba/druid/1.2.20/druid-1.2.20.jar -d ext)"
     ]
   }
 }

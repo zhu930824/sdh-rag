@@ -92,7 +92,7 @@ public class UserServiceImpl implements UserService {
         user.setUsername(username);
         user.setPassword(BCrypt.hashpw(password));
         user.setNickname(nickname != null ? nickname : username);
-        user.setRole("普通用户");
+        user.setRole("user");
         user.setStatus(1);
         user.setUserLevel(1);
         user.setExperience(0);

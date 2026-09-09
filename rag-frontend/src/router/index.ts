@@ -219,6 +219,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '评测实验室', icon: 'Experiment', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
       },
       {
+        path: 'jobs',
+        name: 'Jobs',
+        component: () => import('@/views/job/index.vue'),
+        meta: { title: '任务中心', icon: 'ClockCircle', requiresAuth: true, permission: '/knowledge' } as RouteMeta,
+      },
+      {
         path: 'memory',
         name: 'Memory',
         component: () => import('@/views/memory/index.vue'),

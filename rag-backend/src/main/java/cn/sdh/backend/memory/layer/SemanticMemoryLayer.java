@@ -111,7 +111,8 @@ public class SemanticMemoryLayer implements MemoryLayer {
                 .document(doc)
             );
 
-            log.debug("Stored semantic memory: {} - {}", entry.getType(), entry.getContent());
+            log.debug("Stored semantic memory: type={}, contentLength={}", entry.getType(),
+                    entry.getContent() == null ? 0 : entry.getContent().length());
         } catch (Exception e) {
             log.error("Failed to store semantic memory: {}", e.getMessage(), e);
         }

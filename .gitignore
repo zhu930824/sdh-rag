@@ -35,3 +35,6 @@ build/
 /.mvn/
 /rag-frontend/.claude/
 /rag-frontend/dist/
+.env
+.env.*
+!.env.example

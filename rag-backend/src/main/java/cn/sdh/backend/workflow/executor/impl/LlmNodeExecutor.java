@@ -86,7 +86,7 @@ public class LlmNodeExecutor implements NodeExecutor {
                     .call()
                     .content();
 
-                log.debug("LLM 响应: {}", response);
+                log.debug("LLM 调用完成，响应长度: {}", response == null ? 0 : response.length());
             }
         } catch (Exception e) {
             log.error("LLM 调用失败", e);

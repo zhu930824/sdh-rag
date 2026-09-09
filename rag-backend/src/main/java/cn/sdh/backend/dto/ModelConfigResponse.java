@@ -56,9 +56,9 @@ public class ModelConfigResponse {
     }
     
     private static String maskApiKey(String apiKey) {
-        if (apiKey == null || apiKey.length() < 8) {
+        if (apiKey == null || apiKey.isEmpty()) {
             return null;
         }
-        return apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4);
+        return "********";
     }
 }

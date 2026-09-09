@@ -143,7 +143,7 @@ public class IntentRouterServiceImpl implements IntentRouterService {
             // 提取JSON部分
             String jsonStr = extractJson(response);
             if (jsonStr == null) {
-                log.warn("无法从响应中提取JSON: {}", response);
+                log.warn("无法从模型响应中提取JSON，响应长度: {}", response == null ? 0 : response.length());
                 return IntentRouterResponse.directChat("响应解析失败");
             }
 
@@ -194,7 +194,7 @@ public class IntentRouterServiceImpl implements IntentRouterService {
             }
 
         } catch (Exception e) {
-            log.error("解析LLM响应失败: {}", response, e);
+            log.error("解析LLM响应失败，响应长度: {}", response == null ? 0 : response.length(), e);
             return IntentRouterResponse.directChat("响应解析失败");
         }
 

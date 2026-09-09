@@ -3,6 +3,7 @@ package cn.sdh.backend.service;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.entity.EvaluationQa;
 import cn.sdh.backend.entity.EvaluationTask;
+import cn.sdh.backend.entity.PlatformJob;
 import cn.sdh.backend.mapper.EvaluationQaMapper;
 import cn.sdh.backend.mapper.EvaluationTaskMapper;
 import cn.sdh.backend.service.impl.EvaluationServiceImpl;
@@ -30,6 +31,7 @@ class EvaluationQualityServiceTest {
     @Mock ChatService chat;
     @Mock TestDatasetService datasets;
     @Mock KnowledgeAccessService access;
+    @Mock PlatformJobService platformJobs;
     EvaluationServiceImpl service;
 
     @BeforeEach void setup() {
@@ -37,10 +39,31 @@ class EvaluationQualityServiceTest {
         context.setUserId(8L);
         UserContext.setUserContext(context);
         service = new EvaluationServiceImpl(tasks, qaMapper, vectors, bases, rag, chat, datasets,
-                new ObjectMapper(), access, Runnable::run);
+                new ObjectMapper(), access, platformJobs);
     }
 
     @AfterEach void clearContext() { UserContext.clear(); }
+
+    @Test void creatingEvaluationPersistsReliableJobInSameServiceTransaction() {
+        doAnswer(invocation -> {
+            EvaluationTask task = invocation.getArgument(0);
+            task.setId(77L);
+            return 1;
+        }).when(tasks).insert(any(EvaluationTask.class));
+        PlatformJob job = new PlatformJob();
+        job.setId(88L);
+        when(platformJobs.enqueue(any())).thenReturn(job);
+
+        EvaluationTask created = service.generateAndRun(7L, 5, "smoke", null);
+
+        assertEquals(77L, created.getId());
+        assertEquals(88L, created.getJobId());
+        assertEquals(0, created.getStatus());
+        verify(access).requireEdit(7L, 8L);
+        verify(platformJobs).enqueue(argThat(command -> command.jobKey().equals("evaluation:77")
+                && command.resourceId().equals(77L)));
+        verify(tasks).updateById(created);
+    }
 
     @Test void qualityReportClassifiesBusinessFailuresAndRecommendations() {
         EvaluationTask task = new EvaluationTask();

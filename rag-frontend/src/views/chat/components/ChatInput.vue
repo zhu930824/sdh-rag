@@ -13,51 +13,6 @@
         @keydown="handleKeydown"
       />
 
-      <!-- 筛选面板 -->
-      <div v-if="showFilter" class="filter-panel">
-        <a-space wrap>
-          <a-select
-            v-model:value="metadataFilter.department"
-            placeholder="部门"
-            allow-clear
-            size="small"
-            style="width: 120px"
-          >
-            <a-select-option v-for="d in departments" :key="d" :value="d">
-              {{ d }}
-            </a-select-option>
-          </a-select>
-
-          <a-select
-            v-model:value="metadataFilter.docType"
-            placeholder="文档类型"
-            allow-clear
-            size="small"
-            style="width: 120px"
-          >
-            <a-select-option
-              v-for="t in DOC_TYPES" :key="t.value" :value="t.value"
-            >
-              {{ t.label }}
-            </a-select-option>
-          </a-select>
-
-          <a-date-picker
-            v-model:value="metadataFilter.dateFrom"
-            placeholder="开始日期"
-            size="small"
-            style="width: 130px"
-          />
-
-          <a-date-picker
-            v-model:value="metadataFilter.dateTo"
-            placeholder="结束日期"
-            size="small"
-            style="width: 130px"
-          />
-        </a-space>
-      </div>
-
       <!-- 底部：工具栏和发送按钮 -->
       <div class="input-toolbar">
         <div class="toolbar-left">
@@ -80,14 +35,6 @@
               {{ kb.name }}
             </a-select-option>
           </a-select>
-        </div>
-
-        <!-- 高级筛选按钮 -->
-        <div class="filter-toggle">
-          <a-button type="link" size="small" @click="showFilter = !showFilter">
-            <FilterOutlined />
-            {{ showFilter ? '收起筛选' : '高级筛选' }}
-          </a-button>
         </div>
 
         <div class="toolbar-right">
@@ -175,13 +122,11 @@ import {
   ArrowUpOutlined,
   PauseOutlined,
   BulbOutlined,
-  FilterOutlined,
   RobotOutlined,
 } from '@ant-design/icons-vue'
 import { getKnowledgeBaseList, type KnowledgeBase } from '@/api/knowledgeBase'
 import { getActiveChatModels } from '@/api/model'
 import type { ModelConfig } from '@/types'
-import { DOC_TYPES, type MetadataFilter } from '@/types/search'
 
 const props = withDefaults(
   defineProps<{
@@ -208,7 +153,6 @@ const props = withDefaults(
 
 export interface SendPayload {
   message: string
-  metadataFilter?: MetadataFilter
 }
 
 const emit = defineEmits<{
@@ -230,9 +174,6 @@ const knowledgeList = ref<KnowledgeBase[]>([])
 const modelList = ref<ModelConfig[]>([])
 const knowledgeLoading = ref(false)
 const modelLoading = ref(false)
-const showFilter = ref(false)
-const metadataFilter = reactive<MetadataFilter>({})
-const departments = ['技术部', '财务部', '人力资源部', '市场部', '运营部']
 
 const canSend = computed(() => {
   return inputText.value.trim().length > 0 && !props.disabled && !props.sending
@@ -305,11 +246,7 @@ function handleSend(): void {
   const message = inputText.value.trim()
   if (!message || props.disabled || props.sending) return
 
-  const hasActiveFilter = metadataFilter.department || metadataFilter.docType || metadataFilter.dateFrom || metadataFilter.dateTo
-  const payload: SendPayload = {
-    message,
-    ...(hasActiveFilter ? { metadataFilter: { ...metadataFilter } } : {}),
-  }
+  const payload: SendPayload = { message }
   emit('send', payload)
   inputText.value = ''
 
@@ -471,19 +408,6 @@ defineExpose({
         }
       }
 
-      .filter-toggle {
-        :deep(.ant-btn) {
-          padding: 0 4px;
-          font-size: 12px;
-        }
-      }
-    }
-
-    // 筛选面板
-    .filter-panel {
-      padding: 8px 12px;
-      background: #fafafa;
-      border-bottom: 1px solid var(--border-lighter);
     }
   }
 }

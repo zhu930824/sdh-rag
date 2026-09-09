@@ -5,6 +5,7 @@ import cn.sdh.backend.dto.ModelConfigRequest;
 import cn.sdh.backend.dto.ModelConfigResponse;
 import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.service.ModelConfigService;
+import cn.sdh.backend.service.PlatformAdminService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,12 +20,14 @@ import java.util.stream.Collectors;
 public class ModelConfigController {
 
     private final ModelConfigService modelConfigService;
+    private final PlatformAdminService adminService;
 
     @GetMapping("/list")
     public Result<IPage<ModelConfigResponse>> list(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword) {
+        adminService.requireAdmin();
         
         if (pageSize > 100) pageSize = 100;
         
@@ -35,6 +38,7 @@ public class ModelConfigController {
 
     @GetMapping("/{id}")
     public Result<ModelConfigResponse> getById(@PathVariable Long id) {
+        adminService.requireAdmin();
         ModelConfig config = modelConfigService.getById(id);
         if (config == null) {
             return Result.notFound("模型配置不存在");
@@ -50,6 +54,7 @@ public class ModelConfigController {
 
     @PostMapping("/add")
     public Result<Void> save(@Valid @RequestBody ModelConfigRequest request) {
+        adminService.requireAdmin();
         ModelConfig config = new ModelConfig();
         config.setName(request.getName());
         config.setProvider(request.getProvider());
@@ -72,6 +77,7 @@ public class ModelConfigController {
 
     @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody ModelConfigRequest request) {
+        adminService.requireAdmin();
         ModelConfig existing = modelConfigService.getById(id);
         if (existing == null) {
             return Result.notFound("模型配置不存在");
@@ -105,6 +111,7 @@ public class ModelConfigController {
 
     @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        adminService.requireAdmin();
         ModelConfig config = modelConfigService.getById(id);
         if (config == null) {
             return Result.notFound("模型配置不存在");
@@ -115,6 +122,7 @@ public class ModelConfigController {
 
     @PostMapping("/default/{id}")
     public Result<Void> setDefault(@PathVariable Long id) {
+        adminService.requireAdmin();
         ModelConfig config = modelConfigService.getById(id);
         if (config == null) {
             return Result.notFound("模型配置不存在");
@@ -151,8 +159,11 @@ public class ModelConfigController {
     }
 
     @GetMapping("/active/embedding")
-    public Result<List<ModelConfig>> getActiveEmbeddingModels() {
-        return Result.success(modelConfigService.getActiveModelsByType("embedding"));
+    public Result<List<ModelConfigResponse>> getActiveEmbeddingModels() {
+        List<ModelConfigResponse> responses = modelConfigService.getActiveModelsByType("embedding").stream()
+                .map(ModelConfigResponse::fromEntity)
+                .toList();
+        return Result.success(responses);
     }
 
 

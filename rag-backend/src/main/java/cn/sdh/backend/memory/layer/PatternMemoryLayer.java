@@ -306,7 +306,7 @@ public class PatternMemoryLayer implements MemoryLayer {
                 pattern.put("confidence", 0.7);
             }
         } catch (Exception e) {
-            log.warn("Failed to parse pattern content: {}", content);
+            log.warn("Failed to parse pattern content, length={}", content == null ? 0 : content.length());
         }
         return pattern;
     }

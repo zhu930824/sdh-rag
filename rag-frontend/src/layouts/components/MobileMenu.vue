@@ -43,6 +43,11 @@
         <span>评测实验室</span>
       </a-menu-item>
 
+      <a-menu-item key="/jobs">
+        <template #icon><ClockCircleOutlined /></template>
+        <span>任务中心</span>
+      </a-menu-item>
+
       <div class="menu-divider" />
 
       <!-- Tools -->
@@ -163,6 +168,7 @@ import {
   FileDoneOutlined,
   RadarChartOutlined,
   ExperimentOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons-vue'
 
 const emit = defineEmits<{

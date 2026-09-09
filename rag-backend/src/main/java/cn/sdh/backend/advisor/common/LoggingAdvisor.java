@@ -37,7 +37,7 @@ public class LoggingAdvisor implements BaseAdvisor {
     private final int maxContentLength;
 
     public LoggingAdvisor() {
-        this(1000, true, false, 200);
+        this(1000, false, false, 200);
     }
 
     public LoggingAdvisor(int order, boolean logRequestBody, boolean logResponseBody, int maxContentLength) {
@@ -145,7 +145,7 @@ public class LoggingAdvisor implements BaseAdvisor {
         StringBuilder sb = new StringBuilder();
         sb.append("[").append(requestId).append("] 聊天请求开始");
 
-        if (request.prompt() != null) {
+        if (logRequestBody && request.prompt() != null) {
             // 系统提示词
             String systemPrompt = extractSystemPrompt(request);
             if (systemPrompt != null && !systemPrompt.isEmpty()) {
@@ -200,7 +200,7 @@ public class LoggingAdvisor implements BaseAdvisor {
 
     public static class Builder {
         private int order = 1000;
-        private boolean logRequestBody = true;
+        private boolean logRequestBody = false;
         private boolean logResponseBody = false;
         private int maxContentLength = 200;
 

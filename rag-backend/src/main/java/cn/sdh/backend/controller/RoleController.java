@@ -4,6 +4,7 @@ import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.RoleRequest;
 import cn.sdh.backend.entity.Role;
 import cn.sdh.backend.service.RoleService;
+import cn.sdh.backend.service.PlatformAdminService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import java.util.Map;
 public class RoleController {
 
     private final RoleService roleService;
+    private final PlatformAdminService adminService;
 
     @GetMapping("/list")
     public Result<IPage<Role>> list(
@@ -29,18 +31,21 @@ public class RoleController {
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer status) {
+        adminService.requireAdmin();
         IPage<Role> result = roleService.getPage(page, pageSize, keyword, status);
         return Result.success(result);
     }
 
     @GetMapping("/all")
     public Result<List<Role>> all() {
+        adminService.requireAdmin();
         List<Role> roles = roleService.getAllEnabled();
         return Result.success(roles);
     }
 
     @GetMapping("/{id}")
     public Result<Role> getById(@PathVariable Long id) {
+        adminService.requireAdmin();
         Role role = roleService.getById(id);
         if (role == null) {
             return Result.notFound("角色不存在");
@@ -50,6 +55,7 @@ public class RoleController {
 
     @PostMapping
     public Result<Void> create(@Valid @RequestBody RoleRequest request) {
+        adminService.requireAdmin();
         try {
             roleService.createRole(request);
             return Result.success("创建角色成功", null);
@@ -60,6 +66,7 @@ public class RoleController {
 
     @PostMapping("/update/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody RoleRequest request) {
+        adminService.requireAdmin();
         try {
             roleService.updateRole(id, request);
             return Result.success("更新角色成功", null);
@@ -70,6 +77,7 @@ public class RoleController {
 
     @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        adminService.requireAdmin();
         try {
             roleService.deleteRole(id);
             return Result.success("删除角色成功", null);
@@ -80,6 +88,7 @@ public class RoleController {
 
     @PostMapping("/batch-delete")
     public Result<Map<String, Integer>> batchDelete(@RequestBody Map<String, Long[]> request) {
+        adminService.requireAdmin();
         Long[] ids = request.get("ids");
         if (ids == null || ids.length == 0) {
             return Result.paramError("请选择要删除的角色");
@@ -104,6 +113,7 @@ public class RoleController {
 
     @PostMapping("/status/{id}")
     public Result<Void> toggleStatus(@PathVariable Long id) {
+        adminService.requireAdmin();
         try {
             roleService.toggleStatus(id);
             return Result.success("状态切换成功", null);

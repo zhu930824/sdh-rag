@@ -6,6 +6,7 @@ import cn.sdh.backend.entity.EvaluationTask;
 import cn.sdh.backend.entity.EvaluationQa;
 import cn.sdh.backend.dto.KnowledgeQualityReport;
 import cn.sdh.backend.dto.EvaluationRunConfig;
+import cn.sdh.backend.job.PlatformJobExecutionContext;
 
 import java.util.List;
 
@@ -68,6 +69,12 @@ public interface EvaluationService {
      */
     void runEvaluation(Long taskId);
 
+    /** Reliable-job execution entry with lease heartbeat and cooperative cancellation. */
+    void runEvaluation(Long taskId, PlatformJobExecutionContext context);
+
+    /** Reliable-job execution entry for imported or versioned dataset items. */
+    void runImportedEvaluation(Long taskId, List<EvaluationQaItem> items, PlatformJobExecutionContext context);
+
     /**
      * 获取评估任务详情
      * @param taskId 任务ID
@@ -96,6 +103,10 @@ public interface EvaluationService {
      * @param taskId 任务ID
      */
     void deleteTask(Long taskId);
+
+    void cancelTask(Long taskId);
+
+    void replayTask(Long taskId);
 
     KnowledgeQualityReport getQualityReport(Long knowledgeId, int issueLimit);
 

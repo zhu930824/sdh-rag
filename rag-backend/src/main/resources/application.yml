@@ -19,21 +19,21 @@ spring:
     resources:
       add-mappings: false
   neo4j:
-    uri: bolt://192.168.1.196:7687
+    uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
-      username: neo4j
-      password: password
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:}
   servlet:
     multipart:
       max-file-size: 100MB
       max-request-size: 100MB
   profiles:
-    active: dev
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   ai:
     openai:
-      api-key: ${DASHSCOPE_API_KEY}
+      api-key: ${OPENAI_API_KEY:${DASHSCOPE_API_KEY:}}
     dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
+      api-key: ${DASHSCOPE_API_KEY:}
     vectorstore:
       elasticsearch:
         initialize-schema: true
@@ -41,11 +41,11 @@ spring:
         dimensions: 1536
         similarity: cosine
   elasticsearch:
-    uris: 192.168.1.196:9200
+    uris: ${ELASTICSEARCH_URI:http://localhost:9200}
   datasource:
-    username: root
-    password: u876mhpd
-    url: jdbc:mysql://192.168.1.196:3306/sdh_rag?serverTimezone=UTC
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:sdh_rag}?serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
 
@@ -59,9 +59,9 @@ spring:
 
   data:
     redis:
-      host: 192.168.1.196
-      port: 6379              # Redis 服务器端口，默认为 6379
-#      password:               # Redis 密码，默认为空
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
       timeout: 5000ms         # 连接超时时间
       lettuce:
         pool:
@@ -74,22 +74,21 @@ spring:
 
 xushu:
   jwt:
-    # 设置jwt签名加密时使用的秘钥
-    admin-secret-key: xushu_jwt_secret_key_for_admin_access_256_bits_required
+    admin-secret-key: ${JWT_ADMIN_SECRET:}
     # 设置jwt过期时间
     admin-ttl: 7200000
     # 设置前端传递过来的令牌名称
     admin-token-name: token
-    user-secret-key: xushu_jwt_secret_key_for_user_access_256_bits_required
+    user-secret-key: ${JWT_USER_SECRET:}
     user-ttl: 7200000
     user-token-name: token
 
 # MinIO 配置
 minio:
-  endpoint: http://192.168.1.196:9000
-  access-key: admin
-  secret-key: password
-  bucket-name: sdh-documents
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:}
+  secret-key: ${MINIO_SECRET_KEY:}
+  bucket-name: ${MINIO_BUCKET_NAME:sdh-documents}
 
 
 
@@ -100,7 +99,20 @@ logging:
         ai:
           chat:
             client:
-              advisor: debug
+              advisor: info
+
+security:
+  startup-validation:
+    enabled: ${SECURITY_STARTUP_VALIDATION_ENABLED:true}
+  webhook:
+    allow-http: ${WEBHOOK_ALLOW_HTTP:false}
+    allow-private-network: ${WEBHOOK_ALLOW_PRIVATE_NETWORK:false}
+
+# 数据库持久化可靠任务
+jobs:
+  dispatch-delay-ms: ${JOB_DISPATCH_DELAY_MS:2000}
+  dispatch-batch-size: ${JOB_DISPATCH_BATCH_SIZE:10}
+  lease-seconds: ${JOB_LEASE_SECONDS:600}
 
 knowledge:
   sources:

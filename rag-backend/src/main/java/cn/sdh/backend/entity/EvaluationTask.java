@@ -17,6 +17,9 @@ public class EvaluationTask implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @TableField("job_id")
+    private Long jobId;
+
     @TableField("knowledge_id")
     private Long knowledgeId;
 
@@ -88,7 +91,7 @@ public class EvaluationTask implements Serializable {
     @TableField("regression_status") private String regressionStatus;
 
     /**
-     * 状态: 0-待运行, 1-运行中, 2-完成, 3-失败
+     * 状态: 0-待运行, 1-运行中, 2-完成, 3-失败, 4-已取消
      */
     private Integer status;
 
@@ -115,4 +118,7 @@ public class EvaluationTask implements Serializable {
 
     @TableField(exist = false)
     private Boolean canDelete;
+
+    @TableField(exist = false)
+    private String jobStatus;
 }

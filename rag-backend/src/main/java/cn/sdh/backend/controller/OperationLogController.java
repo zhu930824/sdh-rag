@@ -3,6 +3,7 @@ package cn.sdh.backend.controller;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.entity.OperationLog;
 import cn.sdh.backend.service.OperationLogService;
+import cn.sdh.backend.service.PlatformAdminService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +17,7 @@ import java.util.Map;
 public class OperationLogController {
 
     private final OperationLogService operationLogService;
+    private final PlatformAdminService adminService;
 
     @GetMapping("/list")
     public Result<IPage<OperationLog>> list(
@@ -26,12 +28,14 @@ public class OperationLogController {
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) String startTime,
             @RequestParam(required = false) String endTime) {
+        adminService.requireAdmin();
         IPage<OperationLog> result = operationLogService.getPage(page, pageSize, type, username, status, startTime, endTime);
         return Result.success(result);
     }
 
     @GetMapping("/{id}")
     public Result<OperationLog> getById(@PathVariable Long id) {
+        adminService.requireAdmin();
         OperationLog log = operationLogService.getById(id);
         if (log == null) {
             return Result.notFound("日志不存在");
@@ -41,6 +45,7 @@ public class OperationLogController {
 
     @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        adminService.requireAdmin();
         boolean success = operationLogService.removeById(id);
         if (success) {
             return Result.success("删除成功", null);
@@ -50,6 +55,7 @@ public class OperationLogController {
 
     @PostMapping("/batch-delete")
     public Result<Map<String, Integer>> batchDelete(@RequestBody Map<String, Long[]> request) {
+        adminService.requireAdmin();
         Long[] ids = request.get("ids");
         if (ids == null || ids.length == 0) {
             return Result.paramError("请选择要删除的日志");
@@ -73,6 +79,7 @@ public class OperationLogController {
 
     @PostMapping("/clear")
     public Result<Void> clearLogs() {
+        adminService.requireAdmin();
         operationLogService.clearAll();
         return Result.success("清空日志成功", null);
     }

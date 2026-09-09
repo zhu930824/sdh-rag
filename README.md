@@ -11,6 +11,7 @@
 - **RAG 问答**：知识库意图路由、查询改写、Query Expansion、HyDE、向量与 BM25 混合检索、RRF、Rerank、引用与拒答。
 - **知识治理**：知识库成员权限、草稿审核、索引发布、回归门禁、回滚与审计。
 - **质量运营**：版本化测试集、检索/生成/完整评测、多变体实验、业务切片、定时回归、人工复核与 Webhook 告警。
+- **可靠执行**：数据库任务队列、原子抢占、租约心跳、失败退避、取消、死信重放和任务中心。
 - **Agent 执行**：业务工具注册、JSON Schema 参数、风险分级、人工审批、幂等调用、运行轨迹和业务结果反馈。
 - **工作流与记忆**：DAG 工作流、审批后续跑，以及 Working/Episodic/Semantic/Abstract/Pattern 多层记忆。
 
@@ -40,6 +41,9 @@
 ## 架构文档
 
 - [平台架构与设计](docs/architecture.md)
+- [平台升级方向与演进路线图](docs/platform-evolution-roadmap.md)
+- [P0 安全加固与部署迁移指南](docs/security-hardening-guide.md)
+- [P1 可靠任务运行时](docs/reliable-job-runtime.md)
 - [RAG 检索设计](docs/rag-retrieval-design.md)
 - [知识源连接器](docs/knowledge-source-connectors.md)
 - [知识发布流水线](docs/knowledge-publishing-pipeline.md)
@@ -71,8 +75,8 @@ cd sdh-rag
 # 复制环境变量模板
 cp .env.example .env
 
-# 编辑 .env 文件，配置必要的环境变量
-# 必须配置：DASHSCOPE_API_KEY（通义千问 API 密钥）
+# 编辑 .env 文件，配置数据库、Neo4j、MinIO 和 JWT 密钥
+# 使用云模型时再配置 DASHSCOPE_API_KEY 或 OPENAI_API_KEY
 ```
 
 #### 3. 启动服务
@@ -199,15 +203,18 @@ sdh-rag/
 
 ### 必须配置的环境变量
 
-- `DASHSCOPE_API_KEY`: 通义千问 API 密钥（必须）
+- `DB_PASSWORD`：数据库密码
+- `NEO4J_PASSWORD`：Neo4j 密码
+- `MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`：MinIO 凭据
+- `JWT_ADMIN_SECRET`、`JWT_USER_SECRET`：两个不同且至少 32 个随机字符的 JWT 密钥
 
 ### 可选配置的环境变量
 
-- `DB_USERNAME`: 数据库用户名（默认: rag_user）
-- `DB_PASSWORD`: 数据库密码（默认: rag_password）
-- `REDIS_PASSWORD`: Redis 密码（默认: 空）
-- `JWT_ADMIN_SECRET`: JWT 管理员密钥
-- `JWT_USER_SECRET`: JWT 用户密钥
+- `DASHSCOPE_API_KEY`、`OPENAI_API_KEY`：按实际模型供应商配置
+- `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`：数据库连接信息
+- `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`：Redis 连接信息
+- `ELASTICSEARCH_URI`、`NEO4J_URI`、`MINIO_ENDPOINT`：基础设施地址
+- `WEBHOOK_ALLOW_HTTP`、`WEBHOOK_ALLOW_PRIVATE_NETWORK`：Webhook 网络例外，生产环境应保持关闭
 
 ## 常见问题
 
@@ -284,7 +291,7 @@ npm run build
 
 - [Spring AI](https://spring.io/projects/spring-ai)
 - [Vue.js](https://vuejs.org/)
-- [Element Plus](https://element-plus.org/)
+- [Ant Design Vue](https://antdv.com/)
 - [Elasticsearch](https://www.elastic.co/)
 - [通义千问](https://tongyi.aliyun.com/)
 

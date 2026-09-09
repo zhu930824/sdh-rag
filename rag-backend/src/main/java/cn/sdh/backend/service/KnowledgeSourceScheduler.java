@@ -1,34 +1,31 @@
 package cn.sdh.backend.service;
 
 import cn.sdh.backend.entity.KnowledgeSource;
+import cn.sdh.backend.job.KnowledgeSourcePullJobHandler;
 import cn.sdh.backend.mapper.KnowledgeSourceMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
 public class KnowledgeSourceScheduler {
     private final KnowledgeSourceMapper sources;
-    private final KnowledgeSourceSyncCoordinator coordinator;
-    private final Executor executor;
-    private final Set<Long> localInFlight = ConcurrentHashMap.newKeySet();
+    private final PlatformJobService jobs;
+    private final ObjectMapper objectMapper;
 
     public KnowledgeSourceScheduler(KnowledgeSourceMapper sources,
-                                    KnowledgeSourceSyncCoordinator coordinator,
-                                    @Qualifier("knowledgeSourceExecutor") Executor executor) {
+                                    PlatformJobService jobs,
+                                    ObjectMapper objectMapper) {
         this.sources = sources;
-        this.coordinator = coordinator;
-        this.executor = executor;
+        this.jobs = jobs;
+        this.objectMapper = objectMapper;
     }
 
     @Value("${knowledge.sources.scheduler-batch-size:20}")
@@ -44,18 +41,20 @@ public class KnowledgeSourceScheduler {
                 .orderByAsc(KnowledgeSource::getNextSyncTime)
                 .last("LIMIT " + limit));
         for (KnowledgeSource source : due) {
-            if (!localInFlight.add(source.getId())) continue;
-            try { executor.execute(() -> pull(source.getId())); }
-            catch (RuntimeException e) {
-                localInFlight.remove(source.getId());
-                log.warn("提交知识源同步任务失败: sourceId={}, error={}", source.getId(), e.getMessage());
-            }
+            enqueue(source);
         }
     }
 
-    private void pull(Long sourceId) {
-        try { coordinator.pullScheduled(sourceId); }
-        catch (Exception e) { log.warn("定时拉取知识源失败: sourceId={}, error={}", sourceId, e.getMessage()); }
-        finally { localInFlight.remove(sourceId); }
+    private void enqueue(KnowledgeSource source) {
+        try {
+            String scheduleKey = source.getNextSyncTime() == null ? "due" : source.getNextSyncTime().toString();
+            jobs.enqueue(new PlatformJobService.EnqueueCommand(
+                    "knowledge-pull:" + source.getId() + ":" + scheduleKey,
+                    KnowledgeSourcePullJobHandler.TYPE, "KNOWLEDGE_SOURCE", source.getId(),
+                    objectMapper.writeValueAsString(new KnowledgeSourcePullJobHandler.Payload(source.getId())),
+                    10, 1, source.getCreatedBy()));
+        } catch (Exception e) {
+            log.warn("知识源同步任务入队失败: sourceId={}, error={}", source.getId(), e.getMessage());
+        }
     }
 }

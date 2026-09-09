@@ -3,6 +3,8 @@ import type { ApiResponse } from '@/types'
 
 export interface EvaluationTask {
   id: number
+  jobId: number | null
+  jobStatus: string | null
   knowledgeId: number
   knowledgeName: string | null
   taskName: string
@@ -203,6 +205,14 @@ export function getEvaluationList(params: { page: number; pageSize: number; know
 // 删除评估任务
 export function deleteEvaluationTask(id: number): Promise<ApiResponse<void>> {
   return request.post(`/api/evaluation/task/${id}/delete`)
+}
+
+export function cancelEvaluationTask(id: number): Promise<ApiResponse<void>> {
+  return request.post(`/api/evaluation/task/${id}/cancel`)
+}
+
+export function replayEvaluationTask(id: number): Promise<ApiResponse<void>> {
+  return request.post(`/api/evaluation/task/${id}/replay`)
 }
 
 // 导出评估报告

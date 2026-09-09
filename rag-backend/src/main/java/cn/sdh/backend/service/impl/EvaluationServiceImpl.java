@@ -6,6 +6,10 @@ import cn.sdh.backend.dto.EvaluationQaItem;
 import cn.sdh.backend.dto.EvaluationRunConfig;
 import cn.sdh.backend.dto.KnowledgeQualityReport;
 import cn.sdh.backend.entity.*;
+import cn.sdh.backend.job.EvaluationJobHandler;
+import cn.sdh.backend.job.EvaluationJobPayload;
+import cn.sdh.backend.job.PlatformJobCancelledException;
+import cn.sdh.backend.job.PlatformJobExecutionContext;
 import cn.sdh.backend.mapper.EvaluationQaMapper;
 import cn.sdh.backend.mapper.EvaluationTaskMapper;
 import cn.sdh.backend.service.*;
@@ -21,11 +25,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -33,7 +34,6 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
@@ -48,7 +48,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     private final TestDatasetService testDatasetService;
     private final ObjectMapper objectMapper;
     private final KnowledgeAccessService knowledgeAccess;
-    private final Executor evaluationExecutor;
+    private final PlatformJobService platformJobs;
 
     private static final String QA_GENERATION_PROMPT = """
         请根据以下文档内容，生成一个高质量的问题和答案。
@@ -92,7 +92,7 @@ public class EvaluationServiceImpl implements EvaluationService {
             TestDatasetService testDatasetService,
             ObjectMapper objectMapper,
             KnowledgeAccessService knowledgeAccess,
-            @Qualifier("evaluationExecutor") Executor evaluationExecutor) {
+            PlatformJobService platformJobs) {
         this.taskMapper = taskMapper;
         this.qaMapper = qaMapper;
         this.vectorStoreService = vectorStoreService;
@@ -102,7 +102,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         this.testDatasetService = testDatasetService;
         this.objectMapper = objectMapper;
         this.knowledgeAccess = knowledgeAccess;
-        this.evaluationExecutor = evaluationExecutor;
+        this.platformJobs = platformJobs;
     }
 
     @Override
@@ -123,7 +123,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         EvaluationTask task = createTask(knowledgeId, taskName, qaCount, "generated", userId, config);
         taskMapper.insert(task);
 
-        submitAfterCommit(() -> runEvaluation(task.getId()));
+        enqueueEvaluation(task, new EvaluationJobPayload(task.getId(), EvaluationJobPayload.GENERATED, List.of()));
 
         return task;
     }
@@ -149,7 +149,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "imported", userId, config);
         taskMapper.insert(task);
 
-        submitAfterCommit(() -> runImportedEvaluation(task.getId(), items));
+        enqueueEvaluation(task, new EvaluationJobPayload(task.getId(), EvaluationJobPayload.DATASET, items));
 
         return task;
     }
@@ -181,7 +181,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         EvaluationTask task = createTask(knowledgeId, taskName, items.size(), "builtin", userId, config);
         taskMapper.insert(task);
 
-        submitAfterCommit(() -> runImportedEvaluation(task.getId(), items));
+        enqueueEvaluation(task, new EvaluationJobPayload(task.getId(), EvaluationJobPayload.DATASET, items));
 
         return task;
     }
@@ -233,7 +233,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         enrichDatasetSnapshot(task, dataset);
         taskMapper.insert(task);
 
-        submitAfterCommit(() -> runImportedEvaluation(task.getId(), items));
+        enqueueEvaluation(task, new EvaluationJobPayload(task.getId(), EvaluationJobPayload.DATASET, items));
 
         return task;
     }
@@ -329,6 +329,20 @@ public class EvaluationServiceImpl implements EvaluationService {
         return task;
     }
 
+    private void enqueueEvaluation(EvaluationTask task, EvaluationJobPayload payload) {
+        try {
+            PlatformJobService.EnqueueCommand command = new PlatformJobService.EnqueueCommand(
+                    "evaluation:" + task.getId(), EvaluationJobHandler.TYPE, "EVALUATION", task.getId(),
+                    objectMapper.writeValueAsString(payload), 0, 3, task.getUserId());
+            PlatformJob job = platformJobs.enqueue(command);
+            task.setJobId(job.getId());
+            task.setUpdateTime(LocalDateTime.now());
+            taskMapper.updateById(task);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("评测任务无法写入可靠队列", e);
+        }
+    }
+
     private EvaluationRunConfig normalizeConfig(EvaluationRunConfig requested) {
         EvaluationRunConfig config = requested == null ? new EvaluationRunConfig() : requested;
         String mode = config.getEvaluationMode() == null ? "RETRIEVAL" : config.getEvaluationMode().trim().toUpperCase(Locale.ROOT);
@@ -380,6 +394,11 @@ public class EvaluationServiceImpl implements EvaluationService {
 
     @Override
     public void runEvaluation(Long taskId) {
+        runEvaluation(taskId, null);
+    }
+
+    @Override
+    public void runEvaluation(Long taskId, PlatformJobExecutionContext context) {
         EvaluationTask task = taskMapper.selectById(taskId);
         if (task == null) {
             log.error("评估任务不存在: {}", taskId);
@@ -387,8 +406,11 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
 
         try {
+            checkpoint(context);
             knowledgeAccess.requireRead(task.getKnowledgeId(), task.getUserId());
+            qaMapper.delete(new LambdaQueryWrapper<EvaluationQa>().eq(EvaluationQa::getTaskId, taskId));
             task.setStatus(1);
+            task.setErrorMessage(null);
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
 
@@ -423,6 +445,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 
             List<EvaluationQa> qaList = new ArrayList<>();
             for (Document doc : sampledChunks) {
+                checkpoint(context);
                 try {
                     EvaluationQa qa = generateQaFromDocument(doc, taskId, qaModelId);
                     if (qa != null) {
@@ -436,6 +459,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 
             List<EvaluationQa> evaluatedQaList = new ArrayList<>();
             for (EvaluationQa qa : qaList) {
+                checkpoint(context);
                 try {
                     evaluateQa(qa, task);
                     qaMapper.insert(qa);
@@ -455,6 +479,9 @@ public class EvaluationServiceImpl implements EvaluationService {
             log.info("评估任务完成: taskId={}, qaCount={}, hitRate={}, mrr={}",
                     taskId, evaluatedQaList.size(), task.getHitRate(), task.getMrr());
 
+        } catch (PlatformJobCancelledException cancelled) {
+            markEvaluationCancelled(task);
+            throw cancelled;
         } catch (Exception e) {
             log.error("评估任务执行失败: taskId={}", taskId, e);
             task.setStatus(3);
@@ -467,7 +494,9 @@ public class EvaluationServiceImpl implements EvaluationService {
     /**
      * 执行导入/内置数据集的评估
      */
-    private void runImportedEvaluation(Long taskId, List<EvaluationQaItem> items) {
+    @Override
+    public void runImportedEvaluation(Long taskId, List<EvaluationQaItem> items,
+                                      PlatformJobExecutionContext context) {
         EvaluationTask task = taskMapper.selectById(taskId);
         if (task == null) {
             log.error("评估任务不存在: {}", taskId);
@@ -475,13 +504,17 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
 
         try {
+            checkpoint(context);
             knowledgeAccess.requireRead(task.getKnowledgeId(), task.getUserId());
+            qaMapper.delete(new LambdaQueryWrapper<EvaluationQa>().eq(EvaluationQa::getTaskId, taskId));
             task.setStatus(1);
+            task.setErrorMessage(null);
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
 
             List<EvaluationQa> qaList = new ArrayList<>();
-            for (EvaluationQaItem item : items) {
+            for (EvaluationQaItem item : items == null ? List.<EvaluationQaItem>of() : items) {
+                checkpoint(context);
                 if (item.getQuestion() == null || item.getQuestion().trim().isEmpty()) {
                     continue;
                 }
@@ -527,6 +560,9 @@ public class EvaluationServiceImpl implements EvaluationService {
             log.info("导入评估任务完成: taskId={}, qaCount={}, hitRate={}, negativeHitRate={}",
                     taskId, qaList.size(), task.getHitRate(), task.getNegativeHitRate());
 
+        } catch (PlatformJobCancelledException cancelled) {
+            markEvaluationCancelled(task);
+            throw cancelled;
         } catch (Exception e) {
             log.error("导入评估任务执行失败: taskId={}", taskId, e);
             task.setStatus(3);
@@ -580,7 +616,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 
             return qa;
         } catch (Exception e) {
-            log.warn("解析QA JSON失败: {}", response, e);
+            log.warn("解析QA JSON失败，响应长度: {}", response == null ? 0 : response.length(), e);
             return null;
         }
     }
@@ -987,7 +1023,10 @@ public class EvaluationServiceImpl implements EvaluationService {
                 task.setKnowledgeName(kbNameMap.get(task.getKnowledgeId()));
                 KnowledgeBase kb = kbMap.get(task.getKnowledgeId());
                 Long actor = UserContext.getCurrentUserId();
-                task.setCanDelete(actor != null && (actor.equals(task.getUserId()) || "owner".equals(knowledgeAccess.role(kb, actor))));
+                boolean operator = actor != null && (actor.equals(task.getUserId()) || "owner".equals(knowledgeAccess.role(kb, actor)));
+                PlatformJob job = task.getJobId() == null ? null : platformJobs.get(task.getJobId());
+                task.setJobStatus(job == null ? null : job.getStatus());
+                task.setCanDelete(operator && !isActiveJob(job));
             }
         }
     }
@@ -1002,22 +1041,64 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (!actor.equals(task.getUserId()) && !"owner".equals(knowledgeAccess.role(base, actor))) {
             throw new cn.sdh.backend.common.exception.BusinessException(403, "只有任务创建者或知识库所有者可删除评估任务");
         }
+        PlatformJob job = task.getJobId() == null ? null : platformJobs.get(task.getJobId());
+        if (Integer.valueOf(0).equals(task.getStatus()) || Integer.valueOf(1).equals(task.getStatus()) || isActiveJob(job)) {
+            throw new cn.sdh.backend.common.exception.BusinessException(409, "请先取消任务，再执行删除");
+        }
         qaMapper.delete(new LambdaQueryWrapper<EvaluationQa>()
                 .eq(EvaluationQa::getTaskId, taskId));
         taskMapper.deleteById(taskId);
     }
 
-    private void submitAfterCommit(Runnable work) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    evaluationExecutor.execute(work);
-                }
-            });
-        } else {
-            evaluationExecutor.execute(work);
+    @Override
+    @Transactional
+    public void cancelTask(Long taskId) {
+        EvaluationTask task = requireTaskOperator(taskId);
+        if (task.getJobId() == null) throw new cn.sdh.backend.common.exception.BusinessException(409, "该历史任务不支持取消");
+        platformJobs.cancel(task.getJobId(), task.getUserId());
+        task.setStatus(4);
+        task.setErrorMessage("取消请求已提交");
+        task.setUpdateTime(LocalDateTime.now());
+        taskMapper.updateById(task);
+    }
+
+    @Override
+    @Transactional
+    public void replayTask(Long taskId) {
+        EvaluationTask task = requireTaskOperator(taskId);
+        if (task.getJobId() == null) throw new cn.sdh.backend.common.exception.BusinessException(409, "该历史任务不支持重放");
+        platformJobs.replay(task.getJobId(), task.getUserId());
+        task.setStatus(0);
+        task.setErrorMessage(null);
+        task.setUpdateTime(LocalDateTime.now());
+        taskMapper.updateById(task);
+    }
+
+    private EvaluationTask requireTaskOperator(Long taskId) {
+        EvaluationTask task = taskMapper.selectById(taskId);
+        Long actor = UserContext.getCurrentUserId();
+        if (task == null) throw new cn.sdh.backend.common.exception.BusinessException(404, "评估任务不存在");
+        KnowledgeBase base = knowledgeAccess.requireEdit(task.getKnowledgeId(), actor);
+        if (!actor.equals(task.getUserId()) && !"owner".equals(knowledgeAccess.role(base, actor))) {
+            throw new cn.sdh.backend.common.exception.BusinessException(403, "只有任务创建者或知识库所有者可操作评估任务");
         }
+        return task;
+    }
+
+    private boolean isActiveJob(PlatformJob job) {
+        return job != null && Set.of(PlatformJob.PENDING, PlatformJob.RUNNING, PlatformJob.RETRY_WAIT,
+                PlatformJob.CANCEL_REQUESTED).contains(job.getStatus());
+    }
+
+    private void checkpoint(PlatformJobExecutionContext context) {
+        if (context != null) context.checkpoint();
+    }
+
+    private void markEvaluationCancelled(EvaluationTask task) {
+        task.setStatus(4);
+        task.setErrorMessage("任务已取消");
+        task.setUpdateTime(LocalDateTime.now());
+        taskMapper.updateById(task);
     }
 
     @Override

@@ -1,7 +1,7 @@
 # SDH-RAG 平台架构与设计
 
 > 文档状态：当前架构基线  
-> 更新时间：2026-09-08  
+> 更新时间：2026-09-09
 > 对应数据库版本：Flyway V27  
 > 架构形态：Vue SPA + Spring Boot 模块化单体 + 多存储基础设施
 
@@ -28,7 +28,7 @@ SDH-RAG 已经从早期的“文档上传 + 知识问答”演进为企业知识
 | 图谱 | Neo4j 保存知识图谱和用户行为模式记忆 |
 | 缓存与协调 | Redis 保存工作记忆、路由缓存、限流计数和知识源分布式锁 |
 | 模型接入 | Spring AI，当前支持 DashScope/OpenAI 兼容模型、Embedding 与 Rerank 配置 |
-| 异步执行 | 应用内有界线程池 + Spring Scheduler；知识源同步使用 Redis 锁，评测实验当前为单调度器扫描模型 |
+| 异步执行 | MySQL 可靠 Job + 有界 Worker 池 + Spring Scheduler；评测与定时知识源同步已接入，其他异步链路逐步迁移 |
 | 前端 | Vue 3、TypeScript、Vite、Ant Design Vue、Pinia、Vue Router、G6、Vue Flow |
 | 部署 | Nginx 托管 SPA 并反向代理，后端独立容器；MySQL、Redis、Elasticsearch、Neo4j、MinIO 为外部依赖 |
 
@@ -288,6 +288,7 @@ MySQL 与 MinIO 中的原始内容必须足以重建 Elasticsearch 和 Neo4j。�
 | 外部知识源 | `knowledge_source`、`knowledge_source_item`、`knowledge_sync_task`、`knowledge_source_api_key`、`knowledge_source_api_audit` |
 | 会话与反馈 | `chat_session`、`chat_history`、`qa_feedback`、`token_usage` |
 | 评测 | `evaluation_task`、`evaluation_qa`、`test_dataset`、`test_dataset_item` |
+| 可靠执行 | `platform_job`（幂等键、租约、心跳、重试、取消、死信和 Trace） |
 | 评测实验 | `evaluation_experiment`、`evaluation_experiment_variant`、`evaluation_experiment_run`、`evaluation_experiment_run_task` |
 | Agent | `agent_tool`、`agent_action`、`agent_action_feedback`、`agent_run`、`agent_step`、`agent_improvement_item` |
 | 知识发布 | `knowledge_draft`、`knowledge_publish_record` |
@@ -314,6 +315,7 @@ cn.sdh.backend
 ├── entity / mapper  MySQL 实体与 MyBatis Plus Mapper
 ├── dto              API 与跨层数据对象
 ├── agent            Agent 规划、工具回调、审批路由、恢复状态
+├── job              可靠任务处理器、调度器与执行上下文
 ├── workflow         DAG、节点执行器和工作流运行
 ├── knowledge        外部知识源连接器 SPI
 ├── memory           多层记忆与编排
@@ -325,11 +327,12 @@ cn.sdh.backend
 
 ### 7.2 事务与异步边界
 
-- 创建任务和业务状态写入 MySQL 后，再把耗时工作提交到有界线程池。
-- 评测任务使用事务提交回调，避免执行线程读不到尚未提交的任务。
+- 评测业务记录和 `platform_job` 在同一事务写入，提交后由 Worker 通过数据库 CAS 抢占，不再依赖 JVM 提交回调。
+- 定时知识源同步只由 Scheduler 发现并入队，实际拉取由可靠 Worker 执行。
 - 知识发布在数据库提交后进行文档处理和索引。
-- 异步任务通过持久化状态暴露 `PENDING/RUNNING/SUCCEEDED/FAILED` 等进度。
-- 多实例任务必须使用分布式锁、租约或数据库原子抢占；当前知识源同步已实现，评测实验仍需补齐。
+- 可靠任务通过 `PENDING/RUNNING/RETRY_WAIT/SUCCEEDED/DEAD_LETTER/CANCEL_REQUESTED/CANCELLED` 暴露进度。
+- `job_key` 唯一约束防止重复入队；租约、心跳和持有者条件更新防止迟到 Worker 覆盖结果。
+- 文档处理、知识发布、Webhook、评测实验与部分 Agent 后台动作仍需迁移，并由 Outbox 补齐跨边界事件一致性。
 
 ### 7.3 API 设计
 
@@ -347,7 +350,7 @@ cn.sdh.backend
 |---|---|
 | 使用知识 | 智能问答、会话、语音问答 |
 | 管理知识 | 知识库、文档、知识图谱、知识审核与发布 |
-| 运营质量 | 检索评估、评测实验室、问答评价、统计、热点词 |
+| 运营质量 | 检索评估、评测实验室、任务中心、问答评价、统计、热点词 |
 | 执行业务 | 工作流编排、业务工具中心、Agent 审批与执行、Agent 运营与改进 |
 | 配置平台 | 模型、Prompt、标签、敏感词、计划任务、Webhook、系统设置 |
 | 管理组织 | 用户、角色、权限、操作日志、公告 |
@@ -360,20 +363,31 @@ cn.sdh.backend
 
 - JWT 身份认证和后端资源级知识库权限。
 - 用户、角色、菜单权限和操作日志。
+- 模型、系统设置、计划任务、Webhook、用户、角色和操作日志接口执行后端管理员复核。
 - 知识源 API Key 随机生成、摘要保存、独立限流和调用审计。
-- 外部知识连接器和 Agent HTTP 工具的 SSRF、HTTPS、大小、超时和重定向限制。
+- 外部知识连接器、Agent HTTP 工具和 Webhook 的 HTTPS、SSRF、超时等网络边界。
 - Agent 中高风险动作人工审批和幂等键。
 - 敏感词、模型/Prompt 配置权限和发布审核门禁。
+- 基础设施与 JWT 凭据通过环境变量注入；生产 Profile 对缺失、弱值和相同 JWT 密钥执行启动失败检查。
+- 聊天、工作流、评测、路由和记忆日志默认不记录 Prompt、完整响应或 API Key 片段。
 
-### 9.2 当前必须处理的安全债务
+### 9.2 P0 第一轮完成状态
 
-以下属于部署前 P0，而不是目标状态：
+已完成：
 
-1. `application.yml` 和开发 `docker-compose.yml` 仍包含可用的主机地址、数据库密码、MinIO 密钥、JWT 默认密钥或模型 Key 默认值，必须迁移到环境变量/Secret Manager，并立即轮换已经暴露的密钥。
-2. 生产环境禁止提供弱默认密码；缺少必要 Secret 时应启动失败。
-3. Webhook 当前更接近系统级配置，应明确管理员权限，或增加 `user_id/tenant_id` 隔离。
+1. 清除当前配置树中的已知可用默认密码、JWT 密钥和模型 Key，提供 `.env.example`。
+2. 生产环境缺少必要 Secret、使用弱值或复用两个 JWT 密钥时启动失败。
+3. 系统级管理接口增加数据库实时角色复核；Webhook 列表不再返回 Secret 和自定义 Header。
+4. Webhook 默认只允许公网 HTTPS，并阻断回环、链路本地、组播和未授权内网地址。
+5. 默认关闭 Prompt/响应正文日志，并移除若干直接输出模型、记忆和工作流内容的日志。
+
+仍需完成：
+
+1. 立即在实际基础设施和模型供应商侧轮换历史上已经暴露的凭据；代码无法代替外部密钥轮换。
+2. 将环境变量适配升级为可插拔 Secret Provider，并对数据库中已有的模型 Key、连接器凭据和 Webhook Secret 加密或改存引用。
+3. 建立正式租户模型后，为系统配置和 Webhook 增加 `tenant_id`；当前先按平台管理员隔离。
 4. 对评测实验调度增加多实例租约，避免水平扩容后重复启动实验。
-5. 日志需要统一脱敏策略，禁止记录 Prompt 中的凭据、完整个人信息和业务敏感响应。
+5. 在 CI 增加凭据扫描、Flyway 迁移集成测试和关键鉴权 API 测试。
 
 ## 10. 部署与运行架构
 
@@ -396,7 +410,7 @@ flowchart TB
 ### 10.2 扩展策略
 
 - 前端可无状态水平扩展。
-- 后端大部分请求可无状态扩展，但应用内任务和调度需要分布式抢占后才能安全多副本。
+- 后端请求可无状态扩展；评测与定时知识同步已通过数据库租约安全竞争，尚未迁移的文档、Webhook 与实验调度仍限制多副本执行方式。
 - Elasticsearch 索引按知识库过滤；大规模租户场景需要进一步评估共享索引、按租户索引或冷热分层。
 - 文档处理、图谱构建、评测和 Agent 长任务达到一定量级后，可优先抽离为 Worker，而不是立刻拆分所有业务服务。
 
@@ -421,6 +435,8 @@ flowchart TB
 
 ## 12. 架构演进路线
 
+本节给出架构级摘要；阶段排期、产品能力、验收指标与未来 90 天执行建议见 [平台升级方向与演进路线图](platform-evolution-roadmap.md)。
+
 ### P0：生产安全与配置治理
 
 - 清理仓库中的明文凭据和弱默认值，轮换现有密钥。
@@ -429,7 +445,7 @@ flowchart TB
 
 ### P1：可靠任务与可观测性
 
-- 建立统一 Job/Worker 模型：数据库原子抢占、租约、心跳、重试、取消和死信。
+- 已建立统一 Job/Worker MVP：数据库原子抢占、租约、心跳、重试、取消和死信，首批覆盖评测与定时知识同步。
 - 使用 Transactional Outbox 连接“事务提交”和“异步副作用”，覆盖索引、Webhook、评测和 Agent 恢复。
 - 建立 OpenTelemetry、指标面板和成本预算告警。
 
@@ -439,7 +455,14 @@ flowchart TB
 - Agent 失败轨迹一键转成回归场景，并进入实验与发布门禁。
 - 支持成对评审、盲测和多评审模型校准，降低 LLM-as-Judge 偏差。
 
-### P3：边界清晰后的服务化
+### P3：业务知识与场景闭环
+
+- 从文档中心扩展到客户、产品、订单、工单、合同、政策和流程等业务对象。
+- 为知识增加适用范围、生效时间、权威级别、责任人、血缘、冲突与健康度治理。
+- 建设业务场景工作台，把知识、工具、审批、评测、版本和业务 KPI 统一配置。
+- 让业务执行结果进入质量回流，形成“结果 → 失败样本 → 改进 → 门禁 → 发布”闭环。
+
+### P4：平台化与边界清晰后的服务化
 
 优先保持模块化单体。只有当团队、吞吐或故障隔离需求明确时，按以下自然边界抽离：
 
@@ -471,6 +494,9 @@ flowchart TB
 - [知识发布流水线](knowledge-publishing-pipeline.md)：审核、索引、门禁和回滚。
 - [分层 RAG 评测](layered-rag-evaluation-implementation.md)：指标、数据集、实验和人工校准。
 - [RAG 质量路线图](rag-quality-operations-roadmap.md)：质量运营阶段与验收状态。
+- [平台演进路线图](platform-evolution-roadmap.md)：升级优先级、阶段目标、验收标准和 90 天计划。
+- [P0 安全加固指南](security-hardening-guide.md)：环境变量、历史凭据轮换、Webhook 网络策略和上线检查。
+- [P1 可靠任务运行时](reliable-job-runtime.md)：状态机、租约、重试、取消、死信、API 与运行参数。
 - [Agent 业务闭环](agent-business-loop.md)：工具、审批、轨迹、反馈和知识改进。
 
 ## 15. 代码导航
@@ -486,4 +512,3 @@ flowchart TB
 | Agent | `AgentAskService`、`AgentToolService`、`AgentActionService`、`AgentOpsService` |
 | 工作流 | `WorkflowEngine`、`WorkflowExecutionService` |
 | 资源权限 | `KnowledgeAccessService`、JWT Interceptor、`UserContext` |
-

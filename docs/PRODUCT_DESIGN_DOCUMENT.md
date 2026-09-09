@@ -1,8 +1,10 @@
-# SDH-RAG 智能知识库管理系统 — 产品设计文档
+# SDH-RAG 企业知识与业务 Agent 平台 — 产品设计文档
 
-> **版本**: v2.0  
-> **最后更新**: 2026-09-08  
-> **文档说明**：本文描述产品能力与交互设计；技术架构、运行边界和演进优先级以 [`architecture.md`](architecture.md) 为当前基线。
+> **版本**: v2.1
+>
+> **最后更新**: 2026-09-09
+>
+> **文档说明**：本文描述产品能力与交互设计；技术架构与运行边界以 [`architecture.md`](architecture.md) 为当前基线，阶段优先级与验收指标见 [`platform-evolution-roadmap.md`](platform-evolution-roadmap.md)。
 
 ---
 

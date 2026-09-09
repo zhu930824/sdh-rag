@@ -11,14 +11,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import jakarta.annotation.PostConstruct;
+import java.net.InetAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -33,6 +38,20 @@ public class WebhookServiceImpl extends ServiceImpl<WebhookConfigMapper, Webhook
     private final WebhookConfigMapper webhookConfigMapper;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${security.webhook.allow-http:false}")
+    private boolean allowHttp;
+
+    @Value("${security.webhook.allow-private-network:false}")
+    private boolean allowPrivateNetwork;
+
+    @PostConstruct
+    void configureHttpClient() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(5_000);
+        requestFactory.setReadTimeout(10_000);
+        restTemplate.setRequestFactory(requestFactory);
+    }
 
     @Override
     public IPage<WebhookConfig> getPage(Integer page, Integer pageSize, Integer status) {
@@ -79,6 +98,12 @@ public class WebhookServiceImpl extends ServiceImpl<WebhookConfigMapper, Webhook
             throw new RuntimeException("Webhook不存在");
         }
 
+        if (webhook.getSecret() == null || webhook.getSecret().isBlank()) {
+            webhook.setSecret(existing.getSecret());
+        }
+        if (webhook.getHeaders() == null || webhook.getHeaders().isBlank()) {
+            webhook.setHeaders(existing.getHeaders());
+        }
         validateWebhook(webhook);
         
         webhook.setUpdateTime(LocalDateTime.now());
@@ -201,16 +226,43 @@ public class WebhookServiceImpl extends ServiceImpl<WebhookConfigMapper, Webhook
     }
 
     private void validateWebhook(WebhookConfig webhook) {
-        if (webhook.getUrl() == null || webhook.getUrl().isEmpty()) {
+        if (webhook.getUrl() == null || webhook.getUrl().isBlank()) {
             throw new RuntimeException("URL不能为空");
         }
 
-        if (!webhook.getUrl().startsWith("http://") && !webhook.getUrl().startsWith("https://")) {
-            throw new RuntimeException("URL格式不正确，必须以http://或https://开头");
-        }
+        validateNetworkTarget(webhook.getUrl());
 
         if (webhook.getEvents() == null || webhook.getEvents().isEmpty()) {
             throw new RuntimeException("请至少选择一个订阅事件");
+        }
+    }
+
+    private void validateNetworkTarget(String value) {
+        try {
+            URI uri = URI.create(value.trim());
+            boolean https = "https".equalsIgnoreCase(uri.getScheme());
+            boolean explicitlyAllowedHttp = allowHttp && "http".equalsIgnoreCase(uri.getScheme());
+            if (!https && !explicitlyAllowedHttp) {
+                throw new RuntimeException("Webhook 必须使用 HTTPS；测试 HTTP 需显式启用");
+            }
+            if (uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {
+                throw new RuntimeException("Webhook URL格式不正确");
+            }
+            for (InetAddress address : InetAddress.getAllByName(uri.getHost())) {
+                if (address.isAnyLocalAddress() || address.isLoopbackAddress()
+                        || address.isLinkLocalAddress() || address.isMulticastAddress()) {
+                    throw new RuntimeException("Webhook 禁止访问回环、链路本地或组播地址");
+                }
+                byte[] raw = address.getAddress();
+                boolean uniqueLocalV6 = raw.length == 16 && (raw[0] & 0xfe) == 0xfc;
+                if (!allowPrivateNetwork && (address.isSiteLocalAddress() || uniqueLocalV6)) {
+                    throw new RuntimeException("Webhook 默认禁止访问内网地址；确有需要请显式启用");
+                }
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("无法解析 Webhook URL 主机");
         }
     }
 

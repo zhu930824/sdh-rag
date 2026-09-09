@@ -44,10 +44,8 @@ public class DashScopeChatModelStrategy extends AbstractChatModelStrategy {
 
     @Override
     protected ChatModel doCreateModel(String baseUrl, String apiKey, String modelName, ModelConfig config) {
-        // 脱敏 API Key 用于日志
-        String maskedApiKey = maskApiKey(apiKey);
-        log.info("创建 DashScope ChatModel - baseUrl: {}, model: {}, apiKey: {}..., temperature: {}, maxTokens: {}",
-                baseUrl, modelName, maskedApiKey,
+        log.info("创建 DashScope ChatModel - baseUrl: {}, model: {}, apiKeyConfigured: {}, temperature: {}, maxTokens: {}",
+                baseUrl, modelName, apiKey != null && !apiKey.isBlank(),
                 config != null ? config.getTemperature() : null,
                 config != null ? config.getMaxTokens() : null);
 
@@ -97,13 +95,4 @@ public class DashScopeChatModelStrategy extends AbstractChatModelStrategy {
         return doCreateModel(DASHSCOPE_NATIVE_BASE_URL, apiKey, modelName, null);
     }
 
-    /**
-     * 脱敏 API Key
-     */
-    private String maskApiKey(String apiKey) {
-        if (apiKey == null || apiKey.length() < 8) {
-            return "******";
-        }
-        return apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4);
-    }
 }

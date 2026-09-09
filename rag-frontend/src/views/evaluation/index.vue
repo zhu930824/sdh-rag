@@ -171,7 +171,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
+            <a-tag :color="statusColor(record.status, record.jobStatus)">{{ statusText(record.status, record.jobStatus) }}</a-tag>
           </template>
           <template v-else-if="column.key === 'datasetType'">
             <a-tag :color="datasetTypeColor(record.datasetType)">{{ datasetTypeText(record.datasetType) }}</a-tag>
@@ -200,7 +200,11 @@
             <a-space>
               <a-button type="link" size="small" @click="handleViewDetail(record)">详情</a-button>
               <a-button type="link" size="small" @click="handleExportReport(record)">导出</a-button>
-              <a-popconfirm v-if="record.canDelete" title="确定删除？" @confirm="handleDelete(record)">
+              <a-popconfirm v-if="record.jobId && ['PENDING', 'RUNNING', 'RETRY_WAIT'].includes(record.jobStatus || '')" title="确定取消该评测任务？" @confirm="handleCancel(record)">
+                <a-button type="link" size="small" danger>取消</a-button>
+              </a-popconfirm>
+              <a-button v-if="record.jobId && ['FAILED', 'DEAD_LETTER', 'CANCELLED'].includes(record.jobStatus || '')" type="link" size="small" @click="handleReplay(record)">重新执行</a-button>
+              <a-popconfirm v-if="record.canDelete && record.status !== 0 && record.status !== 1" title="确定删除？" @confirm="handleDelete(record)">
                 <a-button type="link" size="small" danger>删除</a-button>
               </a-popconfirm>
             </a-space>
@@ -587,7 +591,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   DatabaseOutlined, ClockCircleOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined,
@@ -596,6 +600,7 @@ import {
 import type { EvaluationTask, EvaluationQa } from '@/api/evaluation'
 import {
   generateTestset, getEvaluationList, getEvaluationQaList, deleteEvaluationTask,
+  cancelEvaluationTask, replayEvaluationTask,
   importTestset, downloadTemplate, exportEvaluationReport,
 } from '@/api/evaluation'
 import { getKnowledgeBaseList, getKnowledgeBaseDocuments, getKnowledgeBaseChunks, type KnowledgeDocumentVO, type KnowledgeChunk } from '@/api/knowledgeBase'
@@ -678,7 +683,7 @@ const taskColumns = [
   { title: '基线', key: 'regressionStatus', width: 90 },
   { title: '状态', key: 'status', width: 80 },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 },
-  { title: '操作', key: 'action', width: 170 },
+  { title: '操作', key: 'action', width: 250 },
 ]
 
 const qaColumns = [
@@ -742,13 +747,19 @@ watch([selectedKnowledgeId, () => runConfig.topK, () => runConfig.evaluationMode
 })
 watch(() => datasetForm.knowledgeId, () => { if (addItemVisible.value) loadLabelOptions() })
 
-function statusText(status: number) {
-  const map: Record<number, string> = { 0: '待运行', 1: '运行中', 2: '完成', 3: '失败' }
+function statusText(status: number, jobStatus?: string | null) {
+  if (jobStatus === 'RETRY_WAIT') return '等待重试'
+  if (jobStatus === 'DEAD_LETTER') return '死信'
+  if (jobStatus === 'CANCEL_REQUESTED') return '取消中'
+  const map: Record<number, string> = { 0: '排队中', 1: '运行中', 2: '完成', 3: '失败', 4: '已取消' }
   return map[status] || '未知'
 }
 
-function statusColor(status: number) {
-  const map: Record<number, string> = { 0: 'default', 1: 'processing', 2: 'success', 3: 'error' }
+function statusColor(status: number, jobStatus?: string | null) {
+  if (jobStatus === 'RETRY_WAIT') return 'orange'
+  if (jobStatus === 'DEAD_LETTER') return 'red'
+  if (jobStatus === 'CANCEL_REQUESTED') return 'warning'
+  const map: Record<number, string> = { 0: 'default', 1: 'processing', 2: 'success', 3: 'error', 4: 'warning' }
   return map[status] || 'default'
 }
 
@@ -1287,10 +1298,39 @@ async function handleDelete(record: EvaluationTask) {
   }
 }
 
+async function handleCancel(record: any) {
+  try {
+    const res = await cancelEvaluationTask(record.id)
+    if (res.code === 200) {
+      message.success('取消请求已提交')
+      await loadTasks()
+    }
+  } catch (error: any) {
+    message.error(error.message || '取消失败')
+  }
+}
+
+async function handleReplay(record: any) {
+  try {
+    const res = await replayEvaluationTask(record.id)
+    if (res.code === 200) {
+      message.success('任务已重新进入可靠队列')
+      await loadTasks()
+      startPolling()
+    }
+  } catch (error: any) {
+    message.error(error.message || '重新执行失败')
+  }
+}
+
 onMounted(() => {
   loadKnowledgeBases()
   loadTasks()
   loadDatasets()
+})
+
+onUnmounted(() => {
+  if (pollingTimer) clearInterval(pollingTimer)
 })
 </script>
 

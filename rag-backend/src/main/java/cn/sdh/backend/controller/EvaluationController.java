@@ -247,6 +247,18 @@ public class EvaluationController {
         return Result.success();
     }
 
+    @PostMapping("/task/{id}/cancel")
+    public Result<Void> cancelTask(@PathVariable Long id) {
+        evaluationService.cancelTask(id);
+        return Result.success("取消请求已提交", null);
+    }
+
+    @PostMapping("/task/{id}/replay")
+    public Result<Void> replayTask(@PathVariable Long id) {
+        evaluationService.replayTask(id);
+        return Result.success("评测任务已重新进入队列", null);
+    }
+
     /**
      * 导出评估报告为 Excel
      */
@@ -383,6 +395,7 @@ public class EvaluationController {
             case 1 -> "运行中";
             case 2 -> "完成";
             case 3 -> "失败";
+            case 4 -> "已取消";
             default -> "未知";
         };
     }
