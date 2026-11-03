@@ -40,6 +40,14 @@
 
 ## 架构文档
 
+- [AgentScope 2.x 架构升级方案](docs/agentscope-2-architecture-upgrade.md)
+- [AgentScope 运行时实施与启用](docs/agentscope-runtime-implementation.md)
+- [可靠 Agent 动作与后台续跑（V32）](docs/reliable-agent-action-runtime.md)
+- [Agent 执行租约与中断识别（V33）](docs/agent-run-execution-lease.md)
+- [Agent 安全恢复与聊天入口（V34）](docs/agent-run-safe-recovery.md)
+- [Agent 累计预算与取消状态完善](docs/agent-run-budget-and-cancellation.md)
+- [真实 MySQL 与进程故障验收（P0-1）](docs/agent-mysql-fault-acceptance.md)
+- [Agent 运行生命周期收敛（P0-2）](docs/agent-run-lifecycle-refactoring.md)
 - [平台架构与设计](docs/architecture.md)
 - [平台升级方向与演进路线图](docs/platform-evolution-roadmap.md)
 - [P0 安全加固与部署迁移指南](docs/security-hardening-guide.md)

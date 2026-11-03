@@ -1,8 +1,8 @@
 # 平台升级方向与演进路线图
 
-> 更新时间：2026-09-09
+> 更新时间：2026-09-14
 >
-> 适用基线：Flyway V27，Vue SPA + Spring Boot 模块化单体
+> 适用基线：Flyway V29，Vue SPA + Spring Boot 模块化单体
 >
 > 关联文档：[平台架构与设计](architecture.md)、[RAG 与 Agent 质量运营路线图](rag-quality-operations-roadmap.md)
 
@@ -114,8 +114,11 @@ MCP 的 Host—Client—Server 分层适合成为未来连接器和工具适配�
 - [x] 评测执行增加样本级心跳、协作取消、幂等重跑，并在评测页提供取消/重新执行入口。
 - [x] 知识源定时拉取迁移到统一 Job；保留来源级 Redis 锁和 `external_id + content_hash` 幂等。
 - [x] 增加当前用户任务中心，展示 Trace、尝试次数、结果/错误，并支持取消与死信重放。
-- [ ] 将文档解析/索引、Webhook、评测实验和 Agent 动作迁移到统一 Job。
-- [ ] 建设 Transactional Outbox、全链路 Trace 传播、队列/重试/成本指标和告警。
+- [x] Webhook 事件接入 Transactional Outbox，并拆分为接收端级可靠 Job；支持稳定投递 ID、退避重试、死信和接收端幂等。
+- [x] 打通 HTTP → Outbox → Job Worker → Webhook 的 Trace ID，增加任务积压、24h 成功率、重试、死信与投递告警快照。
+- [x] 文档解析、分块与向量索引迁移到统一 Job；增加关系版本、任务绑定、恢复扫描、Redis 互斥、稳定向量 ID 与失败重试。
+- [ ] 将评测实验编排和 Agent 动作迁移到统一 Job。
+- [ ] 完善 Outbox 管理视图、OpenTelemetry Span、外部告警通道、模型成本指标和预算告警。
 - [ ] 增加租户级任务隔离、管理员全局任务视图、预算与限流降级。
 
 验收标准：

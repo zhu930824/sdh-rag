@@ -1,5 +1,6 @@
 package cn.sdh.backend.job;
 
+import cn.sdh.backend.common.context.TraceContext;
 import cn.sdh.backend.entity.PlatformJob;
 import cn.sdh.backend.service.PlatformJobService;
 import lombok.extern.slf4j.Slf4j;
@@ -53,30 +54,32 @@ public class PlatformJobDispatcher {
     }
 
     private void execute(PlatformJob job) {
-        PlatformJobHandler handler = handlers.get(job.getJobType());
-        if (handler == null) {
-            jobs.fail(job.getId(), workerId, new IllegalStateException("未注册任务处理器: " + job.getJobType()));
-            return;
-        }
-        try {
-            PlatformJobExecutionContext context = new PlatformJobExecutionContext(job.getId(), workerId, jobs);
-            context.checkpoint();
-            String summary = handler.execute(job, context);
-            if (!jobs.complete(job.getId(), workerId, summary)) {
-                log.warn("任务完成回写失败，租约可能已丢失: jobId={}", job.getId());
+        try (TraceContext.Scope ignored = TraceContext.open(job.getTraceId())) {
+            PlatformJobHandler handler = handlers.get(job.getJobType());
+            if (handler == null) {
+                jobs.fail(job.getId(), workerId, new IllegalStateException("未注册任务处理器: " + job.getJobType()));
+                return;
             }
-        } catch (PlatformJobCancelledException cancelled) {
-            jobs.acknowledgeCancellation(job.getId(), workerId);
-            log.info("可靠任务已取消: jobId={}, type={}", job.getId(), job.getJobType());
-        } catch (Exception failure) {
-            PlatformJob current = jobs.get(job.getId());
-            if (current != null && PlatformJob.CANCEL_REQUESTED.equals(current.getStatus())) {
+            try {
+                PlatformJobExecutionContext context = new PlatformJobExecutionContext(job.getId(), workerId, jobs);
+                context.checkpoint();
+                String summary = handler.execute(job, context);
+                if (!jobs.complete(job.getId(), workerId, summary)) {
+                    log.warn("任务完成回写失败，租约可能已丢失: jobId={}", job.getId());
+                }
+            } catch (PlatformJobCancelledException cancelled) {
                 jobs.acknowledgeCancellation(job.getId(), workerId);
-            } else {
-                jobs.fail(job.getId(), workerId, failure);
+                log.info("可靠任务已取消: jobId={}, type={}", job.getId(), job.getJobType());
+            } catch (Exception failure) {
+                PlatformJob current = jobs.get(job.getId());
+                if (current != null && PlatformJob.CANCEL_REQUESTED.equals(current.getStatus())) {
+                    jobs.acknowledgeCancellation(job.getId(), workerId);
+                } else {
+                    jobs.fail(job.getId(), workerId, failure);
+                }
+                log.warn("可靠任务执行失败: jobId={}, type={}, error={}",
+                        job.getId(), job.getJobType(), failure.getMessage());
             }
-            log.warn("可靠任务执行失败: jobId={}, type={}, error={}",
-                    job.getId(), job.getJobType(), failure.getMessage());
         }
     }
 }

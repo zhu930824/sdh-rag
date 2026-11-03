@@ -3,7 +3,7 @@ import type { ApiResponse } from '@/types'
 import { useUserStore } from '@/stores/user'
 import type { StreamEvent } from './chat'
 
-/** 审批(聊天内联):带 X-Agent-Resume: skip,由调用方自行发起 resume 续流 */
+/** Inline approval; the server commits a durable execution job. The header is kept for older servers. */
 export function approveActionSkip(actionId: number): Promise<ApiResponse<unknown>> {
   return request.post(`/api/agent-actions/${actionId}/approve`, null, {
     headers: { 'X-Agent-Resume': 'skip' },
@@ -19,6 +19,29 @@ export function rejectActionSkip(actionId: number, reason: string): Promise<ApiR
 /** 运行详情(轮询刷新/恢复界面用) */
 export function getAgentRun(runKey: string): Promise<ApiResponse<Record<string, unknown>>> {
   return request.get(`/api/agent/runs/${runKey}`)
+}
+
+export interface AgentRunSnapshot {
+  runKey: string
+  status: string
+  executionEpoch?: number
+  heartbeatAt?: string | null
+  leaseUntil?: string | null
+  canRecover?: boolean
+  recoveryReason?: string
+  historyId?: number
+  answer?: string | null
+  errorMessage?: string | null
+  steps: Array<{ seq: number; type: string; toolCode?: string; actionId?: number; status: string; inputPreview?: string; outputPreview?: string; latencyMs?: number }>
+  actions: Array<{ id: number; toolName: string; status: string; argsPreview?: string; canApprove?: boolean }>
+}
+
+export function getAgentRunSnapshot(runKey: string): Promise<ApiResponse<AgentRunSnapshot>> {
+  return request.get(`/api/agent/runs/${runKey}`, { silent: true })
+}
+
+export function recoverAgentRun(runKey: string): Promise<ApiResponse<{ jobId: number; generation: number; status: string }>> {
+  return request.post(`/api/agent/runs/${runKey}/recover`)
 }
 
 /** 续跑(SSE 续流):从暂停点继续执行到终态,事件协议与 /api/chat/ask 一致 */

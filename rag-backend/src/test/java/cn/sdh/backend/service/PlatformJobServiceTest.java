@@ -1,6 +1,7 @@
 package cn.sdh.backend.service;
 
 import cn.sdh.backend.common.exception.BusinessException;
+import cn.sdh.backend.common.context.TraceContext;
 import cn.sdh.backend.entity.PlatformJob;
 import cn.sdh.backend.mapper.PlatformJobMapper;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,22 @@ class PlatformJobServiceTest {
         assertEquals(0, job.getAttempts());
         assertNotNull(job.getTraceId());
         verify(mapper).insert(job);
+    }
+
+    @Test
+    void enqueueInheritsCurrentTrace() {
+        PlatformJobService service = new PlatformJobService(mapper);
+        when(mapper.selectOne(any())).thenReturn(null);
+        String traceId = "0123456789abcdef0123456789abcdef";
+
+        PlatformJob job;
+        try (TraceContext.Scope ignored = TraceContext.open(traceId)) {
+            job = service.enqueue(new PlatformJobService.EnqueueCommand(
+                    "trace-job", "TEST", null, null, "{}", 0, 1, 9L));
+        }
+
+        assertEquals(traceId, job.getTraceId());
+        assertNull(TraceContext.current());
     }
 
     @Test

@@ -3,6 +3,8 @@ package cn.sdh.backend.service;
 import cn.sdh.backend.dto.DocumentLinkConfig;
 import cn.sdh.backend.entity.KnowledgeDocument;
 import cn.sdh.backend.entity.KnowledgeDocumentRelation;
+import cn.sdh.backend.job.DocumentIndexJobPayload;
+import cn.sdh.backend.job.PlatformJobExecutionContext;
 
 import java.util.List;
 
@@ -49,4 +51,13 @@ public interface DocumentProcessService {
      * @return 关联记录
      */
     KnowledgeDocumentRelation getProcessStatus(Long documentId, Long knowledgeId);
+
+    /** Execute one immutable generation from the reliable job runtime. */
+    String executeIndexJob(DocumentIndexJobPayload payload, Long jobId, PlatformJobExecutionContext context);
+
+    /** Remove an incomplete generation when a job is cancelled or exhausts retries. */
+    void abandonIndexJob(DocumentIndexJobPayload payload, Long jobId);
+
+    /** Recover a legacy/pending relation which has no associated reliable job. */
+    void recoverPendingRelation(Long relationId);
 }

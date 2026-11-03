@@ -10,6 +10,9 @@ management:
   endpoint:
     health:
       show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 
 spring:
@@ -73,6 +76,8 @@ spring:
 
 
 xushu:
+  agent:
+    runtime: ${AGENT_RUNTIME:legacy}
   jwt:
     admin-secret-key: ${JWT_ADMIN_SECRET:}
     # 设置jwt过期时间
@@ -93,6 +98,8 @@ minio:
 
 
 logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [trace=%X{traceId:-}] %logger{36} - %msg%n"
   level:
     org:
       springframework:
@@ -114,7 +121,26 @@ jobs:
   dispatch-batch-size: ${JOB_DISPATCH_BATCH_SIZE:10}
   lease-seconds: ${JOB_LEASE_SECONDS:600}
 
+outbox:
+  relay:
+    interval-ms: ${OUTBOX_RELAY_INTERVAL_MS:1000}
+    batch-size: ${OUTBOX_RELAY_BATCH_SIZE:50}
+    lease-seconds: ${OUTBOX_RELAY_LEASE_SECONDS:60}
+
+operations:
+  metrics:
+    refresh-ms: ${OPERATIONS_METRICS_REFRESH_MS:15000}
+  alerts:
+    job-backlog: ${ALERT_JOB_BACKLOG:100}
+    oldest-job-seconds: ${ALERT_OLDEST_JOB_SECONDS:300}
+    outbox-backlog: ${ALERT_OUTBOX_BACKLOG:20}
+    dead-letters-24h: ${ALERT_DEAD_LETTERS_24H:1}
+
 knowledge:
+  documents:
+    index-lock-minutes: ${KNOWLEDGE_DOCUMENT_INDEX_LOCK_MINUTES:120}
+    recovery-delay-ms: ${KNOWLEDGE_DOCUMENT_RECOVERY_DELAY_MS:60000}
+    recovery-initial-delay-ms: ${KNOWLEDGE_DOCUMENT_RECOVERY_INITIAL_DELAY_MS:30000}
   sources:
     scheduler-delay-ms: 60000
     scheduler-batch-size: 20

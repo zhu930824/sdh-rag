@@ -103,6 +103,14 @@ public class KnowledgeDocumentRelation implements Serializable {
     @TableField("error_message")
     private String errorMessage;
 
+    /** Current indexing generation. Every enqueue advances it once. */
+    @TableField("index_revision")
+    private Integer indexRevision;
+
+    /** Reliable platform job responsible for the current generation. */
+    @TableField("job_id")
+    private Long jobId;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 }

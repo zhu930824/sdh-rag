@@ -1,6 +1,8 @@
 package cn.sdh.backend.service.impl;
 
 import cn.hutool.json.JSONUtil;
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.config.FreshnessConfig;
 import cn.sdh.backend.dto.DocumentLinkConfig;
 import cn.sdh.backend.entity.KnowledgeBase;
@@ -10,18 +12,25 @@ import cn.sdh.backend.entity.KnowledgeDocumentRelation;
 import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentMapper;
 import cn.sdh.backend.mapper.KnowledgeDocumentRelationMapper;
+import cn.sdh.backend.job.DocumentIndexJobHandler;
+import cn.sdh.backend.job.DocumentIndexJobPayload;
+import cn.sdh.backend.job.PlatformJobExecutionContext;
 import cn.sdh.backend.service.DocumentDedupService;
+import cn.sdh.backend.service.DocumentIndexLock;
 import cn.sdh.backend.service.DocumentProcessService;
 import cn.sdh.backend.service.MinioService;
 import cn.sdh.backend.service.SummaryIndexService;
 import cn.sdh.backend.service.VectorStoreService;
+import cn.sdh.backend.service.PlatformJobService;
+import cn.sdh.backend.entity.PlatformJob;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.core.io.InputStreamResource;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
@@ -53,29 +62,54 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     private final VectorStoreService vectorStoreService;
     private final DocumentDedupService documentDedupService;
     private final SummaryIndexService summaryIndexService;
+    private final PlatformJobService platformJobService;
+    private final DocumentIndexLock documentIndexLock;
+    private final ObjectMapper objectMapper;
 
     @Override
-    @Async
     @Transactional(rollbackFor = Exception.class)
     public void processDocumentForKnowledge(Long documentId, Long knowledgeId, DocumentLinkConfig config) {
-        log.info("开始处理文档(带配置): documentId={}, knowledgeId={}, chunkMode={}", documentId, knowledgeId, config.getChunkMode());
+        enqueueIndex(documentId, knowledgeId, config);
+    }
 
-        // 获取关联记录
-        KnowledgeDocumentRelation relation = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
-        if (relation == null) {
-            log.error("关联记录不存在: documentId={}, knowledgeId={}", documentId, knowledgeId);
-            return;
+    @Override
+    public String executeIndexJob(DocumentIndexJobPayload payload, Long jobId,
+                                  PlatformJobExecutionContext context) {
+        KnowledgeDocumentRelation current = relationMapper.selectById(payload.relationId());
+        if (!isCurrentGeneration(current, payload, jobId)) {
+            return "索引版本已过期，安全跳过";
         }
 
-        // 更新状态为处理中
-        relation.setProcessStatus(1);
-        relation.setProcessTime(LocalDateTime.now());
-        if (config.getChunkMode() != null) {
-            relation.setChunkMode(config.getChunkMode());
+        DocumentIndexLock.LockHandle lock = documentIndexLock.acquire(payload.relationId());
+        if (lock == null) {
+            throw new IllegalStateException("同一文档已有索引任务运行，稍后重试");
         }
-        relationMapper.updateById(relation);
+        try {
+            current = relationMapper.selectById(payload.relationId());
+            if (!isCurrentGeneration(current, payload, jobId)) {
+                return "索引版本已过期，安全跳过";
+            }
+            if (relationMapper.markIndexRunning(payload.relationId(), payload.revision(), jobId,
+                    LocalDateTime.now()) != 1) {
+                return "索引状态已变化，安全跳过";
+            }
+            return executeUnderLock(payload, jobId, context);
+        } finally {
+            documentIndexLock.release(lock);
+        }
+    }
+
+    private String executeUnderLock(DocumentIndexJobPayload payload, Long jobId,
+                                    PlatformJobExecutionContext context) {
+        Long documentId = payload.documentId();
+        Long knowledgeId = payload.knowledgeId();
+        DocumentLinkConfig config = payload.config() == null ? new DocumentLinkConfig() : payload.config();
+        KnowledgeDocumentRelation relation = relationMapper.selectById(payload.relationId());
+        log.info("开始可靠文档索引: relationId={}, revision={}, documentId={}, knowledgeId={}, chunkMode={}",
+                payload.relationId(), payload.revision(), documentId, knowledgeId, config.getChunkMode());
 
         try {
+            context.checkpoint();
             // 获取文档
             KnowledgeDocument document = documentMapper.selectById(documentId);
             if (document == null) {
@@ -86,65 +120,53 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             String content = parseDocumentContent(document.getFilePath());
             if (content == null || content.trim().isEmpty()) {
                 log.warn("文档内容为空: documentId={}", documentId);
-                relation.setProcessStatus(2);
-                relation.setChunkCount(0);
-                relation.setProcessTime(LocalDateTime.now());
-                relationMapper.updateById(relation);
-                return;
+                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                return "文档内容为空，已清理旧索引";
             }
 
             // === RAG优化：文档去重 ===
             String contentMd5 = DigestUtils.md5DigestAsHex(content.getBytes(StandardCharsets.UTF_8));
             Long duplicateDocId = documentDedupService.checkMd5Duplicate(knowledgeId, contentMd5);
-            if (duplicateDocId != null) {
+            boolean ownHashExists = documentId.equals(duplicateDocId);
+            if (duplicateDocId != null && !ownHashExists) {
                 document.setContentMd5(contentMd5);
                 document.setQualityStatus(2);
                 documentMapper.updateById(document);
                 documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
                 log.warn("文档 [{}] 与 [{}] MD5完全重复，跳过索引", documentId, duplicateDocId);
-                relation.setProcessStatus(2);
-                relation.setChunkCount(0);
-                relation.setProcessTime(LocalDateTime.now());
-                relationMapper.updateById(relation);
-                return;
+                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                return "检测到完全重复文档，已跳过索引";
             }
 
             DocumentDedupService.SimilarDocResult similar = documentDedupService.checkMinHashSimilarity(knowledgeId, content, 0.85);
-            if (similar != null) {
+            if (similar != null && !documentId.equals(similar.documentId())) {
                 document.setContentMd5(contentMd5);
                 document.setQualityStatus(2);
                 documentMapper.updateById(document);
                 documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
                 log.warn("文档 [{}] 与 [{}] 近似重复, 跳过索引", documentId, similar.documentId());
-                relation.setProcessStatus(2);
-                relation.setChunkCount(0);
-                relation.setProcessTime(LocalDateTime.now());
-                relationMapper.updateById(relation);
-                return;
+                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                return "检测到近似重复文档，已跳过索引";
             }
 
             // 保存文档哈希
             document.setContentMd5(contentMd5);
             documentMapper.updateById(document);
-            documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
+            if (!ownHashExists) {
+                documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
+            }
 
             // === RAG优化：质量过滤 ===
             if (content.trim().length() < 50) {
                 markDocumentLowQuality(document, "文档内容过短");
-                relation.setProcessStatus(2);
-                relation.setChunkCount(0);
-                relation.setProcessTime(LocalDateTime.now());
-                relationMapper.updateById(relation);
-                return;
+                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                return "低质量文档已过滤：内容过短";
             }
 
             if (isTabularNoise(content)) {
                 markDocumentLowQuality(document, "文档主要为结构化表格数据");
-                relation.setProcessStatus(2);
-                relation.setChunkCount(0);
-                relation.setProcessTime(LocalDateTime.now());
-                relationMapper.updateById(relation);
-                return;
+                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                return "低质量文档已过滤：结构化噪声";
             }
 
             // === RAG优化：新鲜度计算 ===
@@ -203,19 +225,18 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
             log.info("文档分块完成: documentId={}, chunkMode={}, chunkCount={}", documentId, chunkMode, chunkTexts.size());
 
-            // 删除该文档在该知识库下的旧向量（直接从 ES 删除）
-            vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
-
             // 获取知识库配置中的嵌入模型
             String embeddingModelName = getEmbeddingModelName(knowledgeId, config);
             log.info("使用嵌入模型: documentId={}, knowledgeId={}, embeddingModel={}",
                     documentId, knowledgeId, embeddingModelName);
 
             Map<String, Object> documentMetadata = buildDocumentMetadata(document, chunkTexts.size());
+            documentMetadata.put("index_revision", payload.revision());
 
             // 创建分块并直接存储到 ES
             int successCount = 0;
             for (int i = 0; i < chunkTexts.size(); i++) {
+                context.checkpoint();
                 KnowledgeChunk chunk = new KnowledgeChunk();
                 chunk.setDocumentId(documentId);
                 chunk.setKnowledgeId(knowledgeId);
@@ -229,16 +250,18 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 // 直接存储向量到 ES（不再存储到 MySQL）
                 String vectorId = vectorStoreService.addVector(
                     chunk, knowledgeId, embeddingModelName, documentMetadata);
-                if (vectorId != null) {
-                    successCount++;
+                if (vectorId == null) {
+                    throw new IllegalStateException("向量写入失败: chunkIndex=" + i);
                 }
+                successCount++;
             }
 
-            // 更新关联记录
-            relation.setProcessStatus(2);
-            relation.setChunkCount(successCount);
-            relation.setProcessTime(LocalDateTime.now());
-            relationMapper.updateById(relation);
+            // Keep the previous complete generation available while writing; swap by cleanup only after success.
+            vectorStoreService.deleteVectorsExceptRevision(documentId, knowledgeId, payload.revision());
+            if (relationMapper.markIndexSucceeded(payload.relationId(), payload.revision(), jobId,
+                    successCount, LocalDateTime.now()) != 1) {
+                return "索引已写入，但当前版本已更新，等待新版本接管";
+            }
 
             log.info("文档处理完成: documentId={}, knowledgeId={}, chunkCount={}", documentId, knowledgeId, successCount);
 
@@ -254,14 +277,44 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 log.warn("摘要生成调度失败: documentId={}, error={}", documentId, e.getMessage());
             }
 
+            return "索引完成，共写入 " + successCount + " 个分块";
+
         } catch (Exception e) {
             log.error("文档处理失败: documentId={}, knowledgeId={}, error={}", documentId, knowledgeId, e.getMessage(), e);
+            relationMapper.markIndexFailed(payload.relationId(), payload.revision(), jobId,
+                    capError(e.getMessage()), LocalDateTime.now());
+            if (e instanceof RuntimeException runtimeException) throw runtimeException;
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+    }
 
-            // 更新状态为失败
-            relation.setProcessStatus(3);
-            relation.setErrorMessage(e.getMessage());
-            relation.setProcessTime(LocalDateTime.now());
-            relationMapper.updateById(relation);
+    private void completeEmptyIndex(DocumentIndexJobPayload payload, Long jobId,
+                                    Long documentId, Long knowledgeId) {
+        vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
+        if (relationMapper.markIndexSucceeded(payload.relationId(), payload.revision(), jobId,
+                0, LocalDateTime.now()) != 1) {
+            throw new IllegalStateException("文档索引版本已变化");
+        }
+    }
+
+    @Override
+    public void abandonIndexJob(DocumentIndexJobPayload payload, Long jobId) {
+        KnowledgeDocumentRelation current = relationMapper.selectById(payload.relationId());
+        if (!isCurrentGeneration(current, payload, jobId)) return;
+        DocumentIndexLock.LockHandle lock = documentIndexLock.acquire(payload.relationId());
+        if (lock == null) {
+            log.warn("无法立即清理未完成索引版本: relationId={}, revision={}",
+                    payload.relationId(), payload.revision());
+            return;
+        }
+        try {
+            current = relationMapper.selectById(payload.relationId());
+            if (isCurrentGeneration(current, payload, jobId)) {
+                vectorStoreService.deleteVectorsByRevision(
+                        payload.documentId(), payload.knowledgeId(), payload.revision());
+            }
+        } finally {
+            documentIndexLock.release(lock);
         }
     }
 
@@ -284,7 +337,6 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     }
 
     @Override
-    @Async
     @Transactional(rollbackFor = Exception.class)
     public void processDocumentForKnowledge(Long documentId, Long knowledgeId, Integer chunkSize, Integer chunkOverlap) {
         // 使用默认模式处理
@@ -299,58 +351,139 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     @Transactional(rollbackFor = Exception.class)
     public void reprocessDocument(Long documentId, Long knowledgeId) {
         log.info("重新处理文档: documentId={}, knowledgeId={}", documentId, knowledgeId);
-
-        // 获取关联记录
         KnowledgeDocumentRelation relation = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
         if (relation == null) {
-            log.error("关联记录不存在: documentId={}, knowledgeId={}", documentId, knowledgeId);
-            return;
+            throw new BusinessException(404, "文档关联不存在");
         }
+        enqueueIndex(documentId, knowledgeId, configFromRelation(relation));
+    }
 
-        // 删除旧向量（直接从 ES 删除）
-        vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
-
-        // 重置状态
-        relation.setProcessStatus(0);
-        relation.setChunkCount(0);
-        relationMapper.updateById(relation);
-
-        // 构建配置重新处理
-        DocumentLinkConfig config = new DocumentLinkConfig();
-        config.setChunkMode(relation.getChunkMode() != null ? relation.getChunkMode() : "default");
-        config.setChunkSize(relation.getChunkSize());
-        config.setChunkOverlap(relation.getChunkOverlap());
-
-        // 如果有智能配置，恢复它
-        if (relation.getSmartConfig() != null) {
-            try {
-                DocumentLinkConfig.SmartChunkConfig smartConfig = JSONUtil.toBean(relation.getSmartConfig(), DocumentLinkConfig.SmartChunkConfig.class);
-                config.setSmartConfig(smartConfig);
-            } catch (Exception e) {
-                log.warn("解析智能配置失败: {}", e.getMessage());
-            }
-        }
-
-        processDocumentForKnowledge(documentId, knowledgeId, config);
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void recoverPendingRelation(Long relationId) {
+        KnowledgeDocumentRelation relation = relationMapper.selectPendingByIdForUpdate(relationId);
+        if (relation == null) return;
+        enqueueIndex(relation.getDocumentId(), relation.getKnowledgeId(), configFromRelation(relation));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unlinkDocumentFromKnowledge(Long documentId, Long knowledgeId) {
         log.info("取消文档关联: documentId={}, knowledgeId={}", documentId, knowledgeId);
-
-        // 直接从 ES 删除该文档在该知识库下的所有向量
-        vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
-
-        // 删除关联记录
-        relationMapper.deleteByKnowledgeIdAndDocumentId(knowledgeId, documentId);
-
-        log.info("取消文档关联完成: documentId={}, knowledgeId={}", documentId, knowledgeId);
+        KnowledgeDocumentRelation relation = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
+        if (relation == null) return;
+        DocumentIndexLock.LockHandle lock = documentIndexLock.acquire(relation.getId());
+        if (lock == null) throw new BusinessException(409, "文档正在索引，请稍后重试取消关联");
+        try {
+            vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
+            relationMapper.deleteByKnowledgeIdAndDocumentId(knowledgeId, documentId);
+            log.info("取消文档关联完成: documentId={}, knowledgeId={}", documentId, knowledgeId);
+        } finally {
+            documentIndexLock.release(lock);
+        }
     }
 
     @Override
     public KnowledgeDocumentRelation getProcessStatus(Long documentId, Long knowledgeId) {
         return relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
+    }
+
+    private PlatformJob enqueueIndex(Long documentId, Long knowledgeId, DocumentLinkConfig requestedConfig) {
+        KnowledgeDocumentRelation relation = relationMapper.selectByKnowledgeIdAndDocumentId(knowledgeId, documentId);
+        if (relation == null) throw new BusinessException(404, "文档关联不存在");
+
+        DocumentLinkConfig config = requestedConfig == null ? configFromRelation(relation) : requestedConfig;
+        persistConfig(relation.getId(), config);
+        if (relationMapper.prepareNextIndex(relation.getId()) != 1) {
+            throw new IllegalStateException("准备文档索引任务失败");
+        }
+        KnowledgeDocumentRelation prepared = relationMapper.selectById(relation.getId());
+        DocumentIndexJobPayload payload = new DocumentIndexJobPayload(prepared.getId(), documentId, knowledgeId,
+                prepared.getIndexRevision(), configFromRelation(prepared));
+
+        Long actor = UserContext.getCurrentUserId();
+        if (actor == null) {
+            KnowledgeDocument document = documentMapper.selectById(documentId);
+            actor = document == null ? null : document.getUserId();
+        }
+        if (actor == null) {
+            KnowledgeBase base = knowledgeBaseMapper.selectById(knowledgeId);
+            actor = base == null ? null : base.getUserId();
+        }
+        if (actor == null) throw new IllegalStateException("无法确定文档索引任务创建人");
+
+        PlatformJob job = platformJobService.enqueue(new PlatformJobService.EnqueueCommand(
+                "document-index:" + prepared.getId() + ":v" + prepared.getIndexRevision(),
+                DocumentIndexJobHandler.TYPE, "KNOWLEDGE_DOCUMENT_RELATION", prepared.getId(),
+                toJson(payload), 4, 10, actor));
+        if (job == null || job.getId() == null || relationMapper.attachIndexJob(prepared.getId(),
+                prepared.getIndexRevision(), job.getId()) != 1) {
+            throw new IllegalStateException("绑定文档索引任务失败");
+        }
+        log.info("文档索引已入队: relationId={}, revision={}, jobId={}",
+                prepared.getId(), prepared.getIndexRevision(), job.getId());
+        return job;
+    }
+
+    private void persistConfig(Long relationId, DocumentLinkConfig config) {
+        KnowledgeDocumentRelation values = new KnowledgeDocumentRelation();
+        values.setChunkMode(valueOr(config.getChunkMode(), "default"));
+        values.setSplitType(valueOr(config.getSplitType(), "length"));
+        values.setChunkSize(config.getChunkSize());
+        values.setChunkOverlap(config.getChunkOverlap());
+        values.setPagesPerChunk(config.getPagesPerChunk());
+        values.setHeadingLevels(config.getHeadingLevels() == null
+                ? null : JSONUtil.toJsonStr(config.getHeadingLevels()));
+        values.setRegexPattern(config.getRegexPattern());
+        values.setEmbeddingModel(config.getEmbeddingModel());
+        values.setSmartConfig(config.getSmartConfig() == null
+                ? null : JSONUtil.toJsonStr(config.getSmartConfig()));
+        if (relationMapper.updateIndexConfig(relationId, values) != 1) {
+            throw new IllegalStateException("保存文档切分配置失败");
+        }
+    }
+
+    private DocumentLinkConfig configFromRelation(KnowledgeDocumentRelation relation) {
+        DocumentLinkConfig config = new DocumentLinkConfig();
+        config.setChunkMode(valueOr(relation.getChunkMode(), "default"));
+        config.setSplitType(valueOr(relation.getSplitType(), "length"));
+        config.setChunkSize(relation.getChunkSize());
+        config.setChunkOverlap(relation.getChunkOverlap());
+        config.setPagesPerChunk(relation.getPagesPerChunk());
+        config.setRegexPattern(relation.getRegexPattern());
+        config.setEmbeddingModel(relation.getEmbeddingModel());
+        if (relation.getHeadingLevels() != null && !relation.getHeadingLevels().isBlank()) {
+            config.setHeadingLevels(JSONUtil.toList(relation.getHeadingLevels(), String.class));
+        }
+        if (relation.getSmartConfig() != null && !relation.getSmartConfig().isBlank()) {
+            config.setSmartConfig(JSONUtil.toBean(relation.getSmartConfig(), DocumentLinkConfig.SmartChunkConfig.class));
+        }
+        return config;
+    }
+
+    private boolean isCurrentGeneration(KnowledgeDocumentRelation relation,
+                                        DocumentIndexJobPayload payload, Long jobId) {
+        return relation != null && payload.revision().equals(relation.getIndexRevision())
+                && jobId.equals(relation.getJobId())
+                && payload.documentId().equals(relation.getDocumentId())
+                && payload.knowledgeId().equals(relation.getKnowledgeId());
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("序列化文档索引任务失败", e);
+        }
+    }
+
+    private String capError(String value) {
+        String safe = value == null || value.isBlank() ? "未知索引错误" : value;
+        return safe.substring(0, Math.min(2000, safe.length()));
+    }
+
+    private String valueOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     /**
@@ -359,14 +492,13 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     private String parseDocumentContent(String filePath) {
         try {
             if (filePath == null || filePath.isEmpty()) {
-                return "";
+                throw new IllegalStateException("文档文件路径为空");
             }
 
             // 从 MinIO 获取文件流
             InputStream inputStream = minioService.getFile(filePath);
             if (inputStream == null) {
-                log.error("无法获取文件: {}", filePath);
-                return "";
+                throw new IllegalStateException("无法获取文档文件: " + filePath);
             }
 
             InputStreamResource resource = new InputStreamResource(inputStream);
@@ -381,7 +513,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             return content.toString().trim();
         } catch (Exception e) {
             log.error("解析文档内容失败: {} - {}", filePath, e.getMessage());
-            return "";
+            if (e instanceof RuntimeException runtimeException) throw runtimeException;
+            throw new IllegalStateException("解析文档内容失败: " + e.getMessage(), e);
         }
     }
 

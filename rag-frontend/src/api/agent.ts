@@ -75,6 +75,8 @@ export const getPendingAgentActions = (): Promise<ApiResponse<AgentAction[]>> =>
 export const approveAgentAction = (id: number): Promise<ApiResponse<AgentAction>> => request.post(`/api/agent-actions/${id}/approve`)
 export const rejectAgentAction = (id: number, reason: string): Promise<ApiResponse<AgentAction>> => request.post(`/api/agent-actions/${id}/reject`, { reason })
 export const retryAgentAction = (id: number): Promise<ApiResponse<AgentAction>> => request.post(`/api/agent-actions/${id}/retry`)
+export const reconcileAgentAction = (id: number, outcome: string, receipt: string): Promise<ApiResponse<AgentAction>> =>
+  request.post(`/api/agent-actions/${id}/reconcile`, { outcome, receipt })
 export const feedbackAgentAction = (id: number, data: { outcome: string; comment?: string; reusableKnowledge: boolean }): Promise<ApiResponse<void>> =>
   request.post(`/api/agent-actions/${id}/feedback`, data)
 

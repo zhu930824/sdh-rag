@@ -175,7 +175,7 @@ public class WorkflowController {
             return Result.error(409, "执行记录没有可续跑的审批动作");
         }
         boolean undecided = linkedActions.stream().anyMatch(action ->
-                List.of("PENDING_APPROVAL", "READY", "EXECUTING").contains(action.getStatus()));
+                cn.sdh.backend.agent.AgentActionState.blocksContinuation(action.getStatus()));
         if (undecided) {
             return Result.error(409, "审批动作尚未全部决定，不能续跑工作流");
         }

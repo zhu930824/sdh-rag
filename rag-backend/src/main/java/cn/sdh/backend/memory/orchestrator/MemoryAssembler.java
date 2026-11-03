@@ -40,6 +40,7 @@ public class MemoryAssembler {
         try {
             // 1. 工作记忆：最近对话
             MemoryQuery workingQuery = MemoryQuery.builder()
+                .userId(userId)
                 .sessionId(sessionId)
                 .limit(config.getWorkingWindowSize())
                 .build();

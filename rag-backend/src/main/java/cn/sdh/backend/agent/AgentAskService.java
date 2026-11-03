@@ -13,9 +13,12 @@ import cn.sdh.backend.service.AgentActionService;
 import cn.sdh.backend.service.AgentToolService;
 import cn.sdh.backend.service.IntentRouterService;
 import cn.sdh.backend.service.ModelConfigService;
-import cn.sdh.backend.service.factory.ChatModelFactory;
 import cn.sdh.backend.service.factory.ModelProvider;
 import cn.sdh.backend.service.impl.ChatServiceImpl;
+import cn.sdh.backend.agent.runtime.AgentRuntimePort;
+import cn.sdh.backend.agent.runtime.AgentScopeRuntimeAdapter;
+import cn.sdh.backend.service.PlatformJobService;
+import org.springframework.beans.factory.annotation.Value;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.alibaba.fastjson2.JSON;
 import lombok.RequiredArgsConstructor;
@@ -45,35 +48,39 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 聊天内 Agent 决策循环(方案 A:DashScope/OpenAI 模型内部工具循环 + 审批闸截停)。
- * <p>
- * 决策轮全部用非流式 call()(规避 dashscope 流式 tool-call 兼容风险);内部工具循环由模型侧驱动,
- * 工具回调(AgentToolCallback)内经审批闸执行:自动放行返回真实结果;需审批返回 __agent_pause__
- * 标记并记入 pending,决策循环在整轮结束后把 run 置 WAITING_APPROVAL 并推送审批事件。
- * 最终回答以整包切片方式走 content 事件(前端打字机效果不变)。
+ * Agent 应用协调入口：准备上下文、领取执行权、选择引擎并发送兼容 SSE 事件。
+ * 公共模型/系统上下文由 AgentExecutionPreparation 准备；
+ * 进度和结果由 AgentRunLifecycle 经原有持久化事务发布。
+ * 业务工具统一经过动作账本、审批与可靠任务，SDK 不直接执行业务 HTTP。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AgentAskService {
 
-    private static final int DEFAULT_MAX_STEPS = 8;
+    private static final int DEFAULT_MAX_STEPS = AgentRunBudget.DEFAULT_MAX_STEPS;
     private static final int MAX_STEPS_LIMIT = 20;
     private static final int EVIDENCE_CAP = 12 * 1024;
     private static final int ROUND_TEXT_CAP = 20 * 1024;
     private static final int RESULT_TO_LLM_CAP = 6 * 1024;
     private static final int ARGS_PREVIEW_CAP = 2 * 1024;
-    private static final int TOKEN_HARD_CAP = 200_000;
+    private static final int TOKEN_HARD_CAP = AgentRunBudget.TOKEN_LIMIT;
 
     private final ChatServiceImpl chatService;
     private final AgentActionService agentActionService;
     private final AgentToolService agentToolService;
     private final RunStateService runStateService;
-    private final ChatModelFactory chatModelFactory;
     private final ModelConfigService modelConfigService;
     private final IntentRouterService intentRouterService;
     private final IntentRouterConfig intentRouterConfig;
-    private final AgentCapability capability;
+    private final AgentScopeRuntimeAdapter agentScopeRuntime;
+    private final PlatformJobService jobs;
+    private final RunExecutionLeaseService leases;
+    private final AgentExecutionPreparation preparation;
+    private final AgentRunLifecycle lifecycle;
+
+    @Value("${xushu.agent.runtime:legacy}")
+    private String runtimeEngine = "legacy";
 
     // ===================== 对外入口 =====================
 
@@ -96,7 +103,19 @@ public class AgentAskService {
 
     /** 可复用的"继续一轮决策"入口:resume 时以 run 快照重建 Prepared 后调用(见 resume 场景) */
     public Flux<String> execute(Prepared prepared) {
-        return Flux.<String>create(sink -> runLoop(prepared, sink), FluxSink.OverflowStrategy.BUFFER)
+        return execute(prepared, () -> {});
+    }
+
+    public Flux<String> execute(Prepared prepared, Runnable ownerCheckpoint) {
+        return Flux.<String>create(sink -> {
+            try (var lease = leases.claim(prepared.runKey(), prepared.userId(), ownerCheckpoint)) {
+                runLoop(prepared.withLease(lease), sink);
+            } catch (Exception failure) {
+                // A losing subscriber must never fail or overwrite the winning execution.
+                emit(sink, errorEvent(failure.getMessage()));
+                sink.complete();
+            }
+        }, FluxSink.OverflowStrategy.ERROR)
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -104,28 +123,16 @@ public class AgentAskService {
 
     private Prepared prepare(String question, String sessionId, Long userId, Long knowledgeId, Long modelId,
                              boolean memoryEnabled, Map<String, Object> metadataFilters, int maxSteps) {
+        if (!List.of("legacy", "agentscope").contains(runtimeEngine)) {
+            throw new BusinessException(500, "Agent runtime 配置必须为 legacy 或 agentscope");
+        }
         String currentSessionId = (sessionId != null && !sessionId.isEmpty())
                 ? sessionId : UUID.randomUUID().toString();
 
-        ModelConfig modelConfig = modelId == null
-                ? modelConfigService.getDefault()
-                : modelConfigService.getById(modelId);
-        if (modelConfig == null) {
-            throw new BusinessException(400, "模型配置错误,请检查模型设置");
-        }
-        ModelProvider provider = ModelProvider.fromString(modelConfig.getProvider());
-        if (!capability.supports(provider)) {
-            throw new BusinessException(400, "当前模型供应商(" + modelConfig.getProvider()
-                    + ")暂不支持 Agent 工具调用:请在模型管理中选择白名单供应商(默认 DashScope/OpenAI)"
-                    + "或关闭 Agent 模式");
-        }
-        ChatModel model = chatModelFactory.getModelById(modelConfig.getModelId());
-        if (model == null) {
-            model = chatModelFactory.getModel(null);
-        }
-        if (model == null) {
-            throw new BusinessException(400, "无法创建聊天模型,请检查模型配置");
-        }
+        var binding = preparation.model(modelId, AgentExecutionPreparation.Purpose.INITIAL);
+        ModelConfig modelConfig = binding.config();
+        ModelProvider provider = binding.provider();
+        ChatModel model = binding.model();
 
         // 智能路由(与普通问答一致:显式指定知识库则跳过)
         Long effectiveKb = knowledgeId;
@@ -171,12 +178,13 @@ public class AgentAskService {
                 effectiveKb, modelConfig.getId());
         AgentRun run = runStateService.create(userId, currentSessionId, question,
                 effectiveKb, modelConfig.getId(), maxSteps);
+        run.setEngine(runtimeEngine);
+        run.setEngineVersion("agentscope".equals(runtimeEngine) ? "2.0.3" : "1");
+        run.setMemoryEnabled(memoryEnabled);
+        runStateService.save(run);
         runStateService.bindHistoryId(run.getId(), historyId);
 
-        String base = buildSystemPrompt(evidence, tools);
-        String system = memoryEnabled
-                ? chatService.memoryPrompt(base, userId, currentSessionId, question, true)
-                : base;
+        String system = preparation.system(evidence, tools, userId, currentSessionId, question, memoryEnabled);
 
         AgentRun persisted = run;
         persisted.setEvidenceText(evidence == null || evidence.isBlank() ? null : truncate(evidence, EVIDENCE_CAP));
@@ -185,7 +193,7 @@ public class AgentAskService {
         return new Prepared(run.getRunKey(), run.getId(), historyId, currentSessionId, question, userId,
                 effectiveKb, modelConfig.getId(), model, provider, system, memoryEnabled,
                 sourcesEvent, sourcesPayloadJson, routerEventJson, routerPayloadJson, evidence, tools, maxSteps,
-                false, null);
+                false, null, null);
     }
 
     // ===================== 审批后续跑(resume) =====================
@@ -213,20 +221,20 @@ public class AgentAskService {
         if (decided == null) {
             throw new BusinessException(404, "未找到本次审批对应的动作记录");
         }
-        if (List.of("PENDING_APPROVAL", "READY", "EXECUTING").contains(decided.getStatus())) {
+        if (AgentActionState.blocksContinuation(decided.getStatus())) {
             throw new BusinessException(409, "动作尚未完成审批与执行，不能续跑");
         }
         boolean hasPending = agentActionService.listByRun(run.getId()).stream()
-                .anyMatch(item -> List.of("PENDING_APPROVAL", "READY", "EXECUTING").contains(item.getStatus()));
+                .anyMatch(item -> AgentActionState.blocksContinuation(item.getStatus()));
         if (hasPending) {
             throw new BusinessException(409, "本次运行仍有未决定动作，全部处理后才能续跑");
         }
-        if (!"WAITING_APPROVAL".equals(run.getStatus())) {
+        if (!AgentRun.isWaiting(run.getStatus())) {
             throw new BusinessException(409, "运行状态不是等待审批(当前:" + run.getStatus()
                     + "),请刷新页面获取最新状态");
         }
         if ("REJECTED".equals(decided.getStatus())) {
-            String answer = rejectionAnswer(decided);
+            String answer = AgentRunLifecycle.rejectionAnswer(decided);
             finalizeRejected(decided);
             Map<String, Object> done = new LinkedHashMap<>();
             done.put("type", "done");
@@ -236,83 +244,67 @@ public class AgentAskService {
                     writeJson(Map.of("type", "agent_status", "status", AgentRun.STATUS_REJECTED)),
                     writeJson(done));
         }
-        if (!runStateService.transition(runKey, AgentRun.STATUS_WAITING_APPROVAL, AgentRun.STATUS_RUNNING)) {
+        runStateService.loadRounds(run.getMessagesJson());
+        Prepared prepared = preparedFromRun(run, decided);
+        if (!runStateService.transition(runKey, run.getStatus(), AgentRun.STATUS_RUNNING)) {
             throw new BusinessException(409, "运行已在续跑或状态已变化,请刷新页面");
         }
-        Prepared prepared = preparedFromRun(run, decided);
         return execute(prepared);
     }
 
     /** 后台续跑(审批中心 approve 缺省路径):fire-and-forget,终态落 chat_history */
     public void resumeInBackground(String runKey, Long decidedActionId) {
-        try {
-            AgentRun run = runStateService.getByRunKey(runKey);
-            if (run == null) return;
-            resumeFlux(runKey, run.getUserId(), decidedActionId)
-                    .subscribe(value -> {
-                    }, e -> log.warn("后台续跑失败 runKey={}: {}", runKey, e.getMessage()));
-        } catch (Exception e) {
-            log.warn("后台续跑启动失败 runKey={}: {}", runKey, e.getMessage());
+        AgentRun run = runStateService.getByRunKey(runKey);
+        if (run == null || !AgentRun.isWaiting(run.getStatus())) return;
+        if (agentActionService.listByRun(run.getId()).stream().anyMatch(action ->
+                AgentActionState.blocksContinuation(action.getStatus()))) {
+            throw new BusinessException(409, "动作仍待审批、执行或核对，暂不能提交续跑任务");
         }
+        Long actionId = decidedActionId == null ? run.getPendingActionId() : decidedActionId;
+        if (actionId == null) throw new BusinessException(409, "运行没有可关联的续跑动作");
+        AgentAction trigger = agentActionService.listByRun(run.getId()).stream()
+                .filter(action -> action.getId().equals(actionId)).findFirst()
+                .orElseThrow(() -> new BusinessException(409, "续跑动作不属于本次运行"));
+        jobs.enqueue(new PlatformJobService.EnqueueCommand("agent-resume:" + runKey + ":" + actionId + ":"
+                + cn.sdh.backend.service.AgentActionJobs.version(trigger),
+                "AGENT_RESUME", "AGENT_RUN", run.getId(),
+                writeJson(Map.of("runKey", runKey, "actionId", actionId)), 5, 1, run.getUserId()));
     }
 
     /** 拒绝路径(确定性收尾,不回调 LLM):写入最终文本与状态 */
     public void finalizeRejected(AgentAction action) {
-        if (action == null || action.getRunId() == null) return;
         try {
-            AgentRun row = runStateService.getById(action.getRunId());
-            if (row == null || !AgentRun.STATUS_WAITING_APPROVAL.equals(row.getStatus())) return;
-            if (!runStateService.transition(row.getRunKey(), AgentRun.STATUS_WAITING_APPROVAL,
-                    AgentRun.STATUS_REJECTED)) return;
-            row.setStatus(AgentRun.STATUS_REJECTED);
-            row.setCompletedAt(java.time.LocalDateTime.now());
-            runStateService.save(row);
-
-            String answer = rejectionAnswer(action);
-            chatService.persistAnswerRow(row.getHistoryId(), answer, row.getKnowledgeId(), row.getModelId(),
-                    null, null, row.getRunKey(), buildTraceJson(row));
-            log.info("Agent 运行被拒绝并收尾 runKey={}", row.getRunKey());
-        } catch (Exception e) {
-            log.warn("Agent 拒绝收尾失败: {}", e.getMessage());
-        }
-    }
-
-    private String rejectionAnswer(AgentAction action) {
-        String reason = action.getErrorMessage() == null ? "审批人拒绝" : action.getErrorMessage();
-        return "业务动作「" + action.getToolName() + "」已被拒绝(" + reason + "),本次未执行。";
+            if (lifecycle.rejectWaiting(action)) log.info("Agent 运行被拒绝并收尾 runId={}", action.getRunId());
+        } catch (Exception failure) { log.warn("Agent 拒绝收尾失败: {}", failure.getMessage()); }
     }
 
     private Prepared preparedFromRun(AgentRun run, AgentAction decided) {
-        ModelConfig modelConfig = run.getModelId() == null
-                ? modelConfigService.getDefault()
-                : modelConfigService.getById(run.getModelId());
-        if (modelConfig == null) {
-            throw new BusinessException(400, "运行关联的模型配置已不存在,无法续跑");
-        }
-        ModelProvider provider = ModelProvider.fromString(modelConfig.getProvider());
-        if (!capability.supports(provider)) {
-            throw new BusinessException(400, "当前模型供应商(" + modelConfig.getProvider()
-                    + ")已不在 Agent 工具调用白名单,无法续跑");
-        }
-        ChatModel model = chatModelFactory.getModelById(modelConfig.getModelId());
-        if (model == null) {
-            model = chatModelFactory.getModel(null);
-        }
-        if (model == null) {
-            throw new BusinessException(400, "无法创建聊天模型,无法续跑");
-        }
+        var binding = preparation.model(run.getModelId(), AgentExecutionPreparation.Purpose.RESUME);
+        ModelConfig modelConfig = binding.config();
+        ModelProvider provider = binding.provider();
+        ChatModel model = binding.model();
         List<AgentTool> tools = agentToolService.listUsable(run.getUserId());
-        String base = buildSystemPrompt(run.getEvidenceText(), tools);
-        String system = chatService.memoryPrompt(base, run.getUserId(), run.getSessionId(),
-                run.getQuestion(), true);
+        boolean memoryEnabled = !Boolean.FALSE.equals(run.getMemoryEnabled());
+        String system = preparation.system(run.getEvidenceText(), tools, run.getUserId(), run.getSessionId(), run.getQuestion(), memoryEnabled);
 
-        String note = approvalNote(decided);
+        String note = decided == null ? null : approvalNote(decided);
         // 续跑不重放 routerInfo/sources;suppressStart=true
         return new Prepared(run.getRunKey(), run.getId(), run.getHistoryId(), run.getSessionId(),
                 run.getQuestion(), run.getUserId(), run.getKnowledgeId(), modelConfig.getId(),
-                model, provider, system, true, null, null, null, null, run.getEvidenceText(),
+                model, provider, system, memoryEnabled, null, null, null, null, run.getEvidenceText(),
                 tools, run.getMaxSteps() == null ? DEFAULT_MAX_STEPS : run.getMaxSteps(),
-                true, note);
+                true, note, null);
+    }
+
+    /** Called only after the recovery job has atomically reset a run without registered actions. */
+    public Flux<String> restartRecovered(String runKey, Long actor, Runnable checkpoint) {
+        AgentRun run = runStateService.getByRunKey(runKey);
+        if (run == null || !java.util.Objects.equals(run.getUserId(), actor)) throw new BusinessException(403, "运行归属不一致");
+        if (!AgentRun.STATUS_RUNNING.equals(run.getStatus()) || run.getLeaseOwner() != null
+                || !agentActionService.listByRun(run.getId()).isEmpty()) {
+            throw new BusinessException(409, "运行不符合重新执行条件");
+        }
+        return execute(preparedFromRun(run, null), checkpoint);
     }
 
     /** 审批结果注记(以 UserMessage 追加在暂停说明之后,使模型在准确位置看到结果) */
@@ -360,12 +352,24 @@ public class AgentAskService {
             }
 
             AgentRun run = runStateService.getByRunKey(p.runKey());
+            if ("agentscope".equals(run.getEngine())) {
+                runAgentScope(p, sink, st, run);
+                return;
+            }
             if (p.suppressStart() && run != null) {
                 st.assistantTexts.addAll(runStateService.loadRounds(run.getMessagesJson()));
             }
+            AgentRunBudget budget = AgentRunBudget.from(run);
+            budget.requireAvailable();
+            int completedSteps = budget.usedSteps();
+            st.promptTokens = run.getPromptTokens() == null ? 0 : run.getPromptTokens();
+            st.completionTokens = run.getCompletionTokens() == null ? 0 : run.getCompletionTokens();
+            st.carriedTokens = Math.toIntExact(budget.usedTokens() - st.promptTokens - st.completionTokens);
 
             int turn = 0;
-            for (turn = 1; turn <= p.maxSteps(); turn++) {
+            for (turn = 1; turn <= budget.remainingSteps(); turn++) {
+                p.lease().requireAlive();
+                leases.guarded(p.lease().fence(), () -> true);
                 List<ToolCallback> callbacks = p.tools().stream()
                         .map(tool -> new AgentToolCallback(tool, executorFor(p, st, sink)))
                         .map(t -> (ToolCallback) t)
@@ -381,23 +385,24 @@ public class AgentAskService {
                             : p.model().call(new Prompt(messages, options));
                 } catch (Exception e) {
                     log.error("Agent 决策轮调用失败 turn={}: {}", turn, e.getMessage(), e);
-                    throw new BusinessException(500, "模型调用失败: " + e.getMessage());
+                    throw new BusinessException(500, "模型调用失败: " + e.getMessage(), e);
                 }
                 int latency = (int) (System.currentTimeMillis() - llmStart);
+                p.lease().requireAlive();
 
                 String text = response.getResult() == null ? null : response.getResult().getOutput().getText();
                 int[] usage = readUsage(response);
-                st.promptTokens += usage[0];
-                st.completionTokens += usage[1];
+                st.promptTokens = Math.addExact(st.promptTokens, usage[0]);
+                st.completionTokens = Math.addExact(st.completionTokens, usage[1]);
 
                 if (text != null && !text.isBlank()) {
                     st.assistantTexts.add(truncate(text, ROUND_TEXT_CAP));
                 }
-                st.stepCount = turn;
-                runStateService.appendStep(run.getId(), AgentStep.STEP_TYPE_LLM, null, null,
+                st.stepCount = completedSteps + turn;
+                runStateService.appendStep(p.lease().fence(), run.getId(), AgentStep.STEP_TYPE_LLM, null, null,
                         null, truncate(text, ROUND_TEXT_CAP), "SUCCEEDED", latency,
                         usage[0] + usage[1]);
-                persistProgress(run, st);
+                persistProgress(p, st);
 
                 if (!st.pending.isEmpty()) {
                     // 审批暂停:整轮收尾,无 done
@@ -415,7 +420,7 @@ public class AgentAskService {
             throw new BusinessException(500, "超出最大决策步数(" + p.maxSteps() + ")");
         } catch (Throwable e) {
             log.error("Agent 运行失败 runKey={}: {}", p.runKey(), e.getMessage(), e);
-            failRun(p, sink, e.getMessage());
+            failRun(p, sink, e);
         } finally {
             if (sink != null && !sink.isCancelled()) {
                 sink.complete();
@@ -425,25 +430,24 @@ public class AgentAskService {
 
     /** 审批暂停收尾:状态落库 + 事件推送(流正常结束,无 done 事件) */
     private void pauseForApproval(Prepared p, FluxSink<String> sink, LoopState st, String note) {
-        if (note != null && !note.isBlank()) {
-            emitContent(sink, note);
-        }
-        AgentAction first = st.pending.get(0).action();
+        p.lease().requireAlive();
         List<Long> pendingIds = st.pending.stream().map(pi -> pi.action().getId()).toList();
 
-        AgentRun run = runStateService.getByRunKey(p.runKey());
-        run.setStatus(AgentRun.STATUS_WAITING_APPROVAL);
-        run.setPendingActionId(first.getId());
-        run.setStepCount(st.stepCount);
-        run.setPromptTokens(st.promptTokens);
-        run.setCompletionTokens(st.completionTokens);
-        run.setTotalTokens(st.promptTokens + st.completionTokens);
-        runStateService.save(run);
-
-        emitEvent(sink, Map.of("type", "agent_status", "status", AgentRun.STATUS_WAITING_APPROVAL,
+        AgentRun run = lifecycle.pause(publication(p), st.progress(), st.pending.stream().map(PendingInfo::action).toList());
+        String waitingStatus = run.getStatus();
+        if (note != null && !note.isBlank()) emitContent(sink, note);
+        emitEvent(sink, Map.of("type", "agent_status", "status", waitingStatus,
                 "pendingActionIds", pendingIds));
         for (PendingInfo info : st.pending) {
             AgentAction action = info.action();
+            if ("UNKNOWN".equals(action.getStatus())) {
+                emitContent(sink, "业务动作「" + info.toolName() + "」结果待核对，请到业务动作中心确认下游结果后继续。");
+                continue;
+            }
+            if (List.of("READY", "EXECUTING").contains(action.getStatus())) {
+                emitContent(sink, "业务动作「" + info.toolName() + "」已进入执行队列，完成后会自动继续。");
+                continue;
+            }
             Map<String, Object> evt = new LinkedHashMap<>();
             evt.put("type", "approval_required");
             evt.put("runId", p.runKey());
@@ -460,24 +464,18 @@ public class AgentAskService {
         log.info("Agent 运行暂停等待审批 runKey={}, pending={}", p.runKey(), pendingIds.size());
     }
 
-    /** 正常完成:内容切片下发 → 全字段落库 → 记忆写入 → done */
+    /** 正常完成:原子发布 → 内容事件 → 尝试写记忆 → done */
     private void completeRun(Prepared p, FluxSink<String> sink, LoopState st, String answer) {
-        AgentRun run = runStateService.getByRunKey(p.runKey());
-        run.setStatus(AgentRun.STATUS_COMPLETED);
-        run.setStepCount(st.stepCount);
-        run.setPromptTokens(st.promptTokens);
-        run.setCompletionTokens(st.completionTokens);
-        run.setTotalTokens(st.promptTokens + st.completionTokens);
-        run.setCompletedAt(java.time.LocalDateTime.now());
-        runStateService.save(run);
+        completeRun(p, sink, st, answer, false);
+    }
 
-        emitContent(sink, answer);
-        String traceJson = buildTraceJson(run);
-
-        chatService.persistAnswerRow(p.historyId(), answer, p.kbId(), p.modelConfigId(),
-                p.sourcesPayloadJson(), p.routerPayloadJson(), p.runKey(), traceJson);
+    private void completeRun(Prepared p, FluxSink<String> sink, LoopState st, String answer, boolean alreadyStreamed) {
+        p.lease().requireAlive();
+        AgentRun run = lifecycle.complete(publication(p), st.progress(), answer);
+        if (!alreadyStreamed) emitContent(sink, answer);
         if (p.memoryEnabled()) {
-            chatService.storeMemoryAfterTurn(p.userId(), p.sessionId(), p.question(), answer, true);
+            try { chatService.storeMemoryAfterTurn(p.userId(), p.sessionId(), p.question(), answer, true); }
+            catch (Exception failure) { log.warn("Agent 回答已发布，记忆写入失败 runKey={}", p.runKey()); }
         }
         emit(sink, "{\"type\":\"done\",\"historyId\":" + p.historyId()
                 + ",\"runId\":\"" + p.runKey() + "\"}");
@@ -486,34 +484,96 @@ public class AgentAskService {
     }
 
     /** 失败收尾:run=FAILED + error 事件 */
-    private void failRun(Prepared p, FluxSink<String> sink, String message) {
+    private void failRun(Prepared p, FluxSink<String> sink, Throwable failure) {
+        AgentRunTermination termination = AgentRunTermination.from(failure);
+        String message = termination.message();
+        boolean published = false;
         try {
-            AgentRun run = runStateService.getByRunKey(p.runKey());
-            if (run != null) {
-                run.setStatus(AgentRun.STATUS_FAILED);
-                run.setErrorMessage(truncate(message, 1000));
-                run.setCompletedAt(java.time.LocalDateTime.now());
-                runStateService.save(run);
-            }
+            published = lifecycle.fail(publication(p), failure);
         } catch (Exception logError) {
             log.warn("Agent 失败状态落库异常: {}", logError.getMessage());
         }
+        if (published) emitEvent(sink, Map.of("type", "agent_status", "status", termination.status()));
         emit(sink, errorEvent(message));
     }
 
-    private void persistProgress(AgentRun run, LoopState st) {
-        run.setStepCount(st.stepCount);
-        run.setPromptTokens(st.promptTokens);
-        run.setCompletionTokens(st.completionTokens);
-        run.setTotalTokens(st.promptTokens + st.completionTokens);
-        runStateService.save(run);
-        runStateService.persistRounds(run.getId(), st.assistantTexts);
-        if (st.promptTokens + st.completionTokens > TOKEN_HARD_CAP) {
+    private AgentRunLifecycle.Context publication(Prepared prepared) {
+        return new AgentRunLifecycle.Context(prepared.lease().fence(), prepared.sourcesPayloadJson(), prepared.routerPayloadJson());
+    }
+
+    private void persistProgress(Prepared p, LoopState st) {
+        lifecycle.progress(publication(p), st.progress(), st.assistantTexts);
+        if (st.totalTokens() > TOKEN_HARD_CAP) {
             throw new BusinessException(500, "超出 Token 预算上限,运行中止");
         }
     }
 
     // ===================== 工具执行/审批闸 =====================
+
+    private void runAgentScope(Prepared p, FluxSink<String> sink, LoopState st, AgentRun run) {
+        AgentRunBudget budget = AgentRunBudget.from(run);
+        budget.requireAvailable();
+        int baseInput = run.getPromptTokens() == null ? 0 : run.getPromptTokens();
+        int baseOutput = run.getCompletionTokens() == null ? 0 : run.getCompletionTokens();
+        st.carriedTokens = Math.toIntExact(budget.usedTokens() - baseInput - baseOutput);
+        List<AgentRuntimePort.ResumeResult> results = p.suppressStart()
+                ? agentActionService.listByRun(run.getId()).stream()
+                    .filter(action -> action.getToolCallId() != null)
+                    .map(action -> new AgentRuntimePort.ResumeResult(action.getToolCallId(),
+                            p.tools().stream().filter(tool -> tool.getId().equals(action.getToolId()))
+                                    .map(AgentTool::getCode).findFirst()
+                                    .orElseThrow(() -> new BusinessException(409, "原业务工具已不可用，无法续跑")),
+                            writeJson(Map.of("status", action.getStatus(), "result",
+                                    action.getResultJson() == null ? "" : action.getResultJson(),
+                                    "error", action.getErrorMessage() == null ? "" : action.getErrorMessage()))))
+                    .toList() : List.of();
+        AgentRuntimePort.Result result = agentScopeRuntime.execute(new AgentRuntimePort.Request(
+                p.runKey(), p.userId(), p.system(), p.question(), modelConfigService.getById(p.modelConfigId()),
+                p.tools(), budget.remainingSteps(), results,
+                (tool, callId, arguments) -> {
+                    // The platform gateway is the sole approval authority; the SDK never invokes HTTP directly.
+                    synchronized (st) {
+                        p.lease().requireAlive();
+                        if (!st.pending.isEmpty()) {
+                            throw new BusinessException(409, "运行已等待审批，不再执行新的工具调用");
+                        }
+                        long start = System.currentTimeMillis();
+                        AgentStep step = runStateService.appendStep(p.lease().fence(), p.runId(), AgentStep.STEP_TYPE_TOOL,
+                                tool.getCode(), null, writeJson(arguments), null, "RUNNING", null, null);
+                        emitEvent(sink, Map.of("type", "tool_call", "runId", p.runKey(),
+                                "toolCode", tool.getCode(), "toolName", tool.getName(), "status", "RUNNING"));
+                        AgentAction action = agentActionService.request(new AgentActionService.ActionCommand(
+                                tool.getId(), arguments, null, ToolInvocationKey.create(p.runKey(), tool.getCode(), arguments),
+                                null, null, p.runId(), step.getId(), null, callId, p.lease().fence()), p.userId());
+                        String value = finishToolStep(p, st, sink, tool, step, action, start);
+                        return new AgentRuntimePort.ToolReply(value,
+                                AgentActionState.blocksContinuation(action.getStatus()));
+                    }
+                }, delta -> {
+                    p.lease().requireAlive();
+                    emitEvent(sink, Map.of("type", "content", "content", delta));
+                }, p.lease().fence(), p.lease()::requireAlive, budget.remainingTokens(), usage -> {
+                    synchronized (st) {
+                        st.stepCount = Math.addExact(budget.usedSteps(), usage.modelCalls());
+                        st.promptTokens = Math.addExact(baseInput, usage.inputTokens());
+                        st.completionTokens = Math.addExact(baseOutput, usage.outputTokens());
+                        lifecycle.progress(publication(p), st.progress(), null);
+                    }
+                }));
+        st.stepCount = (run.getStepCount() == null ? 0 : run.getStepCount()) + result.modelCalls();
+        st.promptTokens = (run.getPromptTokens() == null ? 0 : run.getPromptTokens()) + result.inputTokens();
+        st.completionTokens = (run.getCompletionTokens() == null ? 0 : run.getCompletionTokens()) + result.outputTokens();
+        runStateService.appendStep(p.lease().fence(), p.runId(), AgentStep.STEP_TYPE_LLM, null, null,
+                null, result.answer(), result.status().name(), null, result.inputTokens() + result.outputTokens());
+        if (result.status() == AgentRuntimePort.Status.SUSPENDED && !st.pending.isEmpty()) {
+            pauseForApproval(p, sink, st, null);
+        } else if (result.status() == AgentRuntimePort.Status.COMPLETED
+                && result.answer() != null && !result.answer().isBlank()) {
+            completeRun(p, sink, st, result.answer(), true);
+        } else {
+            throw new BusinessException(409, "Agent 运行未完成: " + result.status());
+        }
+    }
 
     /**
      * 工具执行器(AgentGate):幂等 → AgentActionService.request(自动放行/待审)→ 轨迹与事件。
@@ -521,10 +581,13 @@ public class AgentAskService {
      */
     private AgentToolCallback.Executor executorFor(Prepared p, LoopState st, FluxSink<String> sink) {
         return (tool, args, argsJson) -> {
+            synchronized (st) {
+                p.lease().requireAlive();
+                if (!st.pending.isEmpty()) return writeJson(Map.of("__agent_pause__", true, "message", "已有业务动作挂起，请等待处理完成"));
             long start = System.currentTimeMillis();
             String key = idemKey(p.runKey(), tool.getCode(), argsJson);
             Long actor = p.userId();
-            AgentStep step = runStateService.appendStep(p.runId(), AgentStep.STEP_TYPE_TOOL,
+            AgentStep step = runStateService.appendStep(p.lease().fence(), p.runId(), AgentStep.STEP_TYPE_TOOL,
                     tool.getCode(), null, argsJson, null, "RUNNING", null, null);
 
             emitEvent(sink, Map.of("type", "tool_call", "runId", p.runKey(),
@@ -537,14 +600,15 @@ public class AgentAskService {
                     return finishToolStep(p, st, sink, tool, step, existing, start);
                 }
                 AgentAction created = agentActionService.request(new AgentActionService.ActionCommand(
-                        tool.getId(), args, null, key, null, null, p.runId(), step.getId(), null), actor);
+                        tool.getId(), args, null, key, null, null, p.runId(), step.getId(), null, null, p.lease().fence()), actor);
                 return finishToolStep(p, st, sink, tool, step, created, start);
             } catch (Exception e) {
                 String message = e instanceof BusinessException be ? be.getMessage()
                         : String.valueOf(e.getMessage());
-                finishToolStepError(sink, tool, step, message, start);
+                finishToolStepError(p, sink, tool, step, message, start);
                 return "{\"__agent_error__\":true,\"message\":\""
                         + sanitize(message, 300) + "\"}";
+            }
             }
         };
     }
@@ -553,22 +617,22 @@ public class AgentAskService {
                                   AgentTool tool, AgentStep step, AgentAction action, long start) {
         String status = action.getStatus();
         int latency = (int) (System.currentTimeMillis() - start);
-        updateStep(step, status, action, latency);
+        updateStep(p, step, status, action, latency);
 
-        if ("PENDING_APPROVAL".equals(status)) {
+        if (AgentActionState.blocksContinuation(status)) {
             st.addPending(new PendingInfo(action, tool.getCode(), tool.getName()));
             emitEvent(sink, Map.of("type", "tool_result", "runId", p.runKey(),
                     "toolCode", tool.getCode(), "status", status, "actionId", action.getId(),
                     "latencyMs", latency));
-            return "{\"__agent_pause__\":true,\"actionId\":" + action.getId()
-                    + ",\"message\":\"该操作需要人工审批,系统已暂停。请勿再次调用工具或虚构结果,"
-                    + "直接告知用户此操作正在等待人工审批。\"}";
+            String reason = "PENDING_APPROVAL".equals(status) ? "人工审批" : "UNKNOWN".equals(status) ? "业务结果核对" : "后台执行";
+            return writeJson(Map.of("__agent_pause__", true, "actionId", action.getId(),
+                    "message", "该操作正在等待" + reason + "，请停止调用工具，不得虚构结果。"));
         }
         if ("SUCCEEDED".equals(status)) {
             String result = action.getResultJson();
             emitEvent(sink, Map.of("type", "tool_result", "runId", p.runKey(),
                     "toolCode", tool.getCode(), "status", status, "actionId", action.getId(),
-                    "result", preview(result, RESULT_TO_LLM_CAP),
+                    "result", result == null ? "" : truncate(result, RESULT_TO_LLM_CAP),
                     "latencyMs", latency));
             return result == null || result.isBlank() ? "{\"status\":\"SUCCEEDED\",\"message\":\"操作已完成(无返回内容)\"}"
                     : truncate(result, RESULT_TO_LLM_CAP);
@@ -589,21 +653,21 @@ public class AgentAskService {
                 + ",\"message\":\"" + sanitize(error, 300) + "\"}";
     }
 
-    private void finishToolStepError(FluxSink<String> sink, AgentTool tool,
+    private void finishToolStepError(Prepared p, FluxSink<String> sink, AgentTool tool,
                                      AgentStep step, String message, long start) {
         int latency = (int) (System.currentTimeMillis() - start);
-        updateStep(step, "FAILED", message, latency);
+        updateStep(p, step, "FAILED", message, latency);
         emitEvent(sink, Map.of("type", "tool_result", "runId", step.getRunId(),
                 "toolCode", tool.getCode(), "status", "FAILED",
                 "error", sanitize(message, 500), "latencyMs", latency));
     }
 
-    private void updateStep(AgentStep step, String status, Object output, int latency) {
+    private void updateStep(Prepared p, AgentStep step, String status, Object output, int latency) {
         step.setStatus(status);
         step.setOutputJson(output instanceof String s ? truncate(s, 256 * 1024)
                 : output == null ? null : String.valueOf(output));
         step.setLatencyMs(latency);
-        runStateService.updateStep(step);
+        runStateService.updateStep(p.lease().fence(), step);
     }
 
     // ===================== 事件与 JSON 辅助 =====================
@@ -665,32 +729,6 @@ public class AgentAskService {
 
     // ===================== 提示词与选项 =====================
 
-    private String buildSystemPrompt(String evidence, List<AgentTool> tools) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("你是一个\"知识+行动\"型企业业务助手。你可以调用受控业务工具完成任务,并按需参考检索资料。");
-        prompt.append("\n\n【可用工具】").append(tools.isEmpty()
-                ? "当前没有可用业务工具,仅能回答问题。"
-                : "(仅在确有必要时调用;不需要就不要调用)");
-        for (AgentTool tool : tools) {
-            String desc = tool.getDescription() == null || tool.getDescription().isBlank()
-                    ? tool.getName() : tool.getDescription();
-            prompt.append("\n- ").append(tool.getCode()).append(": ").append(desc);
-        }
-        prompt.append("\n\n【执行规则】");
-        prompt.append("\n1. 需要真实业务数据(订单/库存/工单等)时先调用工具获取,严禁编造事实或猜测数据。");
-        prompt.append("\n2. 工具返回 JSON 含 __agent_pause__ 表示\"操作已提交人工审批并暂停\":立即停止调用任何工具、不得虚构执行结果,只用一句话向用户说明正在等待审批。");
-        prompt.append("\n3. 工具返回含 __agent_rejected__:如实告知用户操作已被拒绝及原因,不要重试。");
-        prompt.append("\n4. 工具返回含 __agent_error__:如实告知执行失败原因;确有必要可换参数组合重试一次。");
-        prompt.append("\n5. 同一工具的相同参数只调用一次;重复请求只会得到既有结果或\"已在审批中\"。");
-        prompt.append("\n6. 检索资料与工具结果矛盾时,以工具返回的真实数据为准。");
-        prompt.append("\n\n【回答要求】用中文回答,简洁、有条理;涉及金额/订单号/库存/状态等,必须以工具返回为准并注明依据。");
-        if (evidence != null && !evidence.isBlank()) {
-            prompt.append("\n\n【参考资料】\n").append(evidence);
-            prompt.append("\n\n【依据规则】回答优先基于参考资料;资料未覆盖且无工具可查时如实说明不知道。");
-        }
-        return prompt.toString();
-    }
-
     private List<Message> buildMessages(String system, String question, List<String> assistantTexts,
                                         String resumeNote) {
         List<Message> messages = new ArrayList<>();
@@ -722,38 +760,6 @@ public class AgentAskService {
                 .toolCallbacks(callbacks)
                 .internalToolExecutionEnabled(true)
                 .build();
-    }
-
-    // ===================== 运行轨迹摘要 =====================
-
-    /** 供 chat_history.agent_trace 与运行详情回放;从 step 表重建,截断防爆 */
-    private String buildTraceJson(AgentRun run) {
-        try {
-            List<Map<String, Object>> trace = new ArrayList<>();
-            for (AgentStep step : runStateService.stepsOf(run.getId())) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("type", step.getStepType());
-                item.put("toolCode", step.getToolCode());
-                item.put("actionId", step.getActionId());
-                item.put("status", step.getStatus());
-                item.put("seq", step.getSeq());
-                if ("tool".equals(step.getStepType())) {
-                    item.put("argsPreview", preview(step.getInputJson(), ARGS_PREVIEW_CAP));
-                    item.put("resultPreview", preview(step.getOutputJson(), RESULT_TO_LLM_CAP));
-                }
-                trace.add(item);
-                if (trace.size() >= 50) break;
-            }
-            Map<String, Object> summary = new LinkedHashMap<>();
-            summary.put("runId", run.getRunKey());
-            summary.put("status", run.getStatus());
-            summary.put("steps", trace);
-            String json = writeJson(summary);
-            return json.length() > 50 * 1024 ? json.substring(0, 50 * 1024) : json;
-        } catch (Exception e) {
-            log.warn("Agent 轨迹摘要生成失败: {}", e.getMessage());
-            return null;
-        }
     }
 
     // ===================== 杂项 =====================
@@ -829,7 +835,12 @@ public class AgentAskService {
                            String system, boolean memoryEnabled, String sourcesEvent, String sourcesPayloadJson,
                            String routerEventJson, String routerPayloadJson, String evidenceText,
                            List<AgentTool> tools, int maxSteps, boolean suppressStart,
-                           String resumeNote) {
+                           String resumeNote, RunExecutionLeaseService.Lease lease) {
+        Prepared withLease(RunExecutionLeaseService.Lease active) {
+            return new Prepared(runKey, runId, historyId, sessionId, question, userId, kbId, modelConfigId,
+                    model, provider, system, memoryEnabled, sourcesEvent, sourcesPayloadJson,
+                    routerEventJson, routerPayloadJson, evidenceText, tools, maxSteps, suppressStart, resumeNote, active);
+        }
     }
 
     private record PendingInfo(AgentAction action, String toolCode, String toolName) {
@@ -842,6 +853,11 @@ public class AgentAskService {
         private int stepCount = 0;
         private int promptTokens = 0;
         private int completionTokens = 0;
+        private int carriedTokens = 0;
+        private AgentRunLifecycle.Progress progress() {
+            return new AgentRunLifecycle.Progress(stepCount, promptTokens, completionTokens, totalTokens());
+        }
+        private int totalTokens() { return Math.addExact(carriedTokens, Math.addExact(promptTokens, completionTokens)); }
 
         private void addPending(PendingInfo info) {
             for (PendingInfo existing : pending) {

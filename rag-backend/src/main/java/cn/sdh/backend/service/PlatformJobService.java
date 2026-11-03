@@ -1,5 +1,6 @@
 package cn.sdh.backend.service;
 
+import cn.sdh.backend.common.context.TraceContext;
 import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.entity.PlatformJob;
 import cn.sdh.backend.mapper.PlatformJobMapper;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +25,13 @@ public class PlatformJobService {
     private int leaseSeconds;
 
     public record EnqueueCommand(String jobKey, String jobType, String resourceType, Long resourceId,
-                                 String payloadJson, Integer priority, Integer maxAttempts, Long createdBy) {}
+                                 String payloadJson, Integer priority, Integer maxAttempts, Long createdBy,
+                                 String traceId) {
+        public EnqueueCommand(String jobKey, String jobType, String resourceType, Long resourceId,
+                              String payloadJson, Integer priority, Integer maxAttempts, Long createdBy) {
+            this(jobKey, jobType, resourceType, resourceId, payloadJson, priority, maxAttempts, createdBy, null);
+        }
+    }
 
     public PlatformJob enqueue(EnqueueCommand command) {
         if (command == null || blank(command.jobKey()) || blank(command.jobType()) || command.createdBy() == null) {
@@ -50,15 +56,18 @@ public class PlatformJobService {
         job.setAttempts(0);
         job.setMaxAttempts(Math.max(1, Math.min(command.maxAttempts() == null ? 3 : command.maxAttempts(), 10)));
         job.setAvailableAt(now);
-        job.setTraceId(UUID.randomUUID().toString().replace("-", ""));
+        String inheritedTrace = command.traceId() == null ? TraceContext.current() : command.traceId();
+        job.setTraceId(TraceContext.normalizeOrCreate(inheritedTrace));
         job.setCreatedBy(command.createdBy());
         job.setCreateTime(now);
         job.setUpdateTime(now);
         try {
             mapper.insert(job);
             return job;
-        } catch (DuplicateKeyException ignored) {
-            return findByKey(command.jobKey());
+        } catch (DuplicateKeyException duplicate) {
+            PlatformJob winner = mapper.findByKeyCurrent(command.jobKey());
+            if (winner == null) throw duplicate;
+            return winner;
         }
     }
 

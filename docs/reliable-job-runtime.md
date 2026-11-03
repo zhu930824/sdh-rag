@@ -1,8 +1,8 @@
 # 可靠任务运行时
 
-> 状态：P1 MVP 已落地  
-> 更新日期：2026-09-09  
-> 数据库迁移：`V28__platform_job_runtime.sql`
+> 状态：P1 第二批已落地
+> 更新日期：2026-09-14
+> 数据库迁移：`V28__platform_job_runtime.sql`、`V29__transactional_outbox_webhook_delivery.sql`、`V30__reliable_document_indexing.sql`
 
 ## 1. 目标与当前范围
 
@@ -10,8 +10,10 @@
 
 - RAG 自动生成评测、导入数据集评测、内置/版本化数据集评测。
 - REST JSON 知识源的定时拉取同步。
+- 评测回归与失败事件的 Transactional Outbox 和 Webhook 可靠投递。
+- 文档解析、切分、向量索引、重新处理与遗留待处理关系恢复。
 
-手动知识源拉取仍保持同步 API，文档索引、Webhook 投递、评测实验和 Agent 动作将在后续批次迁移。
+手动知识源拉取仍保持同步 API，评测实验编排和 Agent 动作将在后续批次迁移。
 
 ## 2. 状态机
 
@@ -60,8 +62,11 @@ stateDiagram-v2
 - `POST /api/jobs/{id}/replay`：重放失败、死信或已取消任务。
 - `POST /api/evaluation/task/{id}/cancel`：从评测业务页取消并同步业务状态。
 - `POST /api/evaluation/task/{id}/replay`：从评测业务页重新执行。
+- `GET /api/admin/reliable-execution/metrics`：管理员查看全局积压、重试、成功率、死信和活动告警。
 
-前端“知识管理 → 任务中心”每 5 秒刷新一次，仅显示当前用户自己的任务。Job payload 不通过接口或页面暴露，避免测试数据和连接器配置泄漏。
+前端“知识管理 → 任务中心”每 5 秒刷新一次，普通用户仅显示自己的任务；管理员额外看到全局可靠执行指标和活动告警。Job payload 不通过接口或页面暴露，避免测试数据和连接器配置泄漏。
+
+文档任务类型为 `DOCUMENT_INDEX`。每次处理都会推进 `knowledge_document_relation.index_revision`，并将当前 `job_id` 与该版本绑定；旧版本 Worker 只能安全跳过，不能覆盖新任务状态。详细协议见 [可靠文档解析与索引](reliable-document-indexing.md)。
 
 ## 6. 运行参数
 
@@ -70,13 +75,15 @@ stateDiagram-v2
 | `JOB_DISPATCH_DELAY_MS` | 2000 | 数据库扫描间隔（毫秒） |
 | `JOB_DISPATCH_BATCH_SIZE` | 10 | 单轮最大抢占数，实际还受空闲 Worker 数限制 |
 | `JOB_LEASE_SECONDS` | 600 | 租约时长；每个业务检查点会续租 |
+| `KNOWLEDGE_DOCUMENT_INDEX_LOCK_MINUTES` | 120 | 单个知识关系的索引互斥锁 TTL（分钟） |
+| `KNOWLEDGE_DOCUMENT_RECOVERY_DELAY_MS` | 60000 | 无任务待处理关系的恢复扫描间隔（毫秒） |
 
 生产环境应让租约时间大于单个不可中断外部调用的最大超时，并把数据库时间统一为同一时区。
 
 ## 7. 下一批建设
 
-1. 将文档解析/索引、Webhook 和 Agent 外部动作接入 Job，并为每类副作用定义明确幂等键。
-2. 增加 Transactional Outbox，统一非任务型领域事件与 Webhook 投递。
-3. 贯通 HTTP 请求、Job、检索、模型和 Agent 步骤的 Trace 上下文。
-4. 增加队列积压、租约接管、重试率、死信数、执行延迟和处理耗时指标与告警。
-5. 增加管理员全局任务视图、按租户隔离以及死信处置审计。
+1. 将评测实验编排和 Agent 外部动作接入 Job，并为每类副作用定义明确幂等键。
+2. 从统一关联 Trace ID 继续升级为检索、模型、工具和 Agent 步骤级 OpenTelemetry Span。
+3. 增加 P50/P95 执行延迟、处理耗时、模型 Token 与成本预算指标。
+4. 将活动告警接入企业通知通道，增加抑制、合并、责任人路由和恢复通知。
+5. 增加管理员全局任务列表、Outbox/投递历史、按租户隔离以及死信处置审计。

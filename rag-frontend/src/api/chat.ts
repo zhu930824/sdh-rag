@@ -20,6 +20,8 @@ export interface ChatMessage {
   agentTrace?: AgentTrace | null
   /** 运行态:Agent 状态(RUNNING/WAITING_APPROVAL/COMPLETED/...) */
   agentStatus?: string | null
+  agentCanRecover?: boolean
+  agentRecoveryReason?: string
   /** 运行态:工具调用过程卡 */
   agentSteps?: AgentStepView[]
   /** 运行态:待审批动作 */

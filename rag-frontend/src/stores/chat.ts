@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onScopeDispose } from 'vue'
 import type {
   AgentPendingApproval,
   AgentStepView,
@@ -17,7 +17,8 @@ import {
   deleteSession,
   createSession,
 } from '@/api/chat'
-import { approveActionSkip, rejectActionSkip, resumeRun } from '@/api/agentRun'
+import { approveActionSkip, rejectActionSkip, getAgentRunSnapshot, recoverAgentRun } from '@/api/agentRun'
+import { isActiveAgentRun, mergeAgentRunSnapshot } from '@/utils/agentRunState'
 
 export const useChatStore = defineStore('chat', () => {
   // 当前会话ID
@@ -49,6 +50,48 @@ export const useChatStore = defineStore('chat', () => {
 
   // 正在生成标记
   const isGenerating = ref(false)
+
+  let pollTimer: ReturnType<typeof setTimeout> | undefined
+  let pollEpoch = 0
+  let pollFailures = 0
+  function scheduleRunPoll(epoch: number): void {
+    if (pollTimer) clearTimeout(pollTimer)
+    if (!currentSessionId.value || isGenerating.value || !messages.value.some(message =>
+      message.agentRunKey && isActiveAgentRun(message.agentStatus))) return
+    pollTimer = setTimeout(() => { void pollRuns(epoch) }, Math.min(60000, 2000 * 2 ** Math.min(pollFailures, 5)))
+  }
+  async function pollRuns(epoch: number): Promise<void> {
+    const sessionId = currentSessionId.value
+    const targets = messages.value.filter(message => message.agentRunKey && isActiveAgentRun(message.agentStatus))
+    for (const target of targets) {
+      if (epoch !== pollEpoch || sessionId !== currentSessionId.value || isGenerating.value) return
+      try {
+        const response = await getAgentRunSnapshot(target.agentRunKey!)
+        if (epoch !== pollEpoch || sessionId !== currentSessionId.value || isGenerating.value) return
+        pollFailures = 0
+        const index = messages.value.findIndex(message => message.id === target.id)
+        if (index >= 0 && response.data) messages.value[index] = mergeAgentRunSnapshot(messages.value[index], response.data)
+      } catch (error) {
+        if (epoch !== pollEpoch || sessionId !== currentSessionId.value) return
+        pollFailures++
+        const details = error as { response?: { status?: number }; code?: number | string }
+        const status = details.response?.status ?? Number(details.code)
+        if (status && [401, 403, 404].includes(status)) {
+          const unavailable = messages.value.find(message => message.id === target.id)
+          if (unavailable) unavailable.agentStatus = 'UNAVAILABLE'
+        }
+        console.error('刷新后台任务状态失败:', error)
+      }
+    }
+    if (epoch === pollEpoch) scheduleRunPoll(epoch)
+  }
+  watch(() => JSON.stringify([currentSessionId.value, isGenerating.value,
+    messages.value.map(message => `${message.id}:${message.agentRunKey}:${message.agentStatus}`).join('|')]), () => {
+    pollEpoch++
+    if (pollTimer) clearTimeout(pollTimer)
+    scheduleRunPoll(pollEpoch)
+  }, { flush: 'post' })
+  onScopeDispose(() => { pollEpoch++; if (pollTimer) clearTimeout(pollTimer) })
 
   // 当前正在生成的消息内容
   const generatingContent = ref('')
@@ -303,7 +346,7 @@ export const useChatStore = defineStore('chat', () => {
         break
       case 'agent_status':
         targetMessage.agentStatus = event.status || targetMessage.agentStatus
-        if (event.status === 'WAITING_APPROVAL') {
+        if (event.status === 'WAITING_APPROVAL' || event.status === 'WAITING_ACTION') {
           // 流在此正常结束(无 done);等待用户审批后通过 resume 续流
           currentRunKey.value = null
           isGenerating.value = false
@@ -354,7 +397,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  /** 聊天卡内联审批:approve/reject(skip)后对同一消息发起 resume 续流 */
+  /** Inline decisions are followed through the durable background task. */
   async function decideInline(
     message: ChatMessage,
     approval: AgentPendingApproval,
@@ -376,25 +419,32 @@ export const useChatStore = defineStore('chat', () => {
     message.pendingApprovals = (message.pendingApprovals || []).filter(
       (a) => a.actionId !== approval.actionId,
     )
-    message.agentStatus = 'RUNNING'
-    currentRunKey.value = approval.runId
-    isGenerating.value = true
+    message.agentStatus = decision === 'approve' ? 'WAITING_ACTION' : 'WAITING_APPROVAL'
+    currentRunKey.value = null
+    // The decision endpoint commits a durable job; polling follows its result instead of racing execution with resume.
+    scheduleRunPoll(pollEpoch)
+  }
 
-    abortController = new AbortController()
-    try {
-      await resumeRun(approval.runId, approval.actionId, (event) =>
-        handleStreamEvent(messages.value.find((m) => m.id === message.id) ?? null, event),
-        abortController.signal,
-      )
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        console.error('续跑失败:', error)
-        message.content = message.content || '续跑失败,请刷新会话查看最新状态'
-        message.pendingApprovals = message.pendingApprovals || []
-      }
-    } finally {
-      isGenerating.value = false
-      abortController = null
+  /** 手动刷新会话消息(外带审批完成后拉取终态) */
+  async function recoverRun(target: ChatMessage): Promise<void> {
+    const sessionId = currentSessionId.value
+    const runKey = target.agentRunKey
+    if (!runKey || isGenerating.value) return
+    const current = (): ChatMessage | undefined => sessionId === currentSessionId.value
+      ? messages.value.find(item => item.id === target.id && item.agentRunKey === runKey) : undefined
+    const diagnosis = await getAgentRunSnapshot(runKey)
+    const selected = current()
+    if (!selected || !diagnosis.data) return
+    Object.assign(selected, mergeAgentRunSnapshot(selected, diagnosis.data))
+    if (!selected.agentCanRecover) return
+    const receipt = await recoverAgentRun(runKey)
+    const accepted = current()
+    if (accepted && receipt.data) {
+      accepted.agentStatus = receipt.data.status
+      accepted.agentCanRecover = false
+      accepted.agentRecoveryReason = undefined
+      accepted.content = '恢复任务已进入队列，正在等待重新执行。'
+      scheduleRunPoll(pollEpoch)
     }
   }
 
@@ -499,5 +549,6 @@ export const useChatStore = defineStore('chat', () => {
     setAgentEnabled,
     decideInline,
     refreshSessionMessages,
+    recoverRun,
   }
 })

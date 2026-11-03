@@ -25,7 +25,11 @@ public interface WebhookService extends IService<WebhookConfig> {
 
     void triggerWebhooks(String event, Map<String, Object> payload);
 
+    void triggerWebhooks(String event, Map<String, Object> payload, String idempotencyKey);
+
     boolean triggerWebhook(WebhookConfig webhook, String event, Map<String, Object> payload);
+
+    boolean triggerWebhook(WebhookConfig webhook, String event, Map<String, Object> payload, String deliveryId);
 
     void testWebhook(Long webhookId);
 }

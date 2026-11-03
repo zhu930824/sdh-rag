@@ -41,6 +41,10 @@ service.interceptors.request.use(
   }
 )
 
+declare module 'axios' {
+  interface AxiosRequestConfig { silent?: boolean }
+}
+
 // 响应拦截器 - 处理错误
 service.interceptors.response.use(
   (response: AxiosResponse) => {
@@ -54,37 +58,38 @@ service.interceptors.response.use(
       return data
     }
     // 业务错误
-    message.error(data.message || '请求失败')
-    return Promise.reject(new Error(data.message || '请求失败'))
+    if (!response.config.silent) message.error(data.message || '请求失败')
+    return Promise.reject(Object.assign(new Error(data.message || '请求失败'), { code: data.code }))
   },
   (error) => {
     const { response } = error
+    const report = (text: string): void => { if (!error.config?.silent) message.error(text) }
     if (response) {
       const { status, data } = response
       switch (status) {
         case 401:
           // 未授权，清除token并跳转登录页
-          message.error('登录已过期，请重新登录')
+          report('登录已过期，请重新登录')
           const userStore = useUserStore()
           userStore.clearAuth()
           router.push('/login')
           break
         case 403:
-          message.error('没有权限访问该资源')
+          report('没有权限访问该资源')
           break
         case 404:
-          message.error('请求的资源不存在')
+          report('请求的资源不存在')
           break
         case 500:
-          message.error('服务器内部错误')
+          report('服务器内部错误')
           break
         default:
-          message.error(data?.message || '请求失败')
+          report(data?.message || '请求失败')
       }
     } else if (error.code === 'ECONNABORTED') {
-      message.error('请求超时，请稍后重试')
+      report('请求超时，请稍后重试')
     } else {
-      message.error('网络异常，请检查网络连接')
+      report('网络异常，请检查网络连接')
     }
     return Promise.reject(error)
   }

@@ -40,8 +40,6 @@ public class MemoryOrchestrator {
     private final SummarizationTrigger summarizationTrigger;
     private final MemoryConfig config;
 
-    private static final ThreadLocal<String> currentEpisodeId = new ThreadLocal<>();
-
     /**
      * 组装记忆上下文（用户发消息时调用）
      */
@@ -69,18 +67,16 @@ public class MemoryOrchestrator {
 
                 // 2. 检测语义边界
                 List<MemoryEntry> recentMessages = workingMemoryLayer.recall(
-                    MemoryQuery.builder().sessionId(sessionId).limit(20).build()
+                    MemoryQuery.builder().userId(userId).sessionId(sessionId).limit(20).build()
                 );
 
                 BoundaryResult boundary = boundaryDetector.detect(question, recentMessages, recentMessages.size());
 
                 // 3. 如果触发边界，生成摘要
                 if (boundary.needsSummarization()) {
-                    String episodeId = getOrCreateEpisodeId();
+                    String episodeId = episodicMemoryLayer.generateEpisodeId();
                     summarizationTrigger.trigger(boundary, userId, sessionId, episodeId);
 
-                    // 重置episode
-                    currentEpisodeId.set(null);
                 }
 
                 // 4. 并行提取记忆
@@ -154,18 +150,6 @@ public class MemoryOrchestrator {
     }
 
     /**
-     * 获取或创建EpisodeId
-     */
-    private String getOrCreateEpisodeId() {
-        String episodeId = currentEpisodeId.get();
-        if (episodeId == null) {
-            episodeId = episodicMemoryLayer.generateEpisodeId();
-            currentEpisodeId.set(episodeId);
-        }
-        return episodeId;
-    }
-
-    /**
      * 清除用户所有记忆
      */
     public void clearUserMemory(Long userId) {
@@ -179,8 +163,8 @@ public class MemoryOrchestrator {
     /**
      * 清除会话工作记忆
      */
-    public void clearSessionMemory(String sessionId) {
-        workingMemoryLayer.clearSession(sessionId);
+    public void clearSessionMemory(Long userId, String sessionId) {
+        workingMemoryLayer.clearSession(userId, sessionId);
         log.debug("Cleared working memory for session: {}", sessionId);
     }
 }

@@ -74,12 +74,28 @@
 
         <!-- 已暂停但无内联卡(外带审批路径):状态提示 + 手动刷新 -->
         <div
-          v-else-if="message.agentStatus === 'WAITING_APPROVAL'"
+          v-else-if="message.agentStatus === 'WAITING_APPROVAL' || message.agentStatus === 'WAITING_ACTION'"
           class="agent-waiting-strip"
         >
           <BulbOutlined />
-          <span>运行已暂停等待审批;审批通过后将在后台自动继续执行。</span>
+          <span>{{ message.agentStatus === 'WAITING_ACTION' ? '业务动作正在后台处理，完成后会自动更新。' : '运行等待审批或结果核对，处理完成后会自动继续。' }}</span>
           <a-button type="link" size="small" @click="refreshMessages">检查最新状态</a-button>
+        </div>
+
+        <div v-if="message.agentStatus === 'INTERRUPTED'" class="agent-waiting-strip">
+          <BulbOutlined />
+          <span>运行已中断。已提交的业务动作仍可能完成，请先到业务动作中心核对结果。</span>
+          <a-button type="link" size="small" @click="refreshMessages">检查最新状态</a-button>
+        </div>
+
+        <div v-if="message.agentRunKey && (message.agentStatus === 'INTERRUPTED' || message.agentStatus === 'FAILED')" class="agent-waiting-strip">
+          <span>{{ message.agentRecoveryReason || '未登记业务动作的运行可重新执行原问题，模型调用可能产生额外费用。' }}</span>
+          <a-button type="link" size="small" :disabled="message.agentCanRecover === false || chatStore.isGenerating"
+            :loading="recoveringRuns.has(message.agentRunKey)" @click="recoverMessage(message)">恢复运行</a-button>
+        </div>
+        <div v-if="message.agentStatus === 'RECOVERY_QUEUED'" class="agent-waiting-strip">
+          <BulbOutlined />
+          <span>恢复任务正在排队，执行结果会自动更新。</span>
         </div>
 
         <!-- 在 message-sources 之前添加 -->
@@ -250,6 +266,16 @@ function agentStepsOf(message: ChatMessage): AgentStepView[] {
 
 async function refreshMessages(): Promise<void> {
   await chatStore.refreshSessionMessages()
+}
+
+const recoveringRuns = ref(new Set<string>())
+async function recoverMessage(target: ChatMessage): Promise<void> {
+  const key = target.agentRunKey
+  if (!key || recoveringRuns.value.has(key)) return
+  recoveringRuns.value.add(key)
+  try { await chatStore.recoverRun(target) }
+  catch (error) { console.error('恢复运行失败:', error) }
+  finally { recoveringRuns.value.delete(key) }
 }
 
 function renderedContent(content: string): string {

@@ -6,6 +6,8 @@ import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.dto.AskRequest;
 import cn.sdh.backend.entity.ChatHistory;
 import cn.sdh.backend.entity.ChatSession;
+import cn.sdh.backend.entity.AgentRun;
+import cn.sdh.backend.mapper.AgentRunMapper;
 import cn.sdh.backend.service.ChatService;
 import cn.sdh.backend.service.ChatSessionService;
 import cn.sdh.backend.service.QaFeedbackService;
@@ -30,6 +32,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
+    @Autowired private AgentRunMapper agentRuns;
 
     @Autowired
     private ChatService chatService;
@@ -212,6 +215,11 @@ public class ChatController {
         }
 
         Page<ChatHistory> history = chatService.getHistory(sessionId, 1, 1000, userId);
+        List<String> runKeys = history.getRecords().stream().map(ChatHistory::getAgentRunKey)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<String, String> runStatuses = runKeys.isEmpty() ? Map.of() : agentRuns.selectList(new LambdaQueryWrapper<AgentRun>()
+                        .eq(AgentRun::getUserId, userId).in(AgentRun::getRunKey, runKeys)).stream()
+                .collect(Collectors.toMap(AgentRun::getRunKey, AgentRun::getStatus));
 
         // 转换为前端需要的消息格式，按时间正序排列
         List<Map<String, Object>> messages = history.getRecords().stream()
@@ -239,6 +247,7 @@ public class ChatController {
                         aiMsg.put("knowledgeId", h.getKnowledgeId());
                         aiMsg.put("modelId", h.getModelId());
                         aiMsg.put("agentRunKey", h.getAgentRunKey());
+                        aiMsg.put("agentStatus", runStatuses.get(h.getAgentRunKey()));
                         aiMsg.put("agentTrace", parseJson(h.getAgentTrace()));
                         // 获取用户对该条消息的评价
                         Integer userRating = qaFeedbackService.getUserRating(h.getId(), userId);

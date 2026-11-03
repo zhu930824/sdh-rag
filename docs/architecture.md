@@ -1,8 +1,8 @@
 # SDH-RAG 平台架构与设计
 
 > 文档状态：当前架构基线  
-> 更新时间：2026-09-09
-> 对应数据库版本：Flyway V27  
+> 更新时间：2026-09-14
+> 对应数据库版本：Flyway V29
 > 架构形态：Vue SPA + Spring Boot 模块化单体 + 多存储基础设施
 
 ## 1. 平台定位
@@ -22,13 +22,13 @@ SDH-RAG 已经从早期的“文档上传 + 知识问答”演进为企业知识
 | 应用形态 | 模块化单体，不是微服务；一个 Spring Boot 后端承载业务领域，一个 Vue SPA 提供管理与使用界面 |
 | 接口形态 | REST API + 流式聊天响应，统一 `/api` 路径和 `Result<T>` 响应模型 |
 | 权限模型 | JWT 身份认证、菜单 RBAC、知识库 owner/editor/reader 资源级权限 |
-| 主数据 | MySQL 8，MyBatis Plus 访问，Flyway V1-V27 管理演进 |
+| 主数据 | MySQL 8，MyBatis Plus 访问，Flyway V1-V29 管理演进 |
 | 文档与附件 | MinIO 保存原文件和发布生成的 Markdown 文件 |
 | 检索 | Elasticsearch 同时承担文档分块向量、关键词、摘要粗排和语义记忆索引 |
 | 图谱 | Neo4j 保存知识图谱和用户行为模式记忆 |
 | 缓存与协调 | Redis 保存工作记忆、路由缓存、限流计数和知识源分布式锁 |
 | 模型接入 | Spring AI，当前支持 DashScope/OpenAI 兼容模型、Embedding 与 Rerank 配置 |
-| 异步执行 | MySQL 可靠 Job + 有界 Worker 池 + Spring Scheduler；评测与定时知识源同步已接入，其他异步链路逐步迁移 |
+| 异步执行 | MySQL 可靠 Job + Transactional Outbox + 有界 Worker 池；评测、定时知识源同步和 Webhook 已接入 |
 | 前端 | Vue 3、TypeScript、Vite、Ant Design Vue、Pinia、Vue Router、G6、Vue Flow |
 | 部署 | Nginx 托管 SPA 并反向代理，后端独立容器；MySQL、Redis、Elasticsearch、Neo4j、MinIO 为外部依赖 |
 
@@ -288,7 +288,7 @@ MySQL 与 MinIO 中的原始内容必须足以重建 Elasticsearch 和 Neo4j。�
 | 外部知识源 | `knowledge_source`、`knowledge_source_item`、`knowledge_sync_task`、`knowledge_source_api_key`、`knowledge_source_api_audit` |
 | 会话与反馈 | `chat_session`、`chat_history`、`qa_feedback`、`token_usage` |
 | 评测 | `evaluation_task`、`evaluation_qa`、`test_dataset`、`test_dataset_item` |
-| 可靠执行 | `platform_job`（幂等键、租约、心跳、重试、取消、死信和 Trace） |
+| 可靠执行 | `platform_job`、`transactional_outbox`、`webhook_delivery`（幂等键、租约、重试、取消、死信和 Trace） |
 | 评测实验 | `evaluation_experiment`、`evaluation_experiment_variant`、`evaluation_experiment_run`、`evaluation_experiment_run_task` |
 | Agent | `agent_tool`、`agent_action`、`agent_action_feedback`、`agent_run`、`agent_step`、`agent_improvement_item` |
 | 知识发布 | `knowledge_draft`、`knowledge_publish_record` |
@@ -329,10 +329,13 @@ cn.sdh.backend
 
 - 评测业务记录和 `platform_job` 在同一事务写入，提交后由 Worker 通过数据库 CAS 抢占，不再依赖 JVM 提交回调。
 - 定时知识源同步只由 Scheduler 发现并入队，实际拉取由可靠 Worker 执行。
+- 评测运行终态与 Webhook 事件在同一事务写入；Outbox Relay 提交后按接收端拆分 `WEBHOOK_DELIVERY` 任务。
+- Webhook 使用稳定 `delivery_key` 实现 at-least-once 投递，接收端通过 `X-Webhook-Delivery` 去重。
+- HTTP 入口接收 W3C `traceparent` 或 `X-Trace-Id`，Trace 经 Outbox 和 Job 持久化，Worker 恢复到 MDC 后再传给 Webhook。
 - 知识发布在数据库提交后进行文档处理和索引。
 - 可靠任务通过 `PENDING/RUNNING/RETRY_WAIT/SUCCEEDED/DEAD_LETTER/CANCEL_REQUESTED/CANCELLED` 暴露进度。
 - `job_key` 唯一约束防止重复入队；租约、心跳和持有者条件更新防止迟到 Worker 覆盖结果。
-- 文档处理、知识发布、Webhook、评测实验与部分 Agent 后台动作仍需迁移，并由 Outbox 补齐跨边界事件一致性。
+- 文档处理、知识发布、评测实验编排与部分 Agent 后台动作仍需迁移到统一 Job；Outbox 管理视图与 Trace 透传仍待补齐。
 
 ### 7.3 API 设计
 
@@ -410,7 +413,7 @@ flowchart TB
 ### 10.2 扩展策略
 
 - 前端可无状态水平扩展。
-- 后端请求可无状态扩展；评测与定时知识同步已通过数据库租约安全竞争，尚未迁移的文档、Webhook 与实验调度仍限制多副本执行方式。
+- 后端请求可无状态扩展；评测、定时知识同步、文档索引和 Webhook 已通过数据库租约安全竞争，尚未迁移的实验编排仍限制多副本执行方式。
 - Elasticsearch 索引按知识库过滤；大规模租户场景需要进一步评估共享索引、按租户索引或冷热分层。
 - 文档处理、图谱构建、评测和 Agent 长任务达到一定量级后，可优先抽离为 Worker，而不是立刻拆分所有业务服务。
 
@@ -421,6 +424,8 @@ flowchart TB
 - Spring Boot Actuator 健康检查。
 - 操作日志、API 调用日志、Token 用量、同步审计。
 - Agent Run/Step/Action 轨迹。
+- 可靠执行指标每 15 秒从持久化状态采样，覆盖积压、运行中、重试、24 小时成功率、最老任务等待时间和各级死信。
+- 管理员任务中心展示运行指标与活动告警；阈值首次触发和恢复均记录结构化日志。
 - 知识发布记录与回归门禁结果。
 - RAG 分层评测、实验批次、失败归因和人工复核。
 - 后端单元测试与前端生产构建校验。
@@ -445,8 +450,9 @@ flowchart TB
 
 ### P1：可靠任务与可观测性
 
-- 已建立统一 Job/Worker MVP：数据库原子抢占、租约、心跳、重试、取消和死信，首批覆盖评测与定时知识同步。
-- 使用 Transactional Outbox 连接“事务提交”和“异步副作用”，覆盖索引、Webhook、评测和 Agent 恢复。
+- 已建立统一 Job/Worker MVP：数据库原子抢占、租约、心跳、重试、取消和死信，覆盖评测、定时知识同步、文档索引和 Webhook 投递。
+- 文档索引使用关系版本 + 当前 Job 绑定阻止迟到任务覆盖，并以 Redis 关系锁串行化 Elasticsearch 写入；代次内稳定向量 ID 支持重试覆盖，新代次全部成功后才清理旧代次。
+- 已使用 Transactional Outbox 连接评测终态与 Webhook 异步副作用；Agent 恢复继续迁移。
 - 建立 OpenTelemetry、指标面板和成本预算告警。
 
 ### P2：质量与 Agent Evaluation
@@ -497,6 +503,9 @@ flowchart TB
 - [平台演进路线图](platform-evolution-roadmap.md)：升级优先级、阶段目标、验收标准和 90 天计划。
 - [P0 安全加固指南](security-hardening-guide.md)：环境变量、历史凭据轮换、Webhook 网络策略和上线检查。
 - [P1 可靠任务运行时](reliable-job-runtime.md)：状态机、租约、重试、取消、死信、API 与运行参数。
+- [Transactional Outbox 与 Webhook](transactional-outbox-webhook.md)：事务边界、中继、投递幂等和恢复协议。
+- [可靠执行可观测性](reliable-execution-observability.md)：Trace 传播、持久化指标、管理 API 与告警阈值。
+- [可靠文档解析与索引](reliable-document-indexing.md)：版本化任务、幂等写入、互斥、恢复与取消语义。
 - [Agent 业务闭环](agent-business-loop.md)：工具、审批、轨迹、反馈和知识改进。
 
 ## 15. 代码导航
@@ -507,6 +516,7 @@ flowchart TB
 | 问答与记忆 | `ChatServiceImpl`、`MemoryOrchestrator` |
 | 知识源 | `KnowledgeSourceService`、`KnowledgeSourceSyncCoordinator`、`KnowledgeSourceConnectorRegistry` |
 | 知识发布 | `KnowledgePublishingService`、`KnowledgePublishingController` |
+| 文档可靠索引 | `DocumentProcessServiceImpl`、`DocumentIndexJobHandler`、`DocumentIndexRecoveryScheduler` |
 | RAG 评测 | `EvaluationServiceImpl`、`EvaluationOperationsServiceImpl` |
 | 评测实验 | `EvaluationExperimentServiceImpl`、`EvaluationExperimentController` |
 | Agent | `AgentAskService`、`AgentToolService`、`AgentActionService`、`AgentOpsService` |

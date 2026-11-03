@@ -7,10 +7,10 @@ import cn.sdh.backend.dto.EvaluationRunConfig;
 import cn.sdh.backend.entity.*;
 import cn.sdh.backend.mapper.*;
 import cn.sdh.backend.service.EvaluationExperimentService;
+import cn.sdh.backend.service.EvaluationExperimentFinalizer;
 import cn.sdh.backend.service.EvaluationService;
 import cn.sdh.backend.service.KnowledgeAccessService;
 import cn.sdh.backend.service.TestDatasetService;
-import cn.sdh.backend.service.WebhookService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +39,7 @@ public class EvaluationExperimentServiceImpl implements EvaluationExperimentServ
     private final EvaluationService evaluationService;
     private final TestDatasetService datasetService;
     private final KnowledgeAccessService knowledgeAccess;
-    private final WebhookService webhookService;
+    private final EvaluationExperimentFinalizer finalizer;
 
     @Override
     public List<EvaluationExperiment> list() {
@@ -151,7 +151,7 @@ public class EvaluationExperimentServiceImpl implements EvaluationExperimentServ
                     if (!hasRunningRun(experiment.getId())) launch(experiment, "SCHEDULED");
                 } catch (Exception e) {
                     log.error("定时评测实验启动失败: experimentId={}", experiment.getId(), e);
-                    triggerFailure(experiment, null, e.getMessage());
+                    finalizer.publishSchedulingFailure(experiment, e.getMessage());
                 } finally {
                     experiment.setLastRunTime(now);
                     calculateNextRun(experiment, now);
@@ -188,11 +188,7 @@ public class EvaluationExperimentServiceImpl implements EvaluationExperimentServ
             experimentMapper.updateById(experiment);
             return run;
         } catch (Exception e) {
-            run.setStatus("FAILED");
-            run.setErrorMessage(cap(e.getMessage()));
-            run.setCompleteTime(LocalDateTime.now());
-            runMapper.updateById(run);
-            triggerFailure(experiment, run, e.getMessage());
+            finalizer.finalizeRun(experiment, run, "FAILED", e.getMessage(), false);
             throw e;
         }
     }
@@ -250,25 +246,13 @@ public class EvaluationExperimentServiceImpl implements EvaluationExperimentServ
                 }
             }
             if (failure != null) {
-                finishRun(run, "FAILED", failure);
-                triggerFailure(experiment, run, failure);
+                finalizer.finalizeRun(experiment, run, "FAILED", failure, false);
             } else if (!pending && completed.size() == variants.size()) {
-                finishRun(run, "COMPLETED", null);
-                if (Boolean.TRUE.equals(experiment.getAlertOnRegression())
-                        && completed.stream().anyMatch(t -> "FAILED".equals(t.getRegressionStatus()))) {
-                    webhookService.triggerWebhooks("evaluation.regression", Map.of(
-                            "experimentId", experiment.getId(), "experimentName", experiment.getName(),
-                            "runId", run.getId(), "message", "评测实验出现质量回归"));
-                }
+                boolean regression = Boolean.TRUE.equals(experiment.getAlertOnRegression())
+                        && completed.stream().anyMatch(t -> "FAILED".equals(t.getRegressionStatus()));
+                finalizer.finalizeRun(experiment, run, "COMPLETED", null, regression);
             }
         }
-    }
-
-    private void finishRun(EvaluationExperimentRun run, String status, String error) {
-        run.setStatus(status);
-        run.setErrorMessage(cap(error));
-        run.setCompleteTime(LocalDateTime.now());
-        runMapper.updateById(run);
     }
 
     private void validateRequest(EvaluationExperimentRequest request, Long actor) {
@@ -362,15 +346,6 @@ public class EvaluationExperimentServiceImpl implements EvaluationExperimentServ
         Long actor = UserContext.getCurrentUserId();
         if (actor == null) throw new IllegalStateException("用户未登录");
         return actor;
-    }
-
-    private void triggerFailure(EvaluationExperiment experiment, EvaluationExperimentRun run, String error) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("experimentId", experiment.getId());
-        payload.put("experimentName", experiment.getName());
-        if (run != null) payload.put("runId", run.getId());
-        payload.put("message", Optional.ofNullable(error).orElse("评测实验执行失败"));
-        webhookService.triggerWebhooks("evaluation.run_failed", payload);
     }
 
     private String blankToNull(String value) { return StringUtils.hasText(value) ? value.trim() : null; }

@@ -11,6 +11,11 @@ import java.time.LocalDateTime;
 @Data
 @TableName("agent_action")
 public class AgentAction {
+    @TableField("tool_call_id") private String toolCallId;
+    @TableField("tool_definition_hash") private String toolDefinitionHash;
+    @TableField("execution_version") private Integer executionVersion;
+    @TableField("execution_job_id") private Long executionJobId;
+    @TableField("started_at") private LocalDateTime startedAt;
     @TableId(type = IdType.AUTO) private Long id;
     @TableField("workflow_id") private Long workflowId;
     @TableField("node_id") private String nodeId;

@@ -1,6 +1,6 @@
 package cn.sdh.backend.controller;
 
-import cn.sdh.backend.agent.AgentApprovalRouter;
+import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.entity.AgentAction;
 import cn.sdh.backend.entity.AgentActionFeedback;
@@ -15,15 +15,12 @@ import java.util.List;
 @RequestMapping("/api/agent-actions")
 public class AgentActionController {
     private final AgentActionService actionService;
-    private final AgentApprovalRouter approvalRouter;
-
-    /** 请求头 X-Agent-Resume: skip 表示"由调用方自行续跑"(聊天卡内联 SSE 用);缺省触发后台续跑 */
-    private boolean skipResume(@RequestHeader(value = "X-Agent-Resume", required = false) String header) {
-        return header != null && header.trim().equalsIgnoreCase("skip");
-    }
 
     @PostMapping
     public Result<AgentAction> request(@RequestBody AgentActionService.ActionCommand command) {
+        if (command.runId() != null || command.stepId() != null || command.workflowExecutionId() != null || command.fence() != null) {
+            throw new BusinessException(400, "运行和工作流关联只能由服务端执行器建立");
+        }
         return Result.success("Agent 动作已受理", actionService.request(command));
     }
 
@@ -42,8 +39,7 @@ public class AgentActionController {
     public Result<AgentAction> approve(@PathVariable Long id,
                                        @RequestHeader(value = "X-Agent-Resume", required = false) String resumeHeader) {
         AgentAction action = actionService.approve(id);
-        approvalRouter.onActionDecided(action, skipResume(resumeHeader));
-        return Result.success("审批通过并已触发执行", action);
+        return Result.success("审批通过，动作已进入执行队列", action);
     }
 
     @PostMapping("/{id}/reject")
@@ -51,18 +47,25 @@ public class AgentActionController {
                                       @RequestBody(required = false) AgentActionService.DecisionCommand command,
                                       @RequestHeader(value = "X-Agent-Resume", required = false) String resumeHeader) {
         AgentAction action = actionService.reject(id, command);
-        approvalRouter.onActionDecided(action, skipResume(resumeHeader));
         return Result.success("动作已拒绝", action);
     }
 
     @PostMapping("/{id}/retry")
     public Result<AgentAction> retry(@PathVariable Long id) {
-        return Result.success("动作已重试", actionService.retry(id));
+        AgentAction action = actionService.retry(id);
+        return Result.success("动作已加入重试队列", action);
     }
 
     @PostMapping("/{id}/feedback")
     public Result<AgentActionFeedback> feedback(@PathVariable Long id,
                                                 @RequestBody AgentActionService.FeedbackCommand command) {
         return Result.success("业务结果已回流", actionService.feedback(id, command));
+    }
+
+    @PostMapping("/{id}/reconcile")
+    public Result<AgentAction> reconcile(@PathVariable Long id,
+                                         @RequestBody AgentActionService.ReconcileCommand command) {
+        AgentAction action = actionService.reconcile(id, command);
+        return Result.success("核对结果已记录", action);
     }
 }

@@ -2,12 +2,14 @@ package cn.sdh.backend.controller;
 
 import cn.sdh.backend.agent.AgentAskService;
 import cn.sdh.backend.agent.RunStateService;
+import cn.sdh.backend.agent.AgentRunRecoveryService;
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.common.result.Result;
 import cn.sdh.backend.entity.AgentAction;
 import cn.sdh.backend.entity.AgentRun;
 import cn.sdh.backend.entity.AgentStep;
+import cn.sdh.backend.mapper.ChatHistoryMapper;
 import cn.sdh.backend.service.AgentActionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,8 @@ public class AgentRunController {
     private final AgentAskService agentAskService;
     private final RunStateService runStateService;
     private final AgentActionService agentActionService;
+    private final ChatHistoryMapper histories;
+    private final AgentRunRecoveryService recovery;
 
     /**
      * 运行详情(run 概要 + 步骤轨迹 + 动作记录),审批页/聊天页轮询刷新用
@@ -64,7 +68,15 @@ public class AgentRunController {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("runKey", run.getRunKey());
+        result.put("engine", run.getEngine());
+        result.put("engineVersion", run.getEngineVersion());
         result.put("status", run.getStatus());
+        result.put("executionEpoch", run.getExecutionEpoch());
+        result.put("heartbeatAt", run.getHeartbeatAt());
+        result.put("leaseUntil", run.getLeaseUntil());
+        var diagnosis = recovery.diagnose(runKey, actor);
+        result.put("canRecover", diagnosis.canRecover());
+        result.put("recoveryReason", diagnosis.reason());
         result.put("stepCount", run.getStepCount());
         result.put("maxSteps", run.getMaxSteps());
         result.put("question", run.getQuestion());
@@ -80,6 +92,8 @@ public class AgentRunController {
         result.put("createdAt", run.getCreatedAt());
         result.put("updatedAt", run.getUpdatedAt());
         result.put("completedAt", run.getCompletedAt());
+        var history = run.getHistoryId() == null ? null : histories.selectById(run.getHistoryId());
+        result.put("answer", history == null ? null : history.getAnswer());
 
         List<Map<String, Object>> steps = new ArrayList<>();
         for (AgentStep step : runStateService.stepsOf(run.getId())) {
@@ -104,10 +118,17 @@ public class AgentRunController {
             item.put("toolName", action.getToolName());
             item.put("status", action.getStatus());
             item.put("idempotencyKey", action.getIdempotencyKey());
+            item.put("argsPreview", cap(action.getRequestJson()));
+            item.put("canApprove", actor.equals(action.getApproverId()) && "PENDING_APPROVAL".equals(action.getStatus()));
             actions.add(item);
         }
         result.put("actions", actions);
         return Result.success(result);
+    }
+
+    @PostMapping("/{runKey}/recover")
+    public Result<AgentRunRecoveryService.Receipt> recover(@PathVariable String runKey) {
+        return Result.success("恢复任务已受理", recovery.request(runKey, UserContext.getCurrentUserId()));
     }
 
     /**
@@ -163,9 +184,7 @@ public class AgentRunController {
             actionId = value instanceof Number n ? n.longValue() : Long.parseLong(String.valueOf(value));
         }
         try {
-            agentAskService.resumeFlux(runKey, run.getUserId(), actionId)
-                    .subscribe(value -> {
-                    }, e -> log.warn("后台续跑失败 runKey={}: {}", runKey, e.getMessage()));
+            agentAskService.resumeInBackground(runKey, actionId);
             return Result.success("已受理,运行将在后台继续执行", null);
         } catch (BusinessException e) {
             return Result.error(e.getCode(), e.getMessage());

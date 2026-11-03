@@ -1,9 +1,13 @@
 package cn.sdh.backend.agent;
 
 import cn.sdh.backend.entity.AgentRun;
+import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.entity.AgentStep;
 import cn.sdh.backend.mapper.AgentRunMapper;
 import cn.sdh.backend.mapper.AgentStepMapper;
+import cn.sdh.backend.mapper.ChatHistoryMapper;
+import cn.sdh.backend.entity.ChatHistory;
+import org.springframework.transaction.annotation.Transactional;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +31,48 @@ public class RunStateService {
 
     private final AgentRunMapper agentRunMapper;
     private final AgentStepMapper agentStepMapper;
+    private final ChatHistoryMapper chatHistoryMapper;
+    private final RunExecutionLeaseService leases;
+
+    public <T> T guarded(RunExecutionLeaseService.Fence fence, java.util.function.Supplier<T> write) {
+        return leases.guarded(fence, write);
+    }
+
+    public boolean publish(RunExecutionLeaseService.Fence fence, AgentRun run, String expectedStatus,
+                           String answer, String sources, String routerInfo, String trace) {
+        if (!java.util.Objects.equals(run.getId(), fence.runId()) || !run.getRunKey().equals(fence.runKey())) {
+            throw new BusinessException(409, "运行租约不匹配");
+        }
+        return guarded(fence, () -> {
+            if (agentRunMapper.releaseLease(fence.runId(), fence.owner(), fence.epoch()) != 1) {
+                throw new BusinessException(409, "运行执行权已失效");
+            }
+            if (!publish(run, expectedStatus, answer, sources, routerInfo, trace)) {
+                throw new BusinessException(409, "运行状态已变化");
+            }
+            return true;
+        });
+    }
+
+    /** Publish the visible reply and state atomically, so background consumers cannot see a half-written boundary. */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean publish(AgentRun run, String expectedStatus, String answer,
+                           String sources, String routerInfo, String trace) {
+        if (expectedStatus != null && agentRunMapper.transition(run.getRunKey(), expectedStatus, run.getStatus()) != 1) {
+            return false;
+        }
+        run.setUpdatedAt(LocalDateTime.now());
+        if (agentRunMapper.updateById(run) != 1) throw new IllegalStateException("运行状态写入失败");
+        if (run.getHistoryId() != null) {
+            ChatHistory history = new ChatHistory(); history.setId(run.getHistoryId());
+            history.setAnswer(answer); history.setSources(sources); history.setRouterInfo(routerInfo);
+            history.setKnowledgeId(run.getKnowledgeId()); history.setModelId(run.getModelId());
+            history.setAgentRunKey(run.getRunKey()); history.setAgentTrace(trace);
+            history.setUpdateTime(LocalDateTime.now());
+            if (chatHistoryMapper.updateById(history) != 1) throw new IllegalStateException("运行回答写入失败");
+        }
+        return true;
+    }
 
     public AgentRun create(Long userId, String sessionId, String question,
                            Long knowledgeId, Long modelId, int maxSteps) {
@@ -78,7 +124,15 @@ public class RunStateService {
         return id == null ? null : agentRunMapper.selectById(id);
     }
 
+    public void updatePendingAction(Long runId, Long actionId) { agentRunMapper.updatePendingAction(runId, actionId); }
+
     /** 追加步骤轨迹 */
+    public AgentStep appendStep(RunExecutionLeaseService.Fence fence, Long runId, String stepType, String toolCode, Long actionId,
+                                String inputJson, String outputJson, String status, Integer latencyMs, Integer tokens) {
+        if (!java.util.Objects.equals(runId, fence.runId())) throw new BusinessException(409, "步骤与执行租约不匹配");
+        return guarded(fence, () -> appendStep(runId, stepType, toolCode, actionId, inputJson, outputJson, status, latencyMs, tokens));
+    }
+
     public AgentStep appendStep(Long runId, String stepType, String toolCode, Long actionId,
                                 String inputJson, String outputJson, String status,
                                 Integer latencyMs, Integer tokens) {
@@ -99,6 +153,11 @@ public class RunStateService {
     }
 
     /** 步骤状态更新(updateById 默认忽略 null 字段,仅覆盖非空) */
+    public void updateStep(RunExecutionLeaseService.Fence fence, AgentStep step) {
+        if (!java.util.Objects.equals(step.getRunId(), fence.runId())) throw new BusinessException(409, "步骤与执行租约不匹配");
+        guarded(fence, () -> { updateStep(step); return true; });
+    }
+
     public void updateStep(AgentStep step) {
         if (step == null || step.getId() == null) return;
         agentStepMapper.updateById(step);
@@ -112,10 +171,20 @@ public class RunStateService {
 
     /** 消息快照:存 LLM 历史轮文本(数组 JSON),续跑时重建 assistant 消息 */
     public void persistRounds(Long runId, List<String> assistantTexts) {
+        if (assistantTexts == null || assistantTexts.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new BusinessException(409, "运行消息快照必须是完整的文本数组");
+        }
+        int start = 0;
+        String json = JSON.toJSONString(assistantTexts);
+        while (json.length() > SNAPSHOT_CAP && start + 1 < assistantTexts.size()) {
+            json = JSON.toJSONString(assistantTexts.subList(++start, assistantTexts.size()));
+        }
+        if (json.length() > SNAPSHOT_CAP) {
+            throw new BusinessException(409, "单条运行消息超过快照上限，无法安全保存");
+        }
         AgentRun run = new AgentRun();
         run.setId(runId);
-        String json = JSON.toJSONString(assistantTexts);
-        run.setMessagesJson(json.length() > SNAPSHOT_CAP ? json.substring(json.length() - SNAPSHOT_CAP) : json);
+        run.setMessagesJson(json);
         save(run);
     }
 
@@ -125,10 +194,16 @@ public class RunStateService {
             return List.of();
         }
         try {
-            return JSON.parseArray(messagesJson, String.class);
+            Object decoded = JSON.parse(messagesJson);
+            if (!(decoded instanceof List<?> messages)
+                    || messages.stream().anyMatch(value -> !(value instanceof String))) {
+                throw new IllegalArgumentException("Invalid conversation snapshot shape");
+            }
+            return messages.stream().map(String.class::cast).toList();
         } catch (Exception e) {
-            log.warn("Agent 消息快照解析失败: {}", e.getMessage());
-            return List.of();
+            // Do not log the parser message: it can contain private conversation content.
+            log.warn("Agent 消息快照损坏，已阻止使用空上下文续跑");
+            throw new BusinessException(409, "运行消息快照损坏，无法安全续跑", e);
         }
     }
 

@@ -13,6 +13,11 @@ import java.util.List;
 @Mapper
 public interface PlatformJobMapper extends BaseMapper<PlatformJob> {
 
+    /** A current read is required after another transaction wins the unique-key race. */
+    @Select("SELECT * FROM platform_job WHERE job_key=#{key} FOR SHARE")
+    @org.apache.ibatis.annotations.Options(useCache = false, flushCache = org.apache.ibatis.annotations.Options.FlushCachePolicy.TRUE)
+    PlatformJob findByKeyCurrent(@Param("key") String key);
+
     @Select("SELECT id FROM platform_job WHERE attempts < max_attempts AND " +
             "((status IN ('PENDING','RETRY_WAIT') AND available_at <= #{now}) " +
             "OR (status = 'RUNNING' AND lease_until < #{now})) " +

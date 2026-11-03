@@ -7,6 +7,8 @@ import cn.sdh.backend.entity.WorkflowExecution;
 import cn.sdh.backend.service.KnowledgeAccessService;
 import cn.sdh.backend.service.WorkflowExecutionService;
 import cn.sdh.backend.service.WorkflowService;
+import cn.sdh.backend.service.AgentActionService;
+import cn.sdh.backend.agent.AgentActionState;
 import cn.sdh.backend.workflow.dag.DAGParser;
 import cn.sdh.backend.workflow.dto.ExecutionEvent;
 import cn.sdh.backend.workflow.dto.ExecutionResponse;
@@ -17,7 +19,6 @@ import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -27,7 +28,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /**
@@ -43,6 +43,7 @@ public class WorkflowEngine {
 
     @Autowired
     private KnowledgeAccessService knowledgeAccess;
+    @Autowired private AgentActionService agentActions;
 
     public void requireOwner(Workflow workflow, Long actor) {
         if (actor == null || workflow == null || !actor.equals(workflow.getUserId())) {
@@ -71,11 +72,6 @@ public class WorkflowEngine {
     @Autowired
     @Lazy
     private WorkflowService workflowService;
-
-    /** 后台续跑使用有界共享线程池，避免审批高峰创建无限线程。 */
-    @Autowired
-    @Qualifier("workflowExecutor")
-    private Executor workflowExecutor;
 
     // 执行记录状态(引擎统一大写语义)
     private static final String EXEC_RUNNING = "RUNNING";
@@ -124,6 +120,14 @@ public class WorkflowEngine {
         }
         Workflow workflow = workflowService.getById(execution.getWorkflowId());
         requireOwner(workflow, actor);
+        var actions = agentActions.listByWorkflowExecution(executionRowId);
+        if (actions.isEmpty()) throw new BusinessException(409, "没有可关联的业务动作，不能恢复工作流");
+        if (actions.stream().anyMatch(action -> AgentActionState.blocksContinuation(action.getStatus()))) {
+            throw new BusinessException(409, "业务动作仍在审批、执行或核对中，不能继续工作流");
+        }
+        if (actions.stream().anyMatch(action -> !"SUCCEEDED".equals(action.getStatus()))) {
+            throw new BusinessException(409, "业务动作未成功，禁止执行后续节点");
+        }
         if (!workflowExecutionService.transition(execution.getId(), EXEC_WAITING, EXEC_RUNNING)) {
             throw new BusinessException(409, "执行状态不是等待审批(当前:" + execution.getStatus()
                     + "),可能已在续跑,请刷新后重试");
@@ -145,32 +149,6 @@ public class WorkflowEngine {
     /** 审批后续跑(无下游覆盖注入) */
     public ExecutionResponse resume(Long executionRowId, Long actor, Consumer<ExecutionEvent> eventCallback) {
         return resume(executionRowId, actor, eventCallback, null);
-    }
-
-    /** 后台续跑(审批中心 approve 缺省路径);终态写入同一条执行记录 */
-    public void resumeInBackground(Long executionRowId) {
-        resumeInBackground(executionRowId, null);
-    }
-
-    /** 后台续跑(带已决定动作的下游覆盖) */
-    public void resumeInBackground(Long executionRowId, Map<String, Map<String, Object>> nodeOverrides) {
-        try {
-            WorkflowExecution execution = workflowExecutionService.getById(executionRowId);
-            if (execution == null) {
-                log.warn("后台续跑失败:执行记录 {} 不存在", executionRowId);
-                return;
-            }
-            workflowExecutor.execute(() -> {
-                try {
-                    resume(executionRowId, execution.getUserId(), null, nodeOverrides);
-                    log.info("工作流执行后台续跑完成 executionId={}", executionRowId);
-                } catch (Exception e) {
-                    log.warn("工作流执行后台续跑失败 executionId={}: {}", executionRowId, e.getMessage());
-                }
-            });
-        } catch (Exception e) {
-            log.warn("后台续跑启动失败 executionId={}: {}", executionRowId, e.getMessage());
-        }
     }
 
     /** 把审批已决定的动作结果按节点合入续跑上下文,供下游 {{nodeId.xxx}} 引用 */

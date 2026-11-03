@@ -3,7 +3,7 @@
     <div class="step-header">
       <LoadingOutlined v-if="step.status === 'RUNNING'" class="step-icon running" spin />
       <CheckCircleFilled v-else-if="step.status === 'SUCCEEDED'" class="step-icon success" />
-      <ClockCircleFilled v-else-if="step.status === 'PENDING_APPROVAL'" class="step-icon pending" />
+      <ClockCircleFilled v-else-if="['PENDING_APPROVAL', 'READY', 'EXECUTING', 'UNKNOWN'].includes(step.status)" class="step-icon pending" />
       <StopFilled v-else-if="step.status === 'REJECTED'" class="step-icon rejected" />
       <CloseCircleFilled v-else class="step-icon failed" />
       <span class="step-name">{{ label }}</span>
@@ -54,6 +54,9 @@ const statusText = computed(() => {
       return '失败'
     case 'PENDING_APPROVAL':
       return '等待审批'
+    case 'READY': return '等待执行'
+    case 'EXECUTING': return '业务处理中'
+    case 'UNKNOWN': return '等待核对'
     case 'REJECTED':
       return '已拒绝'
     default:

@@ -2,6 +2,7 @@ package cn.sdh.backend.workflow.executor.impl;
 
 import cn.sdh.backend.common.exception.BusinessException;
 import cn.sdh.backend.entity.AgentAction;
+import cn.sdh.backend.agent.AgentActionState;
 import cn.sdh.backend.service.AgentActionService;
 import cn.sdh.backend.workflow.executor.NodeExecutor;
 import cn.sdh.backend.workflow.model.WorkflowNode;
@@ -60,7 +61,7 @@ public class AgentToolNodeExecutor implements NodeExecutor {
         output.put("responseCode", action.getResponseCode());
         output.put("result", parseResult(action.getResultJson()));
         output.put("error", action.getErrorMessage());
-        if ("PENDING_APPROVAL".equals(action.getStatus())) output.put("__workflowPaused__", true);
+        if (AgentActionState.blocksContinuation(action.getStatus())) output.put("__workflowPaused__", true);
         if ("FAILED".equals(action.getStatus())) {
             throw new BusinessException(502, action.getErrorMessage() == null ? "业务工具执行失败" : action.getErrorMessage());
         }

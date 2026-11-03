@@ -89,14 +89,15 @@ public class EpisodicMemoryLayer implements MemoryLayer {
     /**
      * 获取会话的对话历史
      */
-    public List<MemoryEntry> getSessionHistory(String sessionId) {
-        if (sessionId == null) {
+    public List<MemoryEntry> getSessionHistory(Long userId, String sessionId) {
+        if (userId == null || sessionId == null) {
             return Collections.emptyList();
         }
 
         try {
             LambdaQueryWrapper<ChatHistory> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(ChatHistory::getSessionId, sessionId)
+                   .eq(ChatHistory::getUserId, userId)
                    .orderByAsc(ChatHistory::getCreateTime);
 
             List<ChatHistory> histories = chatHistoryMapper.selectList(wrapper);

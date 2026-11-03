@@ -28,7 +28,8 @@ class WebhookServiceSecurityTest {
     }
 
     private WebhookServiceImpl service() {
-        WebhookServiceImpl service = new WebhookServiceImpl(mock(WebhookConfigMapper.class), new ObjectMapper());
+        WebhookServiceImpl service = new WebhookServiceImpl(
+                mock(WebhookConfigMapper.class), new ObjectMapper(), null);
         ReflectionTestUtils.setField(service, "allowHttp", false);
         ReflectionTestUtils.setField(service, "allowPrivateNetwork", false);
         return service;

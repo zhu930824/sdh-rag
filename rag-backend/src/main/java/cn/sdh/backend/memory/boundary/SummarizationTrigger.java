@@ -30,7 +30,7 @@ public class SummarizationTrigger {
         return CompletableFuture.runAsync(() -> {
             try {
                 // 获取当前episode的所有消息
-                List<MemoryEntry> messages = episodicMemoryLayer.getSessionHistory(sessionId);
+                List<MemoryEntry> messages = episodicMemoryLayer.getSessionHistory(userId, sessionId);
 
                 if (messages.isEmpty()) {
                     log.debug("No messages to summarize for session: {}", sessionId);

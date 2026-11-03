@@ -10,6 +10,18 @@
 
     <a-alert class="guide" type="info" show-icon message="任务由数据库可靠队列驱动；进程重启后会自动接管租约过期的任务，重复执行由业务幂等键保护。" />
 
+    <template v-if="isAdmin && opsMetrics">
+      <a-row class="metrics" :gutter="12">
+        <a-col :xs="12" :lg="6"><a-card size="small"><a-statistic title="任务积压" :value="opsMetrics.pendingJobs + opsMetrics.retryWaitJobs" /></a-card></a-col>
+        <a-col :xs="12" :lg="6"><a-card size="small"><a-statistic title="运行中" :value="opsMetrics.runningJobs" /></a-card></a-col>
+        <a-col :xs="12" :lg="6"><a-card size="small"><a-statistic title="24h 成功率" :value="opsMetrics.successRate24h" suffix="%" :precision="2" /></a-card></a-col>
+        <a-col :xs="12" :lg="6"><a-card size="small"><a-statistic title="投递死信" :value="opsMetrics.webhookDeadLetters + opsMetrics.outboxDeadLetters" /></a-card></a-col>
+      </a-row>
+      <a-alert v-for="alert in opsMetrics.alerts" :key="alert.code" class="ops-alert"
+               :type="alert.severity === 'CRITICAL' ? 'error' : 'warning'" show-icon
+               :message="alert.message" :description="`当前 ${alert.current}，阈值 ${alert.threshold}`" />
+    </template>
+
     <a-card>
       <div class="filters">
         <a-select v-model:value="filters.status" allow-clear placeholder="全部状态" style="width: 180px" @change="resetAndLoad">
@@ -18,6 +30,13 @@
         <a-select v-model:value="filters.jobType" allow-clear placeholder="全部类型" style="width: 180px" @change="resetAndLoad">
           <a-select-option value="RAG_EVALUATION">RAG 评测</a-select-option>
           <a-select-option value="KNOWLEDGE_SOURCE_PULL">知识源同步</a-select-option>
+          <a-select-option value="DOCUMENT_INDEX">文档解析与索引</a-select-option>
+          <a-select-option value="WEBHOOK_DELIVERY">Webhook 投递</a-select-option>
+          <a-select-option value="AGENT_ACTION_EXECUTE">业务动作执行</a-select-option>
+          <a-select-option value="AGENT_ACTION_CONTINUE">动作结果处理</a-select-option>
+          <a-select-option value="AGENT_RESUME">Agent 续跑</a-select-option>
+          <a-select-option value="AGENT_RECOVER">Agent 中断恢复</a-select-option>
+          <a-select-option value="WORKFLOW_ACTION_RESUME">工作流续跑</a-select-option>
         </a-select>
       </div>
 
@@ -56,12 +75,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { cancelJob, getJobs, replayJob, type PlatformJob } from '@/api/job'
+import { cancelJob, getJobs, getReliableExecutionMetrics, replayJob, type PlatformJob, type ReliableExecutionMetrics } from '@/api/job'
+import { useUserStore } from '@/stores/user'
 
+const userStore = useUserStore()
+const isAdmin = computed(() => userStore.role.toLowerCase() === 'admin')
 const loading = ref(false)
 const records = ref<PlatformJob[]>([])
+const opsMetrics = ref<ReliableExecutionMetrics | null>(null)
 const filters = reactive<{ status?: string; jobType?: string }>({})
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showSizeChanger: true, showTotal: (total: number) => `共 ${total} 条` })
 const columns = [
@@ -86,7 +109,7 @@ function statusText(status: string) {
 function statusColor(status: string) {
   return ({ PENDING: 'default', RUNNING: 'processing', RETRY_WAIT: 'orange', SUCCEEDED: 'success', FAILED: 'error', DEAD_LETTER: 'red', CANCEL_REQUESTED: 'warning', CANCELLED: 'default' } as Record<string, string>)[status] || 'default'
 }
-function typeText(type: string) { return ({ RAG_EVALUATION: 'RAG 评测', KNOWLEDGE_SOURCE_PULL: '知识源同步' } as Record<string, string>)[type] || type }
+function typeText(type: string) { return ({ RAG_EVALUATION: 'RAG 评测', KNOWLEDGE_SOURCE_PULL: '知识源同步', DOCUMENT_INDEX: '文档解析与索引', WEBHOOK_DELIVERY: 'Webhook 投递', AGENT_ACTION_EXECUTE: '业务动作执行', AGENT_ACTION_CONTINUE: '动作结果处理', AGENT_RESUME: 'Agent 续跑', AGENT_RECOVER: 'Agent 中断恢复', WORKFLOW_ACTION_RESUME: '工作流续跑' } as Record<string, string>)[type] || type }
 function canCancel(status: string) { return ['PENDING', 'RUNNING', 'RETRY_WAIT'].includes(status) }
 function canReplay(status: string) { return ['FAILED', 'DEAD_LETTER', 'CANCELLED'].includes(status) }
 
@@ -100,6 +123,11 @@ async function loadJobs() {
     }
   } finally { loading.value = false }
 }
+async function loadOpsMetrics() {
+  if (!isAdmin.value) return
+  const res = await getReliableExecutionMetrics()
+  if (res.code === 200) opsMetrics.value = res.data || null
+}
 function resetAndLoad() { pagination.current = 1; loadJobs() }
 function handleTableChange(page: any) { pagination.current = page.current; pagination.pageSize = page.pageSize; loadJobs() }
 async function handleCancel(job: any) {
@@ -112,7 +140,11 @@ async function handleReplay(job: any) {
 }
 
 let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { loadJobs(); timer = setInterval(loadJobs, 5000) })
+onMounted(() => {
+  loadJobs()
+  loadOpsMetrics()
+  timer = setInterval(() => { loadJobs(); loadOpsMetrics() }, 5000)
+})
 onUnmounted(() => { if (timer) clearInterval(timer) })
 </script>
 
@@ -122,6 +154,8 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .page-header h1 { margin: 0 0 6px; font-size: 24px; }
 .page-header p { margin: 0; color: #8c8c8c; }
 .guide { margin-bottom: 16px; }
+.metrics { margin-bottom: 12px; }
+.ops-alert { margin-bottom: 12px; }
 .filters { display: flex; gap: 12px; margin-bottom: 16px; }
 .trace { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .error { color: #cf1322; }

@@ -15,12 +15,30 @@ import java.time.LocalDateTime;
 @TableName("agent_run")
 public class AgentRun {
 
+    // Owned exclusively by RunExecutionLeaseService; full entity updates must never reset a heartbeat/fence.
+    @TableField(value = "execution_epoch", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER, updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private Long executionEpoch;
+    @TableField(value = "lease_owner", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER, updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String leaseOwner;
+    @TableField(value = "lease_until", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER, updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private LocalDateTime leaseUntil;
+    @TableField(value = "heartbeat_at", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER, updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private LocalDateTime heartbeatAt;
+
     @TableId(type = IdType.AUTO)
     private Long id;
 
     /** 对外唯一标识(UUID,去连字符) */
     @TableField("run_key")
     private String runKey;
+
+    private String engine;
+
+    @TableField("engine_version")
+    private String engineVersion;
+
+    @TableField("memory_enabled")
+    private Boolean memoryEnabled;
 
     @TableField("session_id")
     private String sessionId;
@@ -86,7 +104,12 @@ public class AgentRun {
 
     // 状态常量
     public static final String STATUS_RUNNING = "RUNNING";
+    public static final String STATUS_INTERRUPTED = "INTERRUPTED";
     public static final String STATUS_WAITING_APPROVAL = "WAITING_APPROVAL";
+    public static final String STATUS_WAITING_ACTION = "WAITING_ACTION";
+    public static boolean isWaiting(String status) {
+        return STATUS_WAITING_APPROVAL.equals(status) || STATUS_WAITING_ACTION.equals(status);
+    }
     public static final String STATUS_COMPLETED = "COMPLETED";
     public static final String STATUS_FAILED = "FAILED";
     public static final String STATUS_REJECTED = "REJECTED";

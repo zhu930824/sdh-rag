@@ -6,6 +6,8 @@ import com.alibaba.fastjson2.JSON;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -26,12 +28,12 @@ public class WorkingMemoryLayer implements MemoryLayer {
 
     @Override
     public void store(MemoryEntry entry) {
-        if (entry.getSessionId() == null) {
-            log.warn("Working memory requires sessionId");
+        if (entry.getUserId() == null || entry.getSessionId() == null || entry.getSessionId().isBlank()) {
+            log.warn("Working memory requires userId and sessionId");
             return;
         }
 
-        String key = getRedisKey(entry.getSessionId());
+        String key = getRedisKey(entry.getUserId(), entry.getSessionId());
 
         try {
             Map<String, Object> entryMap = new HashMap<>();
@@ -45,13 +47,7 @@ public class WorkingMemoryLayer implements MemoryLayer {
 
             redisTemplate.opsForList().rightPush(key, json);
 
-            Long size = redisTemplate.opsForList().size(key);
-            if (size != null && size > config.getWorkingWindowSize()) {
-                long trimCount = size - config.getWorkingWindowSize();
-                for (int i = 0; i < trimCount; i++) {
-                    redisTemplate.opsForList().leftPop(key);
-                }
-            }
+            redisTemplate.opsForList().trim(key, -Math.max(1, config.getWorkingWindowSize()), -1);
 
             redisTemplate.expire(key, config.getWorkingMemoryTtlHours(), TimeUnit.HOURS);
 
@@ -63,11 +59,11 @@ public class WorkingMemoryLayer implements MemoryLayer {
 
     @Override
     public List<MemoryEntry> recall(MemoryQuery query) {
-        if (query.getSessionId() == null) {
+        if (query.getUserId() == null || query.getSessionId() == null || query.getSessionId().isBlank()) {
             return Collections.emptyList();
         }
 
-        String key = getRedisKey(query.getSessionId());
+        String key = getRedisKey(query.getUserId(), query.getSessionId());
 
         try {
             List<String> jsonList = redisTemplate.opsForList().range(key, 0, -1);
@@ -79,9 +75,12 @@ public class WorkingMemoryLayer implements MemoryLayer {
             for (String json : jsonList) {
                 try {
                     Map<String, Object> map = JSON.parseObject(json, Map.class);
+                    if (!(map.get("userId") instanceof Number owner)
+                            || owner.longValue() != query.getUserId()) continue;
                     MemoryEntry entry = MemoryEntry.builder()
                         .id((String) map.get("id"))
                         .userId(((Number) map.get("userId")).longValue())
+                        .sessionId(query.getSessionId())
                         .content((String) map.get("content"))
                         .type(MemoryType.valueOf(((String) map.get("type")).toUpperCase()))
                         .layer(MemoryLayerType.WORKING)
@@ -122,7 +121,11 @@ public class WorkingMemoryLayer implements MemoryLayer {
 
     @Override
     public void clearByUserId(Long userId) {
-        log.warn("Working memory is session-based, cannot clear by userId");
+        java.util.Objects.requireNonNull(userId, "userId");
+        try (Cursor<String> keys = redisTemplate.scan(ScanOptions.scanOptions()
+                .match(userPrefix(userId) + "*").count(200).build())) {
+            while (keys.hasNext()) redisTemplate.delete(keys.next());
+        }
     }
 
     @Override
@@ -139,8 +142,8 @@ public class WorkingMemoryLayer implements MemoryLayer {
     /**
      * 清除会话的工作记忆
      */
-    public void clearSession(String sessionId) {
-        String key = getRedisKey(sessionId);
+    public void clearSession(Long userId, String sessionId) {
+        String key = getRedisKey(userId, sessionId);
         redisTemplate.delete(key);
         log.debug("Cleared working memory for session: {}", sessionId);
     }
@@ -148,13 +151,19 @@ public class WorkingMemoryLayer implements MemoryLayer {
     /**
      * 获取会话消息数量
      */
-    public long getMessageCount(String sessionId) {
-        String key = getRedisKey(sessionId);
+    public long getMessageCount(Long userId, String sessionId) {
+        String key = getRedisKey(userId, sessionId);
         Long size = redisTemplate.opsForList().size(key);
         return size != null ? size : 0;
     }
 
-    private String getRedisKey(String sessionId) {
-        return config.getWorkingMemoryKeyPrefix() + sessionId;
+    private String userPrefix(Long userId) {
+        return config.getWorkingMemoryKeyPrefix() + "v2:" + java.util.Objects.requireNonNull(userId, "userId") + ":";
+    }
+
+    private String getRedisKey(Long userId, String sessionId) {
+        return userPrefix(userId) + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(java.util.Objects.requireNonNull(sessionId, "sessionId")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

@@ -16,6 +16,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -71,9 +72,11 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return null;
             }
 
-            String vectorId = UUID.randomUUID().toString();
+            Object revision = documentMetadata == null ? null : documentMetadata.get("index_revision");
+            String vectorId = deterministicVectorId(
+                    knowledgeId, chunk.getDocumentId(), chunk.getChunkIndex(), revision);
             Map<String, Object> doc = new HashMap<>();
-            doc.put("chunk_id", chunk.getId());
+            doc.put("chunk_id", chunk.getChunkId());
             doc.put("document_id", chunk.getDocumentId());
             doc.put("knowledge_id", knowledgeId);
             doc.put("chunk_index", chunk.getChunkIndex());
@@ -280,7 +283,51 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         } catch (Exception e) {
             log.error("删除文档向量失败: documentId={}, knowledgeId={}, error={}",
                     documentId, knowledgeId, e.getMessage());
+            throw new IllegalStateException("删除文档向量失败: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public void deleteVectorsExceptRevision(Long documentId, Long knowledgeId, int revision) {
+        try {
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) return;
+            Query query = Query.of(q -> q.bool(b -> {
+                b.must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))));
+                b.mustNot(m -> m.term(t -> t.field("index_revision").value(FieldValue.of(revision))));
+                return b;
+            }));
+            elasticsearchClient.deleteByQuery(d -> d.index(indexName).query(query));
+            log.info("清理文档旧索引版本完成: documentId={}, knowledgeId={}, revision={}",
+                    documentId, knowledgeId, revision);
+        } catch (Exception e) {
+            log.error("清理文档旧索引版本失败: documentId={}, knowledgeId={}, error={}",
+                    documentId, knowledgeId, e.getMessage(), e);
+            throw new IllegalStateException("清理文档旧索引版本失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void deleteVectorsByRevision(Long documentId, Long knowledgeId, int revision) {
+        try {
+            String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
+            if (!elasticsearchIndexService.indexExists(knowledgeId)) return;
+            Query query = Query.of(q -> q.bool(b -> b
+                    .must(m -> m.term(t -> t.field("document_id").value(FieldValue.of(documentId))))
+                    .must(m -> m.term(t -> t.field("index_revision").value(FieldValue.of(revision))))));
+            elasticsearchClient.deleteByQuery(d -> d.index(indexName).query(query));
+            log.info("清理未完成文档索引版本: documentId={}, knowledgeId={}, revision={}",
+                    documentId, knowledgeId, revision);
+        } catch (Exception e) {
+            log.error("清理未完成文档索引版本失败: documentId={}, knowledgeId={}, revision={}",
+                    documentId, knowledgeId, revision, e);
+        }
+    }
+
+    static String deterministicVectorId(Long knowledgeId, Long documentId,
+                                        Integer chunkIndex, Object revision) {
+        String key = knowledgeId + ":" + documentId + ":" + chunkIndex + ":" + Objects.toString(revision, "0");
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private List<Float> toFloatList(float[] arr) {

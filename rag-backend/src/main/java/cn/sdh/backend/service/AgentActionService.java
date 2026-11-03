@@ -2,7 +2,8 @@ package cn.sdh.backend.service;
 
 import cn.sdh.backend.common.context.UserContext;
 import cn.sdh.backend.common.exception.BusinessException;
-import cn.sdh.backend.demo.InternalToolDispatcher;
+import cn.sdh.backend.agent.ToolDefinitionFingerprint;
+import cn.sdh.backend.agent.RunExecutionLeaseService;
 import cn.sdh.backend.entity.AgentAction;
 import cn.sdh.backend.entity.AgentActionFeedback;
 import cn.sdh.backend.entity.AgentTool;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,27 +31,74 @@ public class AgentActionService {
     private final AgentActionMapper actions;
     private final AgentActionFeedbackMapper feedbacks;
     private final AgentToolService toolService;
-    private final AgentToolHttpClient httpClient;
-    private final InternalToolDispatcher internalDispatcher;
+    private final AgentActionExecutor executor;
+    private final AgentActionJobs actionJobs;
+    private final AgentActionCompletionService completion;
     private final ObjectMapper objectMapper;
     private final AgentImprovementService improvementService;
+    private final RunExecutionLeaseService leases;
 
     public record ActionCommand(Long toolId, Map<String, Object> parameters, Object evidence,
                                 String idempotencyKey, Long workflowId, String nodeId,
-                                Long runId, Long stepId, Long workflowExecutionId) {}
+                                Long runId, Long stepId, Long workflowExecutionId, String toolCallId,
+                                RunExecutionLeaseService.Fence fence) {
+        public ActionCommand(Long toolId, Map<String, Object> parameters, Object evidence,
+                             String idempotencyKey, Long workflowId, String nodeId,
+                             Long runId, Long stepId, Long workflowExecutionId, String toolCallId) {
+            this(toolId, parameters, evidence, idempotencyKey, workflowId, nodeId,
+                    runId, stepId, workflowExecutionId, toolCallId, null);
+        }
+        public ActionCommand(Long toolId, Map<String, Object> parameters, Object evidence,
+                             String idempotencyKey, Long workflowId, String nodeId,
+                             Long runId, Long stepId, Long workflowExecutionId) {
+            this(toolId, parameters, evidence, idempotencyKey, workflowId, nodeId,
+                    runId, stepId, workflowExecutionId, null);
+        }
+    }
     public record DecisionCommand(String reason) {}
     public record FeedbackCommand(String outcome, String comment, Boolean reusableKnowledge) {}
+    public record ReconcileCommand(String outcome, String receipt) {}
 
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public AgentAction request(ActionCommand command) {
         return request(command, requireActor());
     }
 
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public AgentAction request(ActionCommand command, Long actor) {
         if (command == null || command.toolId() == null) throw new BusinessException(400, "请选择业务工具");
         AgentTool tool = toolService.requireUsable(command.toolId(), actor);
+        AgentAction registered;
+        if (command.fence() != null) {
+            if (!java.util.Objects.equals(command.runId(), command.fence().runId())
+                    || !java.util.Objects.equals(actor, command.fence().userId())) {
+                throw new BusinessException(409, "动作与执行租约不匹配");
+            }
+            registered = leases.guarded(command.fence(), () -> register(command, actor, tool));
+        } else {
+            if (command.runId() != null) throw new BusinessException(409, "运行内动作必须携带执行租约");
+            registered = leases.transaction(() -> register(command, actor, tool));
+        }
+        // The registration transaction has committed before any external call starts.
+        if ("READY".equals(registered.getStatus()) && "GET".equalsIgnoreCase(tool.getHttpMethod())) {
+            return executor.execute(registered.getId(), registered.getExecutionVersion());
+        }
+        return registered;
+    }
+
+    private AgentAction register(ActionCommand command, Long actor, AgentTool tool) {
         String idempotencyKey = normalizeIdempotencyKey(command.idempotencyKey());
+        // Older SDK runs used a different key format; keep their existing operation identity on resume.
+        if (command.runId() != null && command.toolCallId() != null) {
+            for (AgentAction previous : listByRun(command.runId())) {
+                if (tool.getId().equals(previous.getToolId()) && sameParameters(previous, command.parameters())) {
+                    idempotencyKey = previous.getIdempotencyKey();
+                    break;
+                }
+            }
+        }
         AgentAction existing = findByIdempotency(tool.getId(), actor, idempotencyKey);
-        if (existing != null) return existing;
+        if (existing != null) return verifySameRequest(existing, command.parameters());
 
         AgentAction action = new AgentAction();
         action.setWorkflowId(command.workflowId());
@@ -62,6 +111,9 @@ public class AgentActionService {
         action.setRequestJson(toJson(command.parameters() == null ? Map.of() : command.parameters(), "请求参数"));
         action.setEvidenceJson(command.evidence() == null ? null : toJson(command.evidence(), "决策依据"));
         action.setRunId(command.runId());
+        action.setToolCallId(command.toolCallId());
+        action.setToolDefinitionHash(ToolDefinitionFingerprint.of(tool));
+        action.setExecutionVersion(1);
         action.setStepId(command.stepId());
         action.setWorkflowExecutionId(command.workflowExecutionId());
         action.setStatus(requiresApproval(tool) ? "PENDING_APPROVAL" : "READY");
@@ -70,11 +122,14 @@ public class AgentActionService {
         try {
             actions.insert(action);
         } catch (DuplicateKeyException e) {
-            AgentAction duplicated = findByIdempotency(tool.getId(), actor, idempotencyKey);
-            if (duplicated != null) return duplicated;
+            AgentAction duplicated = actions.findIdempotentCurrent(tool.getId(), actor, idempotencyKey);
+            if (duplicated != null) return verifySameRequest(duplicated, command.parameters());
             throw e;
         }
-        return "READY".equals(action.getStatus()) ? execute(action) : action;
+        if ("READY".equals(action.getStatus()) && !"GET".equalsIgnoreCase(tool.getHttpMethod())) {
+            actionJobs.enqueueExecution(action);
+        }
+        return action;
     }
 
     public List<AgentAction> listMine(String status) {
@@ -119,6 +174,7 @@ public class AgentActionService {
         return action;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public AgentAction approve(Long id) {
         Long actor = requireActor();
         AgentAction action = requireAccessible(id, actor);
@@ -127,10 +183,11 @@ public class AgentActionService {
             throw new BusinessException(409, "动作状态已变化，请刷新后重试");
         }
         action = actions.selectById(id);
-        if ("READY".equals(action.getStatus())) return execute(action);
+        if ("READY".equals(action.getStatus())) actionJobs.enqueueExecution(action);
         return action;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public AgentAction reject(Long id, DecisionCommand command) {
         Long actor = requireActor();
         AgentAction action = requireAccessible(id, actor);
@@ -139,15 +196,36 @@ public class AgentActionService {
         if (actions.reject(id, actor, reason == null ? "审批人拒绝" : reason) != 1) {
             throw new BusinessException(409, "仅待审批动作可以拒绝");
         }
-        return actions.selectById(id);
+        AgentAction rejected = actions.selectById(id);
+        completion.publishDecision(rejected);
+        return rejected;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public AgentAction retry(Long id) {
         Long actor = requireActor();
         AgentAction action = requireAccessible(id, actor);
         if (!actor.equals(action.getRequestedBy())) throw new BusinessException(403, "仅动作发起人可重试");
-        if (actions.transition(id, "FAILED", "READY") != 1) throw new BusinessException(409, "仅失败动作可以重试");
-        return execute(actions.selectById(id));
+        if (actions.prepareRetry(id) != 1) throw new BusinessException(409, "仅失败动作可以重试");
+        AgentAction ready = actions.selectById(id);
+        actionJobs.enqueueExecution(ready);
+        return ready;
+    }
+
+    /** Explicit human reconciliation; UNKNOWN can never use the retry endpoint directly. */
+    @Transactional(rollbackFor = Exception.class)
+    public AgentAction reconcile(Long id, ReconcileCommand command) {
+        AgentAction action = requireAccessible(id, requireActor());
+        if (command == null) throw new BusinessException(400, "请填写业务核对结果");
+        String outcome = enumValue(command.outcome(), List.of("SUCCEEDED", "FAILED"), "核对结果");
+        String receipt = limitNullable(command.receipt(), 1000, "核对凭据");
+        if (receipt == null) throw new BusinessException(400, "请填写下游回执或确认未执行的依据");
+        if (actions.reconcile(id, outcome, receipt, requireActor()) != 1) {
+            throw new BusinessException(409, "仅待核对动作可以提交核对结果");
+        }
+        AgentAction reconciled = actions.selectById(id);
+        completion.publishDecision(reconciled);
+        return reconciled;
     }
 
     public AgentActionFeedback feedback(Long id, FeedbackCommand command) {
@@ -173,35 +251,18 @@ public class AgentActionService {
         return feedback;
     }
 
-    private AgentAction execute(AgentAction action) {
-        if (actions.transition(action.getId(), "READY", "EXECUTING") != 1) return actions.selectById(action.getId());
-        AgentAction executing = actions.selectById(action.getId());
+    private AgentAction verifySameRequest(AgentAction existing, Map<String, Object> parameters) {
+        if (!sameParameters(existing, parameters)) throw new BusinessException(409, "同一幂等键不能用于不同请求参数");
+        return existing;
+    }
+
+    private boolean sameParameters(AgentAction existing, Map<String, Object> parameters) {
         try {
-            AgentTool tool = toolService.requireUsable(executing.getToolId(), executing.getRequestedBy());
-            @SuppressWarnings("unchecked")
-            Map<String, Object> parameters = objectMapper.readValue(executing.getRequestJson(), Map.class);
-            AgentToolHttpClient.ToolResponse response = InternalToolDispatcher.isInternal(tool.getEndpoint())
-                    ? internalDispatcher.execute(tool, parameters, executing.getRequestedBy())
-                    : httpClient.execute(tool, parameters);
-            executing.setResponseCode(response.statusCode());
-            executing.setExecutedAt(LocalDateTime.now());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                executing.setStatus("SUCCEEDED");
-                executing.setResultJson(limitResult(response.body()));
-                executing.setErrorMessage(null);
-            } else {
-                executing.setStatus("FAILED");
-                executing.setErrorMessage("工具返回非成功状态: " + response.statusCode());
-            }
-        } catch (Exception e) {
-            log.warn("Agent action {} execution failed: {}", executing.getId(), e.getMessage());
-            executing.setStatus("FAILED");
-            executing.setExecutedAt(LocalDateTime.now());
-            executing.setErrorMessage(truncateNullable(e.getMessage(), 1000));
+            return objectMapper.readTree(existing.getRequestJson()).equals(
+                    objectMapper.valueToTree(parameters == null ? Map.of() : parameters));
+        } catch (Exception error) {
+            throw new BusinessException(409, "已有动作参数无法校验，禁止重放", error);
         }
-        executing.setUpdateTime(LocalDateTime.now());
-        actions.updateById(executing);
-        return executing;
     }
 
     private AgentAction requireAccessible(Long id, Long actor) {
@@ -234,7 +295,7 @@ public class AgentActionService {
     }
 
     private String normalizeStatus(String value) {
-        return enumValue(value, List.of("PENDING_APPROVAL", "READY", "EXECUTING", "SUCCEEDED", "FAILED", "REJECTED"), "动作状态");
+        return enumValue(value, List.of("PENDING_APPROVAL", "READY", "EXECUTING", "UNKNOWN", "SUCCEEDED", "FAILED", "REJECTED"), "动作状态");
     }
 
     private String enumValue(String value, List<String> allowed, String label) {
@@ -253,11 +314,6 @@ public class AgentActionService {
         } catch (Exception e) {
             throw new BusinessException(400, label + "不是有效 JSON 数据", e);
         }
-    }
-
-    private String limitResult(String value) {
-        if (value == null) return null;
-        return value.length() > 2 * 1024 * 1024 ? value.substring(0, 2 * 1024 * 1024) : value;
     }
 
     private String limitNullable(String value, int max, String label) {

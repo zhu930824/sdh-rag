@@ -1,0 +1,42 @@
+CREATE TABLE transactional_outbox (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_key VARCHAR(160) NOT NULL COMMENT '业务事件幂等键',
+    event_type VARCHAR(128) NOT NULL,
+    aggregate_type VARCHAR(60) NULL,
+    aggregate_id BIGINT NULL,
+    payload_json LONGTEXT NOT NULL,
+    status VARCHAR(24) NOT NULL DEFAULT 'NEW' COMMENT 'NEW/RELAYING/PUBLISHED/RETRY_WAIT/DEAD_LETTER',
+    relay_attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 10,
+    available_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lease_owner VARCHAR(120) NULL,
+    lease_until DATETIME NULL,
+    trace_id VARCHAR(64) NOT NULL,
+    created_by BIGINT NOT NULL DEFAULT 0,
+    error_message VARCHAR(2000) NULL,
+    published_at DATETIME NULL,
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_outbox_event_key (event_key),
+    KEY idx_outbox_relay (status, available_at),
+    KEY idx_outbox_lease (status, lease_until),
+    KEY idx_outbox_aggregate (aggregate_type, aggregate_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务型事件发件箱';
+
+CREATE TABLE webhook_delivery (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    delivery_key VARCHAR(64) NOT NULL COMMENT '接收方去重键',
+    outbox_id BIGINT NOT NULL,
+    webhook_id BIGINT NOT NULL,
+    event_type VARCHAR(128) NOT NULL,
+    status VARCHAR(24) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/RUNNING/SUCCEEDED/FAILED/DEAD_LETTER/SKIPPED',
+    attempts INT NOT NULL DEFAULT 0,
+    error_message VARCHAR(2000) NULL,
+    delivered_at DATETIME NULL,
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_webhook_delivery_key (delivery_key),
+    UNIQUE KEY uk_webhook_outbox_target (outbox_id, webhook_id),
+    KEY idx_webhook_delivery_status (status, update_time),
+    KEY idx_webhook_delivery_webhook (webhook_id, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Webhook可靠投递记录';

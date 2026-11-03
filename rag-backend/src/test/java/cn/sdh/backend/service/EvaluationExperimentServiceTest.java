@@ -30,7 +30,7 @@ class EvaluationExperimentServiceTest {
     @Mock EvaluationService evaluationService;
     @Mock TestDatasetService datasetService;
     @Mock KnowledgeAccessService access;
-    @Mock WebhookService webhooks;
+    @Mock EvaluationExperimentFinalizer finalizer;
     EvaluationExperimentServiceImpl service;
 
     @BeforeEach void setup() {
@@ -38,7 +38,7 @@ class EvaluationExperimentServiceTest {
         context.setUserId(7L);
         UserContext.setUserContext(context);
         service = new EvaluationExperimentServiceImpl(experiments, variants, runs, runTasks, tasks,
-                evaluationService, datasetService, access, webhooks);
+                evaluationService, datasetService, access, finalizer);
     }
 
     @AfterEach void cleanup() { UserContext.clear(); }

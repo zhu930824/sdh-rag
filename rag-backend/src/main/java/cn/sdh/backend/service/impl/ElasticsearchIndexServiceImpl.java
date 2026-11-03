@@ -133,6 +133,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         properties.put("doc_type", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
         properties.put("doc_date", Property.of(p -> p.date(DateProperty.of(d -> d))));
         properties.put("freshness_score", Property.of(p -> p.float_(FloatNumberProperty.of(f -> f))));
+        properties.put("index_revision", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
         return properties;
     }
 
@@ -143,6 +144,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         properties.put("document_id", Property.of(p -> p.keyword(KeywordProperty.of(l -> l))));
         properties.put("knowledge_id", Property.of(p -> p.keyword(KeywordProperty.of(l -> l))));
         properties.put("chunk_index", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
+        properties.put("index_revision", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
         properties.put("content", Property.of(p -> p.text(TextProperty.of(t -> t
                 .analyzer("ik_max_word")
                 .searchAnalyzer("ik_smart")))));

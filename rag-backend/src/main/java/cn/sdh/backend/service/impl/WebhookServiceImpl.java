@@ -2,6 +2,9 @@ package cn.sdh.backend.service.impl;
 
 import cn.sdh.backend.entity.WebhookConfig;
 import cn.sdh.backend.mapper.WebhookConfigMapper;
+import cn.sdh.backend.common.context.UserContext;
+import cn.sdh.backend.common.context.TraceContext;
+import cn.sdh.backend.service.TransactionalOutboxService;
 import cn.sdh.backend.service.WebhookService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -37,6 +40,7 @@ public class WebhookServiceImpl extends ServiceImpl<WebhookConfigMapper, Webhook
 
     private final WebhookConfigMapper webhookConfigMapper;
     private final ObjectMapper objectMapper;
+    private final TransactionalOutboxService outboxService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${security.webhook.allow-http:false}")
@@ -130,27 +134,39 @@ public class WebhookServiceImpl extends ServiceImpl<WebhookConfigMapper, Webhook
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void triggerWebhooks(String event, Map<String, Object> payload) {
-        List<WebhookConfig> webhooks = getWebhooksByEvent(event);
-        
-        for (WebhookConfig webhook : webhooks) {
-            try {
-                triggerWebhook(webhook, event, payload);
-            } catch (Exception e) {
-                log.error("Webhook触发失败: {} - {}", webhook.getName(), e.getMessage());
-            }
+        triggerWebhooks(event, payload, UUID.randomUUID().toString());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void triggerWebhooks(String event, Map<String, Object> payload, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("Webhook事件幂等键不能为空");
         }
+        String eventKey = idempotencyKey.startsWith("webhook:")
+                ? idempotencyKey : "webhook:" + idempotencyKey;
+        outboxService.publishWebhook(eventKey, event, payload, getWebhooksByEvent(event),
+                UserContext.getCurrentUserId());
     }
 
     @Override
     public boolean triggerWebhook(WebhookConfig webhook, String event, Map<String, Object> payload) {
+        return triggerWebhook(webhook, event, payload, null);
+    }
+
+    @Override
+    public boolean triggerWebhook(WebhookConfig webhook, String event, Map<String, Object> payload, String deliveryId) {
         log.info("触发Webhook: {} (Event: {})", webhook.getName(), event);
 
         try {
+            validateNetworkTarget(webhook.getUrl());
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("event", event);
             requestBody.put("timestamp", System.currentTimeMillis());
             requestBody.put("data", payload);
+            if (deliveryId != null && !deliveryId.isBlank()) requestBody.put("deliveryId", deliveryId);
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 
@@ -167,6 +183,15 @@ public class WebhookServiceImpl extends ServiceImpl<WebhookConfigMapper, Webhook
                 } catch (JsonProcessingException e) {
                     log.warn("解析自定义请求头失败: {}", e.getMessage());
                 }
+            }
+
+            if (deliveryId != null && !deliveryId.isBlank()) {
+                headers.set("X-Webhook-Delivery", deliveryId);
+            }
+            if (TraceContext.current() != null) {
+                headers.set("X-Trace-Id", TraceContext.current());
+                headers.set("traceparent", "00-" + TraceContext.current() + "-"
+                        + UUID.randomUUID().toString().replace("-", "").substring(0, 16) + "-01");
             }
 
             if (webhook.getSecret() != null && !webhook.getSecret().isEmpty()) {
