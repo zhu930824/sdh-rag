@@ -27,7 +27,7 @@ class AgentAskServiceResumeTest {
     @Test void backgroundResumeIsPersistedInsteadOfStartingAnInProcessSubscription() {
         PlatformJobService jobs = mock(PlatformJobService.class);
         AgentAskService service = new AgentAskService(null, actions, null, runs,
-                null, null, null, null, jobs, null, null, null);
+                null, null, null, jobs, null, null, null, null);
         AgentRun run = new AgentRun(); run.setId(10L); run.setRunKey("run-1");
         run.setUserId(7L); run.setStatus(AgentRun.STATUS_WAITING_APPROVAL); run.setPendingActionId(20L);
         when(runs.getByRunKey("run-1")).thenReturn(run);

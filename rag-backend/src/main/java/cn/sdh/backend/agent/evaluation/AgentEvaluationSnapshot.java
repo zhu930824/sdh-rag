@@ -7,16 +7,25 @@ import java.util.*;
 /** Observed terminal evidence, not a reconstruction of missing execution-time configuration. */
 final class AgentEvaluationSnapshot {
     private AgentEvaluationSnapshot() {}
-    static String capture(AgentRun run, ChatHistory history, List<AgentStep> steps, LocalDateTime time) {
+    static String capture(AgentRun run, ChatHistory history, List<AgentStep> steps,
+                          List<cn.sdh.backend.agent.AgentExecutionAttemptService.Attempt> attempts, LocalDateTime time) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("schemaVersion", 1); snapshot.put("capturedAt", time.toString());
+        snapshot.put("schemaVersion", 2); snapshot.put("capturedAt", time.toString());
         snapshot.put("provenance", "TERMINAL_RUN_ARCHIVE");
         snapshot.put("runKey", run.getRunKey()); snapshot.put("status", run.getStatus());
         snapshot.put("engine", run.getEngine()); snapshot.put("engineVersion", run.getEngineVersion());
         snapshot.put("modelId", run.getModelId()); snapshot.put("knowledgeId", run.getKnowledgeId());
         snapshot.put("memoryEnabled", run.getMemoryEnabled()); snapshot.put("maxSteps", run.getMaxSteps());
-        snapshot.put("modelConfigurationVersion", "UNKNOWN"); snapshot.put("promptVersion", "UNKNOWN");
-        snapshot.put("knowledgePublicationVersion", "UNKNOWN"); snapshot.put("toolDefinitionVersion", "UNKNOWN");
+        var configurations = attempts.stream().map(a -> com.alibaba.fastjson2.JSON.parseObject(a.snapshotJson())).toList();
+        boolean complete = run.getExecutionEpoch() != null && run.getExecutionEpoch() > 0 && configurations.size() == run.getExecutionEpoch();
+        for (int i = 0; i < attempts.size(); i++) complete &= attempts.get(i).epoch() == i + 1;
+        snapshot.put("executionEpoch", run.getExecutionEpoch()); snapshot.put("executionAttempts", configurations);
+        snapshot.put("configurationCoverage", attempts.isEmpty() ? "NONE" : complete ? "COMPLETE" : "PARTIAL");
+        for (String field : List.of("modelConfigurationVersion", "promptVersion", "toolDefinitionVersion")) {
+            var versions = configurations.stream().map(c -> c.getString(field)).distinct().toList();
+            snapshot.put(field, !complete || versions.contains(null) ? "UNKNOWN" : versions.size() == 1 ? versions.getFirst() : "MULTIPLE");
+        }
+        snapshot.put("knowledgePublicationVersion", "UNKNOWN");
         snapshot.put("question", cap(run.getQuestion(), 20000)); snapshot.put("answer", cap(history == null ? null : history.getAnswer(), 64000));
         snapshot.put("evidencePreview", cap(run.getEvidenceText(), 12000)); snapshot.put("errorPreview", cap(run.getErrorMessage(), 4000));
         snapshot.put("stepCount", run.getStepCount()); snapshot.put("promptTokens", run.getPromptTokens());

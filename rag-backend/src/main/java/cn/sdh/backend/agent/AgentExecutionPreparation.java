@@ -21,22 +21,30 @@ public class AgentExecutionPreparation {
     private final AgentCapability capability;
     private final ChatServiceImpl chat;
     public enum Purpose { INITIAL, RESUME }
-    public record ModelBinding(ModelConfig config, ModelProvider provider, ChatModel model) {}
+    public record ModelBinding(ModelConfig config, ModelProvider provider, ChatModel model) {
+        public ModelBinding { config = copy(config); }
+        @Override public ModelConfig config() { return copy(config); }
+        @Override public String toString() { return "ModelBinding[configId=" + config.getId() + ", provider=" + provider + "]"; }
+        private static ModelConfig copy(ModelConfig original) {
+            var copy = new ModelConfig(); org.springframework.beans.BeanUtils.copyProperties(original, copy); return copy;
+        }
+    }
 
     public ModelBinding model(Long configId, Purpose purpose) {
         boolean resume = purpose == Purpose.RESUME;
         ModelConfig config = configId == null ? configs.getDefault() : configs.getById(configId);
         if (config == null) throw new BusinessException(400, resume ? "运行关联的模型配置已不存在,无法续跑" : "模型配置错误,请检查模型设置");
+        if (Integer.valueOf(0).equals(config.getStatus())) throw new BusinessException(400, "所选模型配置已停用");
+        ModelConfig selected = new ModelConfig(); org.springframework.beans.BeanUtils.copyProperties(config, selected);
         ModelProvider provider = ModelProvider.fromString(config.getProvider());
         if (!capability.supports(provider)) {
             throw new BusinessException(400, "当前模型供应商(" + config.getProvider() + ")" + (resume
                     ? "已不在 Agent 工具调用白名单,无法续跑"
                     : "暂不支持 Agent 工具调用:请在模型管理中选择白名单供应商(默认 DashScope/OpenAI)或关闭 Agent 模式"));
         }
-        ChatModel model = models.getModelById(config.getModelId());
-        if (model == null) model = models.getModel(null);
+        ChatModel model = models.createConfiguredModel(selected);
         if (model == null) throw new BusinessException(400, resume ? "无法创建聊天模型,无法续跑" : "无法创建聊天模型,请检查模型配置");
-        return new ModelBinding(config, provider, model);
+        return new ModelBinding(selected, provider, model);
     }
 
     public String system(String evidence, List<AgentTool> tools, Long userId, String sessionId, String question, boolean memoryEnabled) {

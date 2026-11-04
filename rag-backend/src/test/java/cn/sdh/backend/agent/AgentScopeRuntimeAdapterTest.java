@@ -94,6 +94,29 @@ class AgentScopeRuntimeAdapterTest {
                 () -> new AgentScopeRuntimeAdapter(factory, states).execute(request));
         verifyNoInteractions(factory, model);
     }
+    @Test void resumedSdkUsesTheCurrentAttemptSystemPromptAndModelConfiguration() {
+        when(factory.create(any())).thenReturn(model); when(model.getModelName()).thenReturn("test-model");
+        AgentTool tool = new AgentTool(); tool.setCode("ticket"); tool.setName("ticket"); tool.setHttpMethod("POST");
+        when(model.stream(anyList(), anyList(), any())).thenReturn(Flux.just(ChatResponse.builder().content(List.of(
+                ToolUseBlock.builder().id("call-1").name("ticket").input(Map.of()).build())).build()));
+        new AgentScopeRuntimeAdapter(factory, states).execute(new AgentRuntimePort.Request("run-1", 7L,
+                "original-system", "question", new ModelConfig(), List.of(tool), 3, List.of(),
+                (t, id, args) -> new AgentRuntimePort.ToolReply("waiting", true), delta -> {}));
+        ModelConfig current = new ModelConfig(); current.setModelId("current-model");
+        when(model.stream(anyList(), anyList(), any())).thenAnswer(call -> {
+            List<Msg> messages = call.getArgument(0);
+            assertTrue(messages.stream().anyMatch(m -> "current-system".equals(m.getTextContent())),
+                    "A restored SDK session must apply the system prompt recorded for this attempt");
+            assertFalse(messages.stream().anyMatch(m -> "original-system".equals(m.getTextContent())));
+            return Flux.just(text("done"));
+        });
+        var result = new AgentScopeRuntimeAdapter(factory, new JdbcAgentStateStore(jdbc)).execute(
+                new AgentRuntimePort.Request("run-1", 7L, "current-system", "question", current, List.of(tool), 3,
+                        List.of(new AgentRuntimePort.ResumeResult("call-1", "ticket", "done")),
+                        (t, id, args) -> { throw new AssertionError("Already executed"); }, delta -> {}));
+        assertEquals(AgentRuntimePort.Status.COMPLETED, result.status());
+        verify(factory).create(same(current));
+    }
 
     @Test void reportsUsageBeforeRejectingAnAttemptThatExceedsItsRemainingAllowance() {
         when(factory.create(any())).thenReturn(model);

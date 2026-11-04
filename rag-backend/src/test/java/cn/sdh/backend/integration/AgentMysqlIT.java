@@ -38,8 +38,8 @@ class AgentMysqlIT {
         mysql.admin().execute("CREATE DATABASE `" + schema + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         var source = mysql.source(schema);
         Flyway.configure().dataSource(source).target("30").load().migrate();
-        var upgraded = Flyway.configure().dataSource(source).target("35").load();
-        assertEquals(5, upgraded.migrate().migrationsExecuted, "V30 -> V35 must apply exactly five migrations");
+        var upgraded = Flyway.configure().dataSource(source).target("36").load();
+        assertEquals(6, upgraded.migrate().migrationsExecuted, "V30 -> V36 must apply exactly six migrations");
         upgraded.validate();
         assertEquals(0, upgraded.migrate().migrationsExecuted, "Re-running the migrator must be a no-op");
         context = MysqlAgentContext.open(source);
@@ -51,7 +51,7 @@ class AgentMysqlIT {
     }
 
     @BeforeEach void reset() {
-        for (String table : List.of("agent_evaluation_record", "agent_evaluation_dataset", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
+        for (String table : List.of("agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
             jdbc.execute("DELETE FROM " + table); // Only this freshly created, private schema is connected.
         }
     }
@@ -65,10 +65,10 @@ class AgentMysqlIT {
         if (mysql != null) mysql.close();
     }
 
-    @Test void migrationsAreValidatedOnMySqlAndReachV35() {
+    @Test void migrationsAreValidatedOnMySqlAndReachV36() {
         assertTrue(jdbc.queryForObject("SELECT VERSION()", String.class).startsWith("8."));
-        assertEquals("35", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
-        assertEquals(35, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
+        assertEquals("36", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
+        assertEquals(36, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
         assertEquals(0, count("agent_run"));
     }
 
@@ -113,7 +113,10 @@ class AgentMysqlIT {
         AgentRun run = createRun();
         var store = context.getBean(JdbcAgentStateStore.class);
         var state = AgentState.builder().userId("1").sessionId(run.getRunKey()).build();
+        var attempts = context.getBean(AgentExecutionAttemptService.class);
         try (var old = leases.claim(run.getRunKey(), 1L)) {
+            var oldPrepared = prepared(run, old, "model-a");
+            attempts.capture(oldPrepared, run);
             var scoped = store.fenced(old.fence());
             scoped.saveIfVersion("1", run.getRunKey(), "agent_state", state, 0);
             expire(run.getId()); assertEquals(1, leases.interruptExpired());
@@ -123,6 +126,10 @@ class AgentMysqlIT {
             jdbc.update("UPDATE platform_job SET status='RUNNING',lease_owner='worker-new',lease_until=TIMESTAMPADD(SECOND,120,NOW()) WHERE id=?", receipt.jobId());
             assertTrue(recovery.begin(new AgentRunRecoveryService.Payload(run.getRunKey(), receipt.generation()), jobs.get(receipt.jobId())));
             try (var next = leases.claim(run.getRunKey(), 1L)) {
+                var current = attempts.capture(prepared(run, next, "model-b"), run);
+                assertEquals(List.of("model"), com.alibaba.fastjson2.JSON.parseObject(current.snapshotJson()).getList("changedSections", String.class));
+                assertThrows(BusinessException.class, () -> attempts.capture(oldPrepared, run));
+                assertEquals(2, attempts.list(run.getId(), 1L).size());
                 assertEquals(old.fence().epoch() + 1, next.fence().epoch());
                 assertFalse(leases.renew(old.fence()));
                 assertThrows(BusinessException.class, () -> scoped.saveIfVersion("1", run.getRunKey(), "agent_state", state, 0));
@@ -220,6 +227,7 @@ class AgentMysqlIT {
         var dataset = evaluation.importDataset(new cn.sdh.backend.agent.evaluation.AgentEvaluationData.ImportRequest("验收", null, List.of(scenario)), 1L);
         AgentRun run = createRun();
         try (var lease = leases.claim(run.getRunKey(), 1L)) {
+            context.getBean(AgentExecutionAttemptService.class).capture(prepared(run, lease, "model-at-execution"), run);
             context.getBean(AgentRunLifecycle.class).complete(new AgentRunLifecycle.Context(lease.fence(), null, null),
                     new AgentRunLifecycle.Progress(1, 4, 2, 6), "ticket-42");
         }
@@ -228,6 +236,8 @@ class AgentMysqlIT {
         assertEquals(ids.getFirst(), ids.getLast()); assertEquals(1, count("agent_evaluation_record"));
         String snapshot = evaluation.detail(ids.getFirst(), 1L).runSnapshotJson();
         assertEquals("ticket-42", com.alibaba.fastjson2.JSON.parseObject(snapshot).getString("answer"));
+        assertEquals("COMPLETE", com.alibaba.fastjson2.JSON.parseObject(snapshot).getString("configurationCoverage"));
+        assertEquals(1, com.alibaba.fastjson2.JSON.parseObject(snapshot).getJSONArray("executionAttempts").size());
         jdbc.update("UPDATE chat_history SET answer='changed' WHERE id=?", run.getHistoryId());
         assertEquals(snapshot, evaluation.detail(ids.getFirst(), 1L).runSnapshotJson());
         assertEquals(404, assertThrows(BusinessException.class, () -> evaluation.detail(ids.getFirst(), 2L)).getCode());
@@ -265,6 +275,42 @@ class AgentMysqlIT {
         });
         assertEquals(1, successes.stream().mapToInt(Integer::intValue).sum());
         assertEquals(2, count("agent_evaluation_dataset")); assertEquals(1, evaluation.dataset(root.id(), 1L).version());
+    }
+
+    @Test void attemptSnapshotsRollBackWithTheirOwningTransaction() {
+        AgentRun run = createRun();
+        var attempts = context.getBean(AgentExecutionAttemptService.class);
+        var transactions = new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        try (var lease = leases.claim(run.getRunKey(), 1L)) {
+            assertThrows(IllegalStateException.class, () -> transactions.executeWithoutResult(status -> {
+                attempts.capture(prepared(run, lease, "model"), run);
+                throw new IllegalStateException("force rollback");
+            }));
+            assertEquals(0, count("agent_execution_attempt"));
+            assertNotNull(attempts.capture(prepared(run, lease, "model"), run));
+        }
+    }
+
+    @Test void repeatedAttemptCaptureFindsItsWinnerOutsideAnOldSnapshot() {
+        AgentRun run = createRun();
+        var attempts = context.getBean(AgentExecutionAttemptService.class);
+        var transactions = new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        try (var lease = leases.claim(run.getRunKey(), 1L)) {
+            var prepared = prepared(run, lease, "model");
+            transactions.executeWithoutResult(status -> {
+                assertEquals(0, count("agent_execution_attempt"));
+                var winner = assertDoesNotThrow(() -> CompletableFuture.supplyAsync(() -> attempts.capture(prepared, run)).get(10, TimeUnit.SECONDS));
+                assertEquals(winner, attempts.capture(prepared, run));
+            });
+            assertEquals(1, count("agent_execution_attempt"));
+        }
+    }
+
+    private AgentAskService.Prepared prepared(AgentRun run, RunExecutionLeaseService.Lease lease, String modelId) {
+        ModelConfig config = new ModelConfig(); config.setId(run.getModelId()); config.setProvider("openai"); config.setModelId(modelId);
+        return new AgentAskService.Prepared(run.getRunKey(), run.getId(), run.getHistoryId(), run.getSessionId(), run.getQuestion(),
+                1L, null, new AgentExecutionPreparation.ModelBinding(config, cn.sdh.backend.service.factory.ModelProvider.OPENAI, null),
+                "system", false, null, null, null, null, null, List.of(), 8, lease.fence().epoch() > 1, null, lease);
     }
 
     private AgentRun createRun() {

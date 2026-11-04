@@ -17,9 +17,8 @@ class AgentAskServiceBudgetTest {
         var leases = mock(RunExecutionLeaseService.class);
         var lease = mock(RunExecutionLeaseService.Lease.class);
         var runtime = mock(AgentScopeRuntimeAdapter.class);
-        var models = mock(ModelConfigService.class);
         var actions = mock(AgentActionService.class);
-        var service = new AgentAskService(null, actions, null, states, models, null, null, runtime, null, leases, null, new AgentRunLifecycle(states));
+        var service = new AgentAskService(null, actions, null, states, null, null, runtime, null, leases, null, new AgentRunLifecycle(states), mock(AgentExecutionAttemptService.class));
         AgentRun persisted = new AgentRun(); persisted.setId(10L); persisted.setRunKey("run-1"); persisted.setEngine("agentscope");
         persisted.setStatus("RUNNING"); persisted.setUserId(7L); persisted.setMaxSteps(8); persisted.setStepCount(2);
         persisted.setPromptTokens(100); persisted.setCompletionTokens(50); persisted.setTotalTokens(200);
@@ -41,7 +40,8 @@ class AgentAskServiceBudgetTest {
             throw new BusinessException(502, "后续模型调用失败");
         });
         var prepared = new AgentAskService.Prepared("run-1", 10L, 20L, "session", "question", 7L, null,
-                1L, null, null, "system", false, null, null, null, null, null, List.of(), 8, true, null, null);
+                new AgentExecutionPreparation.ModelBinding(new ModelConfig(), cn.sdh.backend.service.factory.ModelProvider.OPENAI, null),
+                "system", false, null, null, null, null, null, List.of(), 8, true, null, null);
         var events = service.execute(prepared).collectList().block();
         assertNotNull(events);
         assertTrue(events.stream().anyMatch(event -> event.contains("后续模型调用失败")));

@@ -27,7 +27,7 @@ final class MysqlAgentContext {
     @Configuration
     @EnableTransactionManagement
     @MapperScan(basePackageClasses = AgentRunMapper.class)
-    @Import({RunExecutionLeaseService.class, RunStateService.class, AgentRunLifecycle.class, JdbcAgentStateStore.class,
+    @Import({RunExecutionLeaseService.class, RunStateService.class, AgentRunLifecycle.class, AgentExecutionAttemptService.class, JdbcAgentStateStore.class,
             AgentRunRecoveryService.class, AgentActionService.class, AgentActionJobs.class,
             AgentActionExecutor.class, AgentActionCompletionService.class, PlatformJobService.class,
             cn.sdh.backend.agent.evaluation.AgentEvaluationService.class})

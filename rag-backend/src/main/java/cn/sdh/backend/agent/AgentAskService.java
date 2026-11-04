@@ -12,7 +12,6 @@ import cn.sdh.backend.entity.ModelConfig;
 import cn.sdh.backend.service.AgentActionService;
 import cn.sdh.backend.service.AgentToolService;
 import cn.sdh.backend.service.IntentRouterService;
-import cn.sdh.backend.service.ModelConfigService;
 import cn.sdh.backend.service.factory.ModelProvider;
 import cn.sdh.backend.service.impl.ChatServiceImpl;
 import cn.sdh.backend.agent.runtime.AgentRuntimePort;
@@ -70,7 +69,6 @@ public class AgentAskService {
     private final AgentActionService agentActionService;
     private final AgentToolService agentToolService;
     private final RunStateService runStateService;
-    private final ModelConfigService modelConfigService;
     private final IntentRouterService intentRouterService;
     private final IntentRouterConfig intentRouterConfig;
     private final AgentScopeRuntimeAdapter agentScopeRuntime;
@@ -78,6 +76,7 @@ public class AgentAskService {
     private final RunExecutionLeaseService leases;
     private final AgentExecutionPreparation preparation;
     private final AgentRunLifecycle lifecycle;
+    private final AgentExecutionAttemptService attempts;
 
     @Value("${xushu.agent.runtime:legacy}")
     private String runtimeEngine = "legacy";
@@ -131,8 +130,6 @@ public class AgentAskService {
 
         var binding = preparation.model(modelId, AgentExecutionPreparation.Purpose.INITIAL);
         ModelConfig modelConfig = binding.config();
-        ModelProvider provider = binding.provider();
-        ChatModel model = binding.model();
 
         // 智能路由(与普通问答一致:显式指定知识库则跳过)
         Long effectiveKb = knowledgeId;
@@ -179,7 +176,7 @@ public class AgentAskService {
         AgentRun run = runStateService.create(userId, currentSessionId, question,
                 effectiveKb, modelConfig.getId(), maxSteps);
         run.setEngine(runtimeEngine);
-        run.setEngineVersion("agentscope".equals(runtimeEngine) ? "2.0.3" : "1");
+        run.setEngineVersion(AgentRuntimeVersion.current(runtimeEngine));
         run.setMemoryEnabled(memoryEnabled);
         runStateService.save(run);
         runStateService.bindHistoryId(run.getId(), historyId);
@@ -191,7 +188,7 @@ public class AgentAskService {
         runStateService.save(persisted);
 
         return new Prepared(run.getRunKey(), run.getId(), historyId, currentSessionId, question, userId,
-                effectiveKb, modelConfig.getId(), model, provider, system, memoryEnabled,
+                effectiveKb, binding, system, memoryEnabled,
                 sourcesEvent, sourcesPayloadJson, routerEventJson, routerPayloadJson, evidence, tools, maxSteps,
                 false, null, null);
     }
@@ -280,9 +277,6 @@ public class AgentAskService {
 
     private Prepared preparedFromRun(AgentRun run, AgentAction decided) {
         var binding = preparation.model(run.getModelId(), AgentExecutionPreparation.Purpose.RESUME);
-        ModelConfig modelConfig = binding.config();
-        ModelProvider provider = binding.provider();
-        ChatModel model = binding.model();
         List<AgentTool> tools = agentToolService.listUsable(run.getUserId());
         boolean memoryEnabled = !Boolean.FALSE.equals(run.getMemoryEnabled());
         String system = preparation.system(run.getEvidenceText(), tools, run.getUserId(), run.getSessionId(), run.getQuestion(), memoryEnabled);
@@ -290,8 +284,8 @@ public class AgentAskService {
         String note = decided == null ? null : approvalNote(decided);
         // 续跑不重放 routerInfo/sources;suppressStart=true
         return new Prepared(run.getRunKey(), run.getId(), run.getHistoryId(), run.getSessionId(),
-                run.getQuestion(), run.getUserId(), run.getKnowledgeId(), modelConfig.getId(),
-                model, provider, system, memoryEnabled, null, null, null, null, run.getEvidenceText(),
+                run.getQuestion(), run.getUserId(), run.getKnowledgeId(), binding,
+                system, memoryEnabled, null, null, null, null, run.getEvidenceText(),
                 tools, run.getMaxSteps() == null ? DEFAULT_MAX_STEPS : run.getMaxSteps(),
                 true, note, null);
     }
@@ -352,6 +346,8 @@ public class AgentAskService {
             }
 
             AgentRun run = runStateService.getByRunKey(p.runKey());
+            p.lease().requireAlive();
+            attempts.capture(p, run);
             if ("agentscope".equals(run.getEngine())) {
                 runAgentScope(p, sink, st, run);
                 return;
@@ -528,7 +524,7 @@ public class AgentAskService {
                                     "error", action.getErrorMessage() == null ? "" : action.getErrorMessage()))))
                     .toList() : List.of();
         AgentRuntimePort.Result result = agentScopeRuntime.execute(new AgentRuntimePort.Request(
-                p.runKey(), p.userId(), p.system(), p.question(), modelConfigService.getById(p.modelConfigId()),
+                p.runKey(), p.userId(), p.system(), p.question(), p.modelBinding().config(),
                 p.tools(), budget.remainingSteps(), results,
                 (tool, callId, arguments) -> {
                     // The platform gateway is the sole approval authority; the SDK never invokes HTTP directly.
@@ -831,14 +827,27 @@ public class AgentAskService {
 
     /** 预备产物:所有运行期不变信息(含 run/history 落库) */
     public record Prepared(String runKey, Long runId, Long historyId, String sessionId, String question,
-                           Long userId, Long kbId, Long modelConfigId, ChatModel model, ModelProvider provider,
+                           Long userId, Long kbId, AgentExecutionPreparation.ModelBinding modelBinding,
                            String system, boolean memoryEnabled, String sourcesEvent, String sourcesPayloadJson,
                            String routerEventJson, String routerPayloadJson, String evidenceText,
                            List<AgentTool> tools, int maxSteps, boolean suppressStart,
                            String resumeNote, RunExecutionLeaseService.Lease lease) {
+        public Prepared {
+            java.util.Objects.requireNonNull(modelBinding, "Execution model binding is required");
+            tools = copyTools(tools);
+        }
+        public ChatModel model() { return modelBinding.model(); }
+        public ModelProvider provider() { return modelBinding.provider(); }
+        public Long modelConfigId() { return modelBinding.config().getId(); }
+        @Override public List<AgentTool> tools() { return copyTools(tools); }
+        private static List<AgentTool> copyTools(List<AgentTool> tools) {
+            return tools.stream().map(tool -> {
+                var copy = new AgentTool(); org.springframework.beans.BeanUtils.copyProperties(tool, copy); return copy;
+            }).toList();
+        }
         Prepared withLease(RunExecutionLeaseService.Lease active) {
-            return new Prepared(runKey, runId, historyId, sessionId, question, userId, kbId, modelConfigId,
-                    model, provider, system, memoryEnabled, sourcesEvent, sourcesPayloadJson,
+            return new Prepared(runKey, runId, historyId, sessionId, question, userId, kbId, modelBinding,
+                    system, memoryEnabled, sourcesEvent, sourcesPayloadJson,
                     routerEventJson, routerPayloadJson, evidenceText, tools, maxSteps, suppressStart, resumeNote, active);
         }
     }

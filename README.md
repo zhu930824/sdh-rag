@@ -277,6 +277,8 @@ Agent 运行时升级前可执行 `./scripts/test-agent-regression.ps1`，运行
 
 评测页的“Agent 场景与结果”支持导入不可变场景版本并归档已结束运行，使用方法与快照边界见 [场景版本与运行结果归档](docs/agent-evaluation-archives.md)。
 
+V36 起记录执行批次的配置指纹与续跑变化；模型、Prompt、工具和证据的边界见 [执行批次配置快照](docs/agent-execution-attempt-snapshots.md)。
+
 ## 贡献指南
 
 欢迎贡献代码！请遵循以下步骤：

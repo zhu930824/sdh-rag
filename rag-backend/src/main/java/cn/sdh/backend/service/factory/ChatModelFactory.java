@@ -66,6 +66,14 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         return strategy.createModel(config, defaultApiKey);
     }
 
+    /** An execution binding must use this exact configuration, without name lookup, cache or provider fallback. */
+    public ChatModel createConfiguredModel(ModelConfig config) {
+        ModelProvider provider = ModelProvider.fromString(config.getProvider());
+        ModelCreationStrategy<ChatModel> strategy = strategyMap.get(provider);
+        if (strategy == null) throw new cn.sdh.backend.common.exception.BusinessException(400, "所选模型供应商没有可用的聊天模型创建策略");
+        return strategy.createModel(config, provider == ModelProvider.DASHSCOPE ? dashscopeApiKey : openaiApiKey);
+    }
+
     @Override
     protected ChatModel createDefaultModel(String modelName) {
         log.info("使用默认配置创建 Chat 模型: {}", modelName);

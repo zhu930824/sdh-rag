@@ -22,8 +22,10 @@ public class AgentEvaluationService {
     private final JdbcTemplate jdbc;
     private final RunStateService runs;
     private final ChatHistoryMapper histories;
-    public AgentEvaluationService(JdbcTemplate jdbc, RunStateService runs, ChatHistoryMapper histories) {
-        this.jdbc = jdbc; this.runs = runs; this.histories = histories;
+    private final cn.sdh.backend.agent.AgentExecutionAttemptService attempts;
+    public AgentEvaluationService(JdbcTemplate jdbc, RunStateService runs, ChatHistoryMapper histories,
+                                  cn.sdh.backend.agent.AgentExecutionAttemptService attempts) {
+        this.jdbc = jdbc; this.runs = runs; this.histories = histories; this.attempts = attempts;
     }
     private static final RowMapper<Dataset> DATASET = (rs, n) -> new Dataset(rs.getString("id"), rs.getString("name"),
             rs.getInt("version"), rs.getString("parent_id"), rs.getString("sha256"),
@@ -80,7 +82,7 @@ public class AgentEvaluationService {
             throw new BusinessException(409, "运行回答关联不一致，无法归档");
         }
         LocalDateTime now = LocalDateTime.now();
-        String snapshot = AgentEvaluationSnapshot.capture(run, history, runs.stepsOf(run.getId()), now);
+        String snapshot = AgentEvaluationSnapshot.capture(run, history, runs.stepsOf(run.getId()), attempts.list(run.getId(), actor), now);
         String scenarioJson = boundedJson(scenario, 1024 * 1024);
         String id = UUID.randomUUID().toString().replace("-", "");
         try {

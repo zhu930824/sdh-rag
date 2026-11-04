@@ -29,16 +29,19 @@ class AgentEvaluationServiceTest {
     RunStateService runs;
     ChatHistoryMapper histories;
     AgentEvaluationService service;
+    AgentExecutionAttemptService attempts;
 
     @BeforeEach void setup() {
         database = new SingleConnectionDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL", "sa", "", true);
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V35__agent_evaluation_archives.sql")).execute(database);
         jdbc = new JdbcTemplate(database); runs = mock(RunStateService.class); histories = mock(ChatHistoryMapper.class);
+        attempts = mock(AgentExecutionAttemptService.class);
         context = new AnnotationConfigApplicationContext();
         context.register(Transactions.class);
         context.registerBean(JdbcTemplate.class, () -> jdbc);
         context.registerBean(RunStateService.class, () -> runs);
         context.registerBean(ChatHistoryMapper.class, () -> histories);
+        context.registerBean(AgentExecutionAttemptService.class, () -> attempts);
         context.registerBean(org.springframework.transaction.PlatformTransactionManager.class, () -> new DataSourceTransactionManager(database));
         context.register(AgentEvaluationService.class); context.refresh(); service = context.getBean(AgentEvaluationService.class);
     }
@@ -126,6 +129,26 @@ class AgentEvaluationServiceTest {
         assertEquals("UNKNOWN", snapshot.getString("toolDefinitionVersion"));
         assertEquals(64, record.snapshotSha256().length());
         assertTrue(JSON.isValidObject(record.runSnapshotJson()));
+    }
+    @Test void completeAndPartialExecutionHistoriesCannotBeConfusedWithOneConfiguration() {
+        var dataset = service.importDataset(new ImportRequest("版本", null, List.of(scenario("ticket"))), 7L);
+        var run = run("COMPLETED"); run.setHistoryId(null); run.setExecutionEpoch(2L);
+        when(attempts.list(10L, 7L)).thenReturn(List.of(attempt(1, "model-a"), attempt(2, "model-b")));
+        var archive = service.record(new RecordRequest(dataset.id(), "ticket", "run-1"), 7L);
+        var snapshot = JSON.parseObject(archive.runSnapshotJson());
+        assertEquals("COMPLETE", snapshot.getString("configurationCoverage"));
+        assertEquals("MULTIPLE", snapshot.getString("modelConfigurationVersion"));
+        assertEquals(2, snapshot.getJSONArray("executionAttempts").size());
+        var second = service.importDataset(new ImportRequest("部分历史", null, List.of(scenario("ticket"))), 7L);
+        when(attempts.list(10L, 7L)).thenReturn(List.of(attempt(2, "model-b")));
+        var partial = JSON.parseObject(service.record(new RecordRequest(second.id(), "ticket", "run-1"), 7L).runSnapshotJson());
+        assertEquals("PARTIAL", partial.getString("configurationCoverage"));
+        assertEquals("UNKNOWN", partial.getString("modelConfigurationVersion"));
+        assertEquals("UNKNOWN", partial.getString("knowledgePublicationVersion"));
+    }
+    static AgentExecutionAttemptService.Attempt attempt(long epoch, String version) {
+        return new AgentExecutionAttemptService.Attempt(epoch, version, JSON.toJSONString(Map.of("modelConfigurationVersion", version,
+                "promptVersion", "prompt", "toolDefinitionVersion", "tools")), java.time.LocalDateTime.now());
     }
 
     @Test void validatesImportBoundsAndCanonicalIdentifiers() {

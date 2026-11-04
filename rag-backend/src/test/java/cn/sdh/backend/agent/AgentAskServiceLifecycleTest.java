@@ -21,6 +21,27 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class AgentAskServiceLifecycleTest {
+    @Test void bothEnginesPersistTheirAttemptBeforeAnyModelInvocation() {
+        for (String engine : List.of("legacy", "agentscope")) {
+            var f = new Fixture(engine);
+            f.execute(false);
+            var order = inOrder(f.attempts, f.model, f.runtime);
+            order.verify(f.attempts).capture(any(), any());
+            if ("legacy".equals(engine)) order.verify(f.model).call(any(Prompt.class));
+            else order.verify(f.runtime).execute(argThat(request -> "frozen-model".equals(request.model().getModelId())));
+        }
+    }
+    @Test void failureToPersistAnAttemptStopsBothEnginesBeforeTheyCanSpendTokens() {
+        for (String engine : List.of("legacy", "agentscope")) {
+            var f = new Fixture(engine);
+            doThrow(new IllegalStateException("snapshot write failed")).when(f.attempts).capture(any(), any());
+            var events = f.execute(false);
+            assertEquals("FAILED", f.row.get().getStatus());
+            verify(f.model, never()).call(any(Prompt.class)); verifyNoInteractions(f.runtime);
+            assertTrue(events.stream().anyMatch(e -> e.contains("snapshot write failed")));
+            assertFalse(events.stream().anyMatch(e -> e.contains("\"type\":\"done\"")));
+        }
+    }
     @Test void bothEnginesPublishBeforeMemoryAndEmitOneDoneEvent() {
         for (String engine : List.of("legacy", "agentscope")) {
             var f = new Fixture(engine);
@@ -121,6 +142,7 @@ class AgentAskServiceLifecycleTest {
         final RunExecutionLeaseService leases = mock(RunExecutionLeaseService.class);
         final AgentScopeRuntimeAdapter runtime = mock(AgentScopeRuntimeAdapter.class);
         final AgentActionService actions = mock(AgentActionService.class);
+        final AgentExecutionAttemptService attempts = mock(AgentExecutionAttemptService.class);
         final ChatServiceImpl chat = mock(ChatServiceImpl.class);
         final ChatModel model = mock(ChatModel.class);
         final AtomicReference<AgentRun> row = new AtomicReference<>();
@@ -148,11 +170,13 @@ class AgentAskServiceLifecycleTest {
                 AgentRuntimePort.Request request = call.getArgument(0); request.textDelta().accept("answer");
                 return new AgentRuntimePort.Result(AgentRuntimePort.Status.COMPLETED, "answer", 1, 4, 2);
             });
-            service = new AgentAskService(chat, actions, null, states, mock(ModelConfigService.class), null, null, runtime, null, leases, null, new AgentRunLifecycle(states));
+            service = new AgentAskService(chat, actions, null, states, null, null, runtime, null, leases, null, new AgentRunLifecycle(states), attempts);
         }
         List<String> execute(boolean memory) {
-            return service.execute(new AgentAskService.Prepared("run-1",10L,20L,"session","question",7L,null,1L,
-                    model,ModelProvider.OPENAI,"system",memory,null,null,null,null,null,List.of(),8,false,null,null)).collectList().block();
+            ModelConfig config = new ModelConfig(); config.setId(1L); config.setModelId("frozen-model"); config.setProvider("openai");
+            return service.execute(new AgentAskService.Prepared("run-1",10L,20L,"session","question",7L,null,
+                    new AgentExecutionPreparation.ModelBinding(config, ModelProvider.OPENAI, model),
+                    "system",memory,null,null,null,null,null,List.of(),8,false,null,null)).collectList().block();
         }
         static AgentRun copy(AgentRun original) { var copy = new AgentRun(); BeanUtils.copyProperties(original, copy); return copy; }
     }
