@@ -50,7 +50,7 @@ public interface KnowledgeDocumentRelationMapper extends BaseMapper<KnowledgeDoc
                 .eq(KnowledgeDocumentRelation::getDocumentId, documentId));
     }
 
-    @Update("UPDATE knowledge_document_relation SET index_revision=index_revision+1, process_status=0, " +
+    @Update("UPDATE knowledge_document_relation SET index_revision=index_revision+1, index_write_generation=NULL, index_source_sha256=NULL, process_status=0, " +
             "chunk_count=0, error_message=NULL, process_time=NULL, job_id=NULL WHERE id=#{id}")
     int prepareNextIndex(@Param("id") Long id);
 

@@ -14,6 +14,8 @@ public final class PlatformJobExecutionContext {
         this.jobs = jobs;
     }
 
+    public Long jobId() { return jobId; }
+
     /** Refreshes the lease and provides a cooperative cancellation checkpoint. */
     public void checkpoint() {
         PlatformJob current = jobs.get(jobId);

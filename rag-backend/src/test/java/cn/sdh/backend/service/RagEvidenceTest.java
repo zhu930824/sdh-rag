@@ -10,6 +10,14 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class RagEvidenceTest {
+    @Test void emptyRetrievalStillPreservesItsPublishedKnowledgeVersion() {
+        var publication = new IndexPublicationSnapshot("a".repeat(64),0,0,false);
+        var snapshot = JSON.parseObject(RagEvidence.snapshot(List.of(),"",publication));
+        assertEquals(publication.version(),snapshot.getString("publicationVersion"));
+        assertEquals("NONE",snapshot.getString("generationCoverage"));
+        assertTrue(snapshot.getJSONArray("chunks").isEmpty());
+    }
+
     @Test void chatAndAgentRetrievalUseTheSameMultiChunkEvidence() {
         var bases = mock(KnowledgeBaseService.class); var search = mock(RagSearchService.class); var access = mock(KnowledgeAccessService.class);
         var base = new cn.sdh.backend.entity.KnowledgeBase(); base.setId(7L);

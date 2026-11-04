@@ -22,8 +22,14 @@ final class AgentExecutionConfiguration {
                         .map(AgentExecutionConfiguration::tool).toList(),
                 "evidence", map("knowledgeId", p.kbId(), "evidenceSha256", hash(p.evidenceText()),
                         "retrievalSnapshotSha256", hash(run.getRetrievalSnapshotJson()),
-                        "publicationVersion", p.kbId() == null ? "NOT_APPLICABLE" : "UNPINNED"),
+                        "publicationVersion", publicationVersion(p, run)),
                 "execution", map("memoryEnabled", p.memoryEnabled(), "maxSteps", p.maxSteps()));
+    }
+    private static String publicationVersion(AgentAskService.Prepared p, AgentRun run) {
+        if (p.kbId() == null) return "NOT_APPLICABLE";
+        if (run.getRetrievalSnapshotJson() == null) return "UNPINNED";
+        String version = JSON.parseObject(run.getRetrievalSnapshotJson()).getString("publicationVersion");
+        return version == null ? "UNPINNED" : version;
     }
     private static Map<String, Object> tool(AgentTool tool) {
         return map("id", tool.getId(), "code", tool.getCode(), "definitionSha256", ToolDefinitionFingerprint.of(tool),

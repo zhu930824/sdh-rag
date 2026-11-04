@@ -6,6 +6,7 @@ import cn.sdh.backend.mapper.KnowledgeBaseMapper;
 import cn.sdh.backend.service.ElasticsearchIndexService;
 import cn.sdh.backend.service.EmbeddingService;
 import cn.sdh.backend.service.VectorStoreService;
+import cn.sdh.backend.service.PublishedIndexService;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
@@ -36,16 +37,25 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     private final ElasticsearchIndexService elasticsearchIndexService;
     private final EmbeddingService embeddingService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final PublishedIndexService publications;
 
     public VectorStoreServiceImpl(
             ElasticsearchClient elasticsearchClient,
             ElasticsearchIndexService elasticsearchIndexService,
             @Lazy EmbeddingService embeddingService,
-            KnowledgeBaseMapper knowledgeBaseMapper) {
+            KnowledgeBaseMapper knowledgeBaseMapper, PublishedIndexService publications) {
         this.elasticsearchClient = elasticsearchClient;
         this.elasticsearchIndexService = elasticsearchIndexService;
         this.embeddingService = embeddingService;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
+        this.publications = publications;
+    }
+
+    @Override public void refreshIndex(Long knowledgeId) {
+        try {
+            var response = elasticsearchClient.indices().refresh(r -> r.index(elasticsearchIndexService.getIndexName(knowledgeId)));
+            if (response.shards().failed().intValue() > 0) throw new IllegalStateException("索引刷新存在失败分片");
+        } catch (Exception failure) { throw new IllegalStateException("索引刷新失败，保留原发布代际", failure); }
     }
 
     @Override
@@ -72,7 +82,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return null;
             }
 
-            Object revision = documentMetadata == null ? null : documentMetadata.get("index_revision");
+            Object revision = documentMetadata == null ? null : documentMetadata.getOrDefault("index_generation", documentMetadata.get("index_revision"));
             String vectorId = deterministicVectorId(
                     knowledgeId, chunk.getDocumentId(), chunk.getChunkIndex(), revision);
             Map<String, Object> doc = new HashMap<>();
@@ -224,11 +234,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
-                    .knn(knn -> knn
-                            .field("embedding")
-                            .queryVector(queryVector)
-                            .k(topK)
-                            .numCandidates(topK * 10))
+                    .knn(k -> k.field("embedding").queryVector(queryVector).k(topK).numCandidates(topK * 10)
+                            .filter(publications.current(knowledgeId).filter("document_id")))
                     .size(topK), Map.class);
 
             List<Document> documents = new ArrayList<>();
@@ -528,7 +535,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             String indexName = elasticsearchIndexService.getIndexName(knowledgeId);
 
             Query keywordQuery = Query.of(q -> q
-                    .match(m -> m.field("content").query(query)));
+                    .bool(b -> b.must(m -> m.match(t -> t.field("content").query(query)))
+                            .filter(publications.current(knowledgeId).filter("document_id"))));
 
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
@@ -634,7 +642,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             "chunk_id", "chunk_index", "document_id", "document_title", "knowledge_id",
             "total_chunks", "department", "doc_type", "doc_date", "freshness_score",
             "document_summary", "embedding_model", "create_time", "index_revision",
-            "indexed_content_sha256", "chunk_content_sha256");
+            "indexed_content_sha256", "chunk_content_sha256", "index_generation");
         for (String field : fields) {
             Object value = source.get(field);
             if (value != null) {
@@ -668,6 +676,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 var boolQuery = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
                     .must(m -> m.terms(t -> t.field("document_id").terms(docIdFilter)));
                 applyMetadataFilters(boolQuery, metadataFilters);
+                boolQuery.filter(publications.current(knowledgeId).filter("document_id"));
 
                 var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                     .field("embedding")
@@ -710,6 +719,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder();
             applyMetadataFilters(boolBuilder, metadataFilters);
+            boolBuilder.filter(publications.current(knowledgeId).filter("document_id"));
 
             var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                 .field("embedding").queryVector(queryVector)
@@ -736,6 +746,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder();
             applyMetadataFilters(boolBuilder, metadataFilters);
+            boolBuilder.filter(publications.current(knowledgeId).filter("document_id"));
 
             var knn = co.elastic.clients.elasticsearch._types.KnnSearch.of(k -> k
                 .field("embedding").queryVector(queryVector)
@@ -764,6 +775,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             var boolBuilder = new co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder()
                 .must(m -> m.match(mm -> mm.field("content").query(query)));
             applyMetadataFilters(boolBuilder, metadataFilters);
+            boolBuilder.filter(publications.current(knowledgeId).filter("document_id"));
             var response = elasticsearchClient.search(s -> s
                 .index(indexName).query(q -> q.bool(boolBuilder.build())).size(topK), Map.class);
             return convertHitsToDocuments(response.hits().hits());

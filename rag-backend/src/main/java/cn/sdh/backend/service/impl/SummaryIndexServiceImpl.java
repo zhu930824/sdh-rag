@@ -26,6 +26,7 @@ public class SummaryIndexServiceImpl implements SummaryIndexService {
     private final ElasticsearchClient esClient;
     private final EmbeddingService embeddingService;
     private final ChatModelFactory chatModelFactory;
+    private final cn.sdh.backend.service.PublishedIndexService publications;
 
     @Override
     @Async
@@ -40,11 +41,15 @@ public class SummaryIndexServiceImpl implements SummaryIndexService {
                                       String content, String embeddingModel,
                                       Map<String, Object> documentMetadata) {
         try {
+            String generation = documentMetadata == null ? null : Objects.toString(documentMetadata.get("index_generation"), null);
+            if (generation == null) return; // Unversioned summaries must not bypass the publication boundary.
             String truncated = content.substring(0, Math.min(3000, content.length()));
             String summary = generateSummary(title, truncated);
             float[] embedding = embeddingService.getEmbeddingByModel(summary, embeddingModel);
 
             String indexName = SUMMARY_INDEX_PREFIX + knowledgeId;
+            esClient.indices().putMapping(m -> m.index(indexName).properties(Map.of("index_generation",
+                    co.elastic.clients.elasticsearch._types.mapping.Property.of(p -> p.keyword(k -> k)))));
             Map<String, Object> doc = new HashMap<>();
             doc.put("doc_id", documentId);
             doc.put("summary_text", summary);
@@ -53,13 +58,16 @@ public class SummaryIndexServiceImpl implements SummaryIndexService {
             if (documentMetadata != null) {
                 documentMetadata.forEach((key, value) -> {
                     if (value != null && Set.of("department", "doc_type", "doc_date",
-                            "freshness_score").contains(key)) {
+                            "freshness_score", "index_generation", "index_revision", "indexed_content_sha256").contains(key)) {
                         doc.put(key, value);
                     }
                 });
             }
 
-            esClient.index(i -> i.index(indexName).id("doc_" + documentId).document(doc));
+            esClient.index(i -> i.index(indexName).id(generation).document(doc));
+            var refresh = esClient.indices().refresh(r -> r.index(indexName));
+            if (refresh.shards().failed().intValue() > 0) throw new IllegalStateException("摘要刷新失败");
+            publications.summaryReady(generation);
             log.info("摘要索引写入成功: docId={}, kbId={}", documentId, knowledgeId);
         } catch (Exception e) {
             log.error("摘要索引写入失败: docId={}, kbId={}", documentId, knowledgeId, e);
@@ -71,20 +79,20 @@ public class SummaryIndexServiceImpl implements SummaryIndexService {
                                               String embeddingModel,
                                               Map<String, Object> metadataFilters) {
         try {
+            if (!publications.current(knowledgeId).snapshot().summariesComplete()) return Collections.emptyMap();
             String indexName = SUMMARY_INDEX_PREFIX + knowledgeId;
             float[] queryEmbedding = embeddingService.getEmbeddingByModel(query, embeddingModel);
 
             BoolQuery.Builder boolBuilder = new BoolQuery.Builder();
             applyMetadataFilters(boolBuilder, metadataFilters);
+            boolBuilder.filter(publications.current(knowledgeId).filter("doc_id"));
 
             KnnSearch.Builder knnBuilder = new KnnSearch.Builder()
                 .field("summary_embedding")
                 .queryVector(Arrays.asList(toFloatList(queryEmbedding)))
                 .k(topK)
                 .numCandidates(topK * 10);
-            if (metadataFilters != null && !metadataFilters.isEmpty()) {
-                knnBuilder.filter(boolBuilder.build()._toQuery());
-            }
+            knnBuilder.filter(boolBuilder.build()._toQuery());
             KnnSearch knn = knnBuilder.build();
 
             SearchResponse<Map> response = esClient.search(s -> s

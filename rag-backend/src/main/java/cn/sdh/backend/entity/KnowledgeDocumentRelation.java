@@ -107,6 +107,12 @@ public class KnowledgeDocumentRelation implements Serializable {
     @TableField("index_revision")
     private Integer indexRevision;
 
+    @TableField(value = "published_generation", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER, updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String publishedGeneration;
+
+    @TableField(value = "index_write_generation", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER, updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String indexWriteGeneration;
+
     /** Reliable platform job responsible for the current generation. */
     @TableField("job_id")
     private Long jobId;

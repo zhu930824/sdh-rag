@@ -43,17 +43,20 @@ public class PlatformJobDispatcher {
         int freeWorkers = Math.max(0, executor.getMaxPoolSize() - executor.getActiveCount());
         if (freeWorkers == 0) return;
         int claimLimit = Math.min(Math.max(1, batchSize), freeWorkers);
-        for (PlatformJob job : jobs.claimAvailable(workerId, claimLimit)) {
+        // A new lease identity for every claim batch fences late executions even on this JVM.
+        String claimOwner = workerId + ":" + UUID.randomUUID();
+        for (PlatformJob job : jobs.claimAvailable(claimOwner, claimLimit)) {
             try {
                 executor.execute(() -> execute(job));
             } catch (RuntimeException rejected) {
-                jobs.fail(job.getId(), workerId, rejected);
+                jobs.fail(job.getId(), claimOwner, rejected);
                 log.warn("提交可靠任务失败: jobId={}, type={}", job.getId(), job.getJobType());
             }
         }
     }
 
     private void execute(PlatformJob job) {
+        String workerId = job.getLeaseOwner();
         try (TraceContext.Scope ignored = TraceContext.open(job.getTraceId())) {
             PlatformJobHandler handler = handlers.get(job.getJobType());
             if (handler == null) {

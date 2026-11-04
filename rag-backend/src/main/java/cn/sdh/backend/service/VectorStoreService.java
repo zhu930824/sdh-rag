@@ -11,6 +11,8 @@ import java.util.Set;
  * 向量存储服务接口
  */
 public interface VectorStoreService {
+    /** Makes all completed writes searchable before switching the SQL publication pointer. */
+    void refreshIndex(Long knowledgeId);
 
     /**
      * 添加向量（使用知识库配置的嵌入模型）

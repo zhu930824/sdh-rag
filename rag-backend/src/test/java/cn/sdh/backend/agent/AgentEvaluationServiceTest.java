@@ -72,7 +72,7 @@ class AgentEvaluationServiceTest {
     @Test void recordingFreezesOutcomeAndTraceWithoutReexecutingAnything() {
         var dataset = service.importDataset(new ImportRequest("售后", null, List.of(scenario("ticket"))), 7L);
         AgentRun run = run("COMPLETED");
-        run.setRetrievalSnapshotJson("{\"scope\":\"RETRIEVED_CANDIDATES\",\"chunks\":[{\"content\":\"original evidence\",\"indexRevision\":3}]}");
+        run.setRetrievalSnapshotJson("{\"scope\":\"RETRIEVED_CANDIDATES\",\"publicationVersion\":\"" + "a".repeat(64) + "\",\"chunks\":[{\"content\":\"original evidence\",\"indexRevision\":3}]}");
         ChatHistory history = new ChatHistory(); history.setId(20L); history.setUserId(7L); history.setAgentRunKey("run-1"); history.setAnswer("工单已创建");
         when(histories.selectById(20L)).thenReturn(history);
         var request = new RecordRequest(dataset.id(), "ticket", "run-1");
@@ -83,6 +83,8 @@ class AgentEvaluationServiceTest {
         assertEquals("UNKNOWN", JSON.parseObject(record.runSnapshotJson()).getString("modelConfigurationVersion"));
         assertEquals("ticket", JSON.parseObject(record.scenarioJson()).getString("id"));
         assertEquals(3, JSON.parseObject(record.runSnapshotJson()).getJSONObject("retrievalSnapshot").getJSONArray("chunks").getJSONObject(0).getIntValue("indexRevision"));
+        assertEquals("a".repeat(64),JSON.parseObject(record.runSnapshotJson()).getString("knowledgePublicationVersion"));
+        assertEquals("INDEX_GENERATION_MANIFEST",JSON.parseObject(record.runSnapshotJson()).getString("knowledgePublicationVersionBasis"));
         run.setRetrievalSnapshotJson("{\"chunks\":[]}");
         history.setAnswer("后续修改"); run.setEngineVersion("future");
         assertEquals(record.runSnapshotJson(), service.detail(record.id(), 7L).runSnapshotJson());

@@ -110,18 +110,17 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         ensureMetadataMapping(knowledgeId);
     }
 
-    private void ensureMetadataMapping(Long knowledgeId) {
-        if (!metadataMappingEnsured.add(knowledgeId)) {
+    private synchronized void ensureMetadataMapping(Long knowledgeId) {
+        if (metadataMappingEnsured.contains(knowledgeId)) {
             return;
         }
         try {
             elasticsearchClient.indices().putMapping(p -> p
                 .index(getIndexName(knowledgeId))
                 .properties(buildMetadataMappingProperties()));
+            metadataMappingEnsured.add(knowledgeId);
         } catch (Exception e) {
-            metadataMappingEnsured.remove(knowledgeId);
-            log.warn("补充 ES 元数据映射失败: knowledgeId={}, error={}",
-                knowledgeId, e.getMessage());
+            throw new IllegalStateException("补充 ES 元数据映射失败，停止索引写入: " + knowledgeId, e);
         }
     }
 
@@ -136,6 +135,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         properties.put("index_revision", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
         properties.put("indexed_content_sha256", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
         properties.put("chunk_content_sha256", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("index_generation", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
         return properties;
     }
 

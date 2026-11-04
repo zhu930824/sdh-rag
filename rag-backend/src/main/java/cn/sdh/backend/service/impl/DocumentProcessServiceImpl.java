@@ -65,6 +65,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     private final PlatformJobService platformJobService;
     private final DocumentIndexLock documentIndexLock;
     private final ObjectMapper objectMapper;
+    private final cn.sdh.backend.service.PublishedIndexService publications;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -79,6 +80,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         if (!isCurrentGeneration(current, payload, jobId)) {
             return "索引版本已过期，安全跳过";
         }
+        if (Integer.valueOf(2).equals(current.getProcessStatus()) && current.getPublishedGeneration() != null) return "索引代际已发布，安全跳过重复执行";
 
         DocumentIndexLock.LockHandle lock = documentIndexLock.acquire(payload.relationId());
         if (lock == null) {
@@ -118,10 +120,16 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
             // 解析文档内容
             String content = parseDocumentContent(document.getFilePath());
+            String sourceSha256 = cn.sdh.backend.utils.ContentFingerprint.sha256(content == null ? "" : content);
+            var stage = publications.stage(payload, jobId, sourceSha256, context);
+            if (stage.published()) {
+                publications.publish(payload, jobId, stage.key(), stage.chunkCount(), context);
+                return "索引代际已发布，安全跳过重复写入";
+            }
             if (content == null || content.trim().isEmpty()) {
                 log.warn("文档内容为空: documentId={}", documentId);
-                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
-                return "文档内容为空，已清理旧索引";
+                completeEmptyIndex(payload, jobId, stage.key(), context);
+                return "文档内容为空，已发布空索引版本";
             }
 
             // === RAG优化：文档去重 ===
@@ -134,7 +142,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 documentMapper.updateById(document);
                 documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
                 log.warn("文档 [{}] 与 [{}] MD5完全重复，跳过索引", documentId, duplicateDocId);
-                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                completeEmptyIndex(payload, jobId, stage.key(), context);
                 return "检测到完全重复文档，已跳过索引";
             }
 
@@ -145,7 +153,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 documentMapper.updateById(document);
                 documentDedupService.saveDocumentHash(documentId, knowledgeId, contentMd5, content);
                 log.warn("文档 [{}] 与 [{}] 近似重复, 跳过索引", documentId, similar.documentId());
-                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                completeEmptyIndex(payload, jobId, stage.key(), context);
                 return "检测到近似重复文档，已跳过索引";
             }
 
@@ -159,13 +167,13 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             // === RAG优化：质量过滤 ===
             if (content.trim().length() < 50) {
                 markDocumentLowQuality(document, "文档内容过短");
-                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                completeEmptyIndex(payload, jobId, stage.key(), context);
                 return "低质量文档已过滤：内容过短";
             }
 
             if (isTabularNoise(content)) {
                 markDocumentLowQuality(document, "文档主要为结构化表格数据");
-                completeEmptyIndex(payload, jobId, documentId, knowledgeId);
+                completeEmptyIndex(payload, jobId, stage.key(), context);
                 return "低质量文档已过滤：结构化噪声";
             }
 
@@ -232,7 +240,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
             Map<String, Object> documentMetadata = buildDocumentMetadata(document, chunkTexts.size());
             documentMetadata.put("index_revision", payload.revision());
-            documentMetadata.put("indexed_content_sha256", cn.sdh.backend.utils.ContentFingerprint.sha256(content));
+            documentMetadata.put("indexed_content_sha256", sourceSha256);
+            documentMetadata.put("index_generation", stage.key());
 
             // 创建分块并直接存储到 ES
             int successCount = 0;
@@ -257,10 +266,9 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 successCount++;
             }
 
-            // Keep the previous complete generation available while writing; swap by cleanup only after success.
-            vectorStoreService.deleteVectorsExceptRevision(documentId, knowledgeId, payload.revision());
-            if (relationMapper.markIndexSucceeded(payload.relationId(), payload.revision(), jobId,
-                    successCount, LocalDateTime.now()) != 1) {
+            // Refresh first, then atomically move the SQL head. Old generations remain available to pinned reads.
+            vectorStoreService.refreshIndex(knowledgeId);
+            if (!publications.publish(payload, jobId, stage.key(), successCount, context)) {
                 return "索引已写入，但当前版本已更新，等待新版本接管";
             }
 
@@ -289,34 +297,17 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         }
     }
 
-    private void completeEmptyIndex(DocumentIndexJobPayload payload, Long jobId,
-                                    Long documentId, Long knowledgeId) {
-        vectorStoreService.deleteVectorsByDocumentIdAndKnowledgeId(documentId, knowledgeId);
-        if (relationMapper.markIndexSucceeded(payload.relationId(), payload.revision(), jobId,
-                0, LocalDateTime.now()) != 1) {
+    private void completeEmptyIndex(DocumentIndexJobPayload payload, Long jobId, String generation,
+                                    PlatformJobExecutionContext context) {
+        if (!publications.publish(payload, jobId, generation, 0, context)) {
             throw new IllegalStateException("文档索引版本已变化");
         }
     }
 
     @Override
     public void abandonIndexJob(DocumentIndexJobPayload payload, Long jobId) {
-        KnowledgeDocumentRelation current = relationMapper.selectById(payload.relationId());
-        if (!isCurrentGeneration(current, payload, jobId)) return;
-        DocumentIndexLock.LockHandle lock = documentIndexLock.acquire(payload.relationId());
-        if (lock == null) {
-            log.warn("无法立即清理未完成索引版本: relationId={}, revision={}",
-                    payload.relationId(), payload.revision());
-            return;
-        }
-        try {
-            current = relationMapper.selectById(payload.relationId());
-            if (isCurrentGeneration(current, payload, jobId)) {
-                vectorStoreService.deleteVectorsByRevision(
-                        payload.documentId(), payload.knowledgeId(), payload.revision());
-            }
-        } finally {
-            documentIndexLock.release(lock);
-        }
+        // A logical job/revision can have a newer physical attempt already writing. Never delete by revision here.
+        log.info("未发布索引批次保留待回收，不参与线上检索: relationId={}, revision={}, jobId={}", payload.relationId(), payload.revision(), jobId);
     }
 
     private Map<String, Object> buildDocumentMetadata(KnowledgeDocument document, int totalChunks) {

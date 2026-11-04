@@ -28,6 +28,13 @@ final class AgentEvaluationSnapshot {
         snapshot.put("knowledgePublicationVersion", "UNKNOWN");
         snapshot.put("retrievalSnapshot", run.getRetrievalSnapshotJson() == null ? null : com.alibaba.fastjson2.JSON.parseObject(run.getRetrievalSnapshotJson()));
         snapshot.put("retrievalSnapshotSha256", cn.sdh.backend.utils.ContentFingerprint.sha256(run.getRetrievalSnapshotJson()));
+        if (run.getRetrievalSnapshotJson() != null) {
+            String version = com.alibaba.fastjson2.JSON.parseObject(run.getRetrievalSnapshotJson()).getString("publicationVersion");
+            if (version != null && version.matches("[a-f0-9]{64}")) {
+                snapshot.put("knowledgePublicationVersion", version);
+                snapshot.put("knowledgePublicationVersionBasis", "INDEX_GENERATION_MANIFEST");
+            }
+        }
         snapshot.put("question", cap(run.getQuestion(), 20000)); snapshot.put("answer", cap(history == null ? null : history.getAnswer(), 64000));
         snapshot.put("evidencePreview", cap(run.getEvidenceText(), 12000)); snapshot.put("errorPreview", cap(run.getErrorMessage(), 4000));
         snapshot.put("stepCount", run.getStepCount()); snapshot.put("promptTokens", run.getPromptTokens());

@@ -26,12 +26,16 @@ public final class RagEvidence {
         }).toList();
     }
     public static String snapshot(List<RankedChunk> chunks, String context) {
-        if (chunks == null || chunks.isEmpty()) return null;
+        return snapshot(chunks, context, null);
+    }
+    public static String snapshot(List<RankedChunk> chunks, String context, cn.sdh.backend.dto.IndexPublicationSnapshot publication) {
+        if (chunks == null || (chunks.isEmpty() && publication == null)) return null;
         long known = chunks.stream().filter(RagEvidence::generationKnown).count();
         var snapshot = new TreeMap<String, Object>();
         snapshot.put("schemaVersion", 1); snapshot.put("scope", "RETRIEVED_CANDIDATES");
-        snapshot.put("generationCoverage", known == chunks.size() ? "COMPLETE" : known == 0 ? "NONE" : "PARTIAL");
-        snapshot.put("publicationVersion", "UNPINNED"); snapshot.put("mixedGenerations", mixed(chunks));
+        snapshot.put("generationCoverage", known == 0 ? "NONE" : known == chunks.size() ? "COMPLETE" : "PARTIAL");
+        snapshot.put("publicationVersion", publication == null ? "UNPINNED" : publication.version());
+        snapshot.put("publicationSnapshot", publication); snapshot.put("mixedGenerations", mixed(chunks));
         snapshot.put("contextSha256", ContentFingerprint.sha256(context)); snapshot.put("contextCharacters", context == null ? 0 : context.length());
         snapshot.put("chunks", chunks.stream().map(RagEvidence::item).toList());
         return JSON.toJSONString(snapshot);
@@ -41,6 +45,7 @@ public final class RagEvidence {
         String content = chunk.getContent();
         item.put("documentId", chunk.getDocumentId()); item.put("documentTitle", chunk.getDocumentTitle());
         item.put("vectorId", chunk.getVectorId()); item.put("chunkIndex", chunk.getChunkIndex()); item.put("totalChunks", chunk.getTotalChunks());
+        item.put("indexGeneration", chunk.getIndexGeneration());
         item.put("indexRevision", chunk.getIndexRevision()); item.put("indexedContentSha256", chunk.getIndexedContentSha256());
         item.put("chunkContentSha256", ContentFingerprint.sha256(content));
         item.put("indexedChunkHashVerified", Boolean.TRUE.equals(chunk.getIndexedChunkHashVerified())
@@ -59,7 +64,8 @@ public final class RagEvidence {
         Map<Long, Set<String>> versions = new HashMap<>();
         for (var chunk : chunks) {
             if (chunk.getDocumentId() != null && chunk.getIndexRevision() != null) {
-                versions.computeIfAbsent(chunk.getDocumentId(), k -> new HashSet<>()).add(chunk.getIndexRevision() + ":" + chunk.getIndexedContentSha256());
+                versions.computeIfAbsent(chunk.getDocumentId(), k -> new HashSet<>()).add(chunk.getIndexGeneration() == null
+                        ? chunk.getIndexRevision() + ":" + chunk.getIndexedContentSha256() : chunk.getIndexGeneration());
             }
         }
         return versions.values().stream().anyMatch(v -> v.size() > 1);

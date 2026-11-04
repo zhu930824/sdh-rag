@@ -31,6 +31,7 @@ class AgentExecutionAttemptServiceTest {
     @Test void snapshotsAreIdempotentPrivateAndNeverPersistCredentialsOrPromptBodies() {
         var p = prepared(1, "original-model", "private-prompt", "POST");
         var run = run(); run.setEngineVersion("original-old-version");
+        run.setRetrievalSnapshotJson("{\"publicationVersion\":\"" + "a".repeat(64) + "\"}");
         var first = service.capture(p, run);
         p.tools().getFirst().setHttpMethod("DELETE");
         assertEquals(first, service.capture(p, run));
@@ -41,6 +42,7 @@ class AgentExecutionAttemptServiceTest {
         assertNotEquals("UNKNOWN", engine.getString("version"));
         assertNotEquals("original-old-version", engine.getString("version"));
         assertEquals("original-model", json.getJSONObject("configuration").getJSONObject("model").getString("modelId"));
+        assertEquals("a".repeat(64),json.getJSONObject("configuration").getJSONObject("evidence").getString("publicationVersion"));
         for (String forbidden : List.of("private-prompt", "secret-key", "private-evidence", "credential-ref", "https://private.example")) {
             assertFalse(first.snapshotJson().contains(forbidden), forbidden);
         }
@@ -73,7 +75,7 @@ class AgentExecutionAttemptServiceTest {
 
     static AgentRun run() {
         AgentRun run = new AgentRun(); run.setId(10L); run.setRunKey("run-1"); run.setUserId(7L);
-        run.setEngine("agentscope"); run.setEngineVersion("2.0.3"); return run;
+        run.setEngine("agentscope"); run.setEngineVersion("2.0.3"); run.setKnowledgeId(7L); return run;
     }
     static AgentAskService.Prepared prepared(long epoch, String modelId, String system, String method) {
         ModelConfig model = new ModelConfig(); model.setId(1L); model.setModelId(modelId); model.setProvider("openai");
@@ -82,7 +84,7 @@ class AgentExecutionAttemptServiceTest {
         tool.setEndpoint("https://private.example"); tool.setCredentialRef("credential-ref");
         var lease = mock(RunExecutionLeaseService.Lease.class);
         when(lease.fence()).thenReturn(new RunExecutionLeaseService.Fence(10, "run-1", 7L, "owner", epoch));
-        return new AgentAskService.Prepared("run-1", 10L, 20L, "session", "question", 7L, null,
+        return new AgentAskService.Prepared("run-1", 10L, 20L, "session", "question", 7L, 7L,
                 new AgentExecutionPreparation.ModelBinding(model, ModelProvider.OPENAI, null),
                 system, false, null, null, null, null, "private-evidence", List.of(tool), 8, epoch > 1, null, lease);
     }

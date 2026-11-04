@@ -498,14 +498,15 @@ public class ChatServiceImpl implements ChatService {
             if (searchResult == null || searchResult.getChunks() == null
                     || searchResult.getChunks().isEmpty()) {
                 log.info("知识库 {} 未召回相关内容", knowledgeId);
-                return RetrievalPayload.empty();
+                String snapshot = searchResult == null ? null : RagEvidence.snapshot(List.of(), "", searchResult.getPublicationSnapshot());
+                return new RetrievalPayload("", null, null, snapshot, false);
             }
 
             String context = buildHierarchicalContext(searchResult);
             List<Map<String, Object>> sources = RagEvidence.sources(searchResult.getChunks());
             String sourcesEvent = sources == null ? null : jsonEvent("sources", "sources", sources);
             String sourcesPayloadJson = sources == null ? null : writeJson(sources);
-            String retrievalSnapshot = RagEvidence.snapshot(searchResult.getChunks(), context);
+            String retrievalSnapshot = RagEvidence.snapshot(searchResult.getChunks(), context, searchResult.getPublicationSnapshot());
 
             log.info("级联RAG检索完成: knowledgeId={}, 召回片段数={}, 总长度={}",
                     knowledgeId, searchResult.getChunks().size(), context.length());

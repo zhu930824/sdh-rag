@@ -38,8 +38,8 @@ class AgentMysqlIT {
         mysql.admin().execute("CREATE DATABASE `" + schema + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         var source = mysql.source(schema);
         Flyway.configure().dataSource(source).target("30").load().migrate();
-        var upgraded = Flyway.configure().dataSource(source).target("37").load();
-        assertEquals(7, upgraded.migrate().migrationsExecuted, "V30 -> V37 must apply exactly seven migrations");
+        var upgraded = Flyway.configure().dataSource(source).target("38").load();
+        assertEquals(8, upgraded.migrate().migrationsExecuted, "V30 -> V38 must apply exactly eight migrations");
         upgraded.validate();
         assertEquals(0, upgraded.migrate().migrationsExecuted, "Re-running the migrator must be a no-op");
         context = MysqlAgentContext.open(source);
@@ -51,7 +51,7 @@ class AgentMysqlIT {
     }
 
     @BeforeEach void reset() {
-        for (String table : List.of("agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
+        for (String table : List.of("knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
             jdbc.execute("DELETE FROM " + table); // Only this freshly created, private schema is connected.
         }
     }
@@ -65,11 +65,48 @@ class AgentMysqlIT {
         if (mysql != null) mysql.close();
     }
 
-    @Test void migrationsAreValidatedOnMySqlAndReachV37() {
+    @Test void migrationsAreValidatedOnMySqlAndReachV38() {
         assertTrue(jdbc.queryForObject("SELECT VERSION()", String.class).startsWith("8."));
-        assertEquals("37", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
-        assertEquals(37, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
+        assertEquals("38", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
+        assertEquals(38, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
         assertEquals(0, count("agent_run"));
+    }
+
+    @Test void indexPublicationFencesAnExpiredWorkerAndPreservesPinnedReads() {
+        jdbc.update("INSERT IGNORE INTO knowledge_base(id,name,user_id) VALUES(900001,'index-it',1)");
+        jdbc.update("INSERT IGNORE INTO knowledge_document(id,title,user_id) VALUES(900001,'index-it',1)");
+        var jobs = context.getBean(PlatformJobService.class);
+        var job = jobs.enqueue(new PlatformJobService.EnqueueCommand("index-fence", "DOCUMENT_INDEX", "DOCUMENT", 900001L, "{}", 1, 3, 1L));
+        jobs.claimAvailable("index-owner-a",100);
+        jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status) VALUES(900001,900001,900001,1,?,1)",job.getId());
+        var publications = context.getBean(PublishedIndexService.class);
+        var payload = new cn.sdh.backend.job.DocumentIndexJobPayload(900001L,900001L,900001L,1,new cn.sdh.backend.dto.DocumentLinkConfig());
+        var firstContext = new cn.sdh.backend.job.PlatformJobExecutionContext(job.getId(),"index-owner-a",jobs);
+        var first = publications.stage(payload,job.getId(),"a".repeat(64),firstContext);
+        try (var empty = publications.open(900001L)) {
+            assertEquals(0,empty.snapshot().generationCount());
+            jdbc.update("UPDATE platform_job SET lease_until=TIMESTAMPADD(SECOND,-1,NOW()) WHERE id=?",job.getId());
+            assertEquals(1,jobs.claimAvailable("index-owner-b",100).size());
+            assertThrows(IllegalStateException.class,() -> publications.publish(payload,job.getId(),first.key(),1,firstContext));
+            assertNull(jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=900001",String.class));
+            var nextContext = new cn.sdh.backend.job.PlatformJobExecutionContext(job.getId(),"index-owner-b",jobs);
+            var next = publications.stage(payload,job.getId(),"a".repeat(64),nextContext);
+            assertNotEquals(first.key(),next.key());
+            assertThrows(BusinessException.class,() -> publications.publish(payload,job.getId(),first.key(),1,nextContext));
+            jdbc.execute("CREATE TRIGGER it_reject_index_head BEFORE UPDATE ON knowledge_document_relation FOR EACH ROW BEGIN IF NEW.published_generation IS NOT NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected publication failure'; END IF; END");
+            try {
+                assertThrows(org.springframework.dao.DataAccessException.class,() -> publications.publish(payload,job.getId(),next.key(),1,nextContext));
+                assertEquals("STAGING",jdbc.queryForObject("SELECT state FROM knowledge_index_generation WHERE generation_key=?",String.class,next.key()),"A failed pointer update must roll back generation publication");
+                assertNull(jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=900001",String.class));
+            } finally { jdbc.execute("DROP TRIGGER it_reject_index_head"); }
+            publications.publish(payload,job.getId(),next.key(),1,nextContext);
+            assertEquals(0,publications.current(900001L).snapshot().generationCount());
+            assertEquals("STAGING",jdbc.queryForObject("SELECT state FROM knowledge_index_generation WHERE generation_key=?",String.class,first.key()));
+        }
+        try (var published = publications.open(900001L)) {
+            assertEquals(1,published.snapshot().generationCount());
+            assertEquals(0,published.snapshot().legacyCount());
+        }
     }
 
     @Test void simultaneousWorkersHaveExactlyOneRunOwner() throws Exception {

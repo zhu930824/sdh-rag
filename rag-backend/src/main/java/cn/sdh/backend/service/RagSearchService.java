@@ -99,6 +99,9 @@ public interface RagSearchService {
      * 检索结果
      */
     class RagSearchResult {
+        private cn.sdh.backend.dto.IndexPublicationSnapshot publicationSnapshot;
+        public cn.sdh.backend.dto.IndexPublicationSnapshot getPublicationSnapshot() { return publicationSnapshot; }
+        public void setPublicationSnapshot(cn.sdh.backend.dto.IndexPublicationSnapshot value) { publicationSnapshot = value; }
         private List<Document> documents;
         private String rewrittenQuery; // 改写后的查询（如果有）
         private List<String> expandedQueries; // 扩展查询列表（如果有）

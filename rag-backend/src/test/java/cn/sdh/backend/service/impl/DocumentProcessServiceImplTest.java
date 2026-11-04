@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -35,6 +36,7 @@ class DocumentProcessServiceImplTest {
     @Mock PlatformJobService jobs;
     @Mock DocumentIndexLock indexLock;
     @Mock PlatformJobExecutionContext executionContext;
+    @Mock PublishedIndexService publications;
 
     private DocumentProcessServiceImpl service;
 
@@ -44,7 +46,7 @@ class DocumentProcessServiceImplTest {
         user.setUserId(7L);
         UserContext.setUserContext(user);
         service = new DocumentProcessServiceImpl(documents, relations, knowledgeBases, minio,
-                vectors, dedup, summaries, jobs, indexLock, new ObjectMapper());
+                vectors, dedup, summaries, jobs, indexLock, new ObjectMapper(), publications);
     }
 
     @AfterEach
@@ -102,5 +104,43 @@ class DocumentProcessServiceImplTest {
         relation.setChunkMode("default");
         relation.setSplitType("length");
         return relation;
+    }
+
+    @Test void refreshMustCompleteBeforeTheNewGenerationBecomesPublished() {
+        var payload = processingFixture();
+        when(publications.publish(eq(payload),eq(9L),eq("physical-attempt"),anyInt(),eq(executionContext))).thenReturn(true);
+        service.executeIndexJob(payload,9L,executionContext);
+        var order = inOrder(vectors,publications);
+        order.verify(publications).stage(eq(payload),eq(9L),anyString(),eq(executionContext));
+        order.verify(vectors,atLeastOnce()).addVector(any(),eq(5L),eq("model"),anyMap());
+        order.verify(vectors).refreshIndex(5L);
+        order.verify(publications).publish(eq(payload),eq(9L),eq("physical-attempt"),anyInt(),eq(executionContext));
+        verify(vectors,never()).deleteVectorsExceptRevision(anyLong(),anyLong(),anyInt());
+    }
+
+    @Test void failedRefreshLeavesThePreviousPublicationUntouched() {
+        var payload = processingFixture();
+        doThrow(new IllegalStateException("refresh failed")).when(vectors).refreshIndex(5L);
+        assertThrows(IllegalStateException.class,() -> service.executeIndexJob(payload,9L,executionContext));
+        verify(publications,never()).publish(any(),anyLong(),anyString(),anyInt(),any());
+        verify(relations).markIndexFailed(eq(3L),eq(1),eq(9L),eq("refresh failed"),any());
+        verify(vectors,never()).deleteVectorsExceptRevision(anyLong(),anyLong(),anyInt());
+    }
+
+    private DocumentIndexJobPayload processingFixture() {
+        when(dedup.checkMd5Duplicate(eq(5L),anyString())).thenReturn(null);
+        var current = relation(3L,4L,5L,1,9L);
+        when(relations.selectById(3L)).thenReturn(current);
+        when(relations.markIndexRunning(eq(3L),eq(1),eq(9L),any())).thenReturn(1);
+        when(indexLock.acquire(3L)).thenReturn(new DocumentIndexLock.LockHandle("key","owner"));
+        var document = new cn.sdh.backend.entity.KnowledgeDocument();
+        document.setId(4L); document.setFilePath("test.txt"); document.setTitle("publication");
+        when(documents.selectById(4L)).thenReturn(document);
+        when(minio.getFile("test.txt")).thenReturn(new java.io.ByteArrayInputStream(
+                "This document explains published index generations and why queries must continue reading a complete version while a new version is being prepared.".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        when(publications.stage(any(),eq(9L),anyString(),eq(executionContext))).thenReturn(new PublishedIndexService.Stage("physical-attempt",false,0));
+        when(vectors.addVector(any(),eq(5L),eq("model"),anyMap())).thenReturn("vector");
+        var config = new DocumentLinkConfig(); config.setEmbeddingModel("model");
+        return new DocumentIndexJobPayload(3L,4L,5L,1,config);
     }
 }

@@ -35,6 +35,8 @@ public class SearchResult {
     /** 降级原因 */
     private String fallbackReason;
 
+    private IndexPublicationSnapshot publicationSnapshot;
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -47,6 +49,7 @@ public class SearchResult {
         private Integer chunkIndex;
         private Integer totalChunks;
         private String vectorId;
+        private String indexGeneration;
         private Integer indexRevision;
         private String indexedContentSha256;
         private String chunkContentSha256;
