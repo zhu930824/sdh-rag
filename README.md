@@ -279,6 +279,8 @@ Agent 运行时升级前可执行 `./scripts/test-agent-regression.ps1`，运行
 
 V36 起记录执行批次的配置指纹与续跑变化；模型、Prompt、工具和证据的边界见 [执行批次配置快照](docs/agent-execution-attempt-snapshots.md)。
 
+V37 起保留检索片段的索引代际与内容指纹，聊天引用支持逐段查看，详见 [RAG 检索证据](docs/rag-retrieval-evidence.md)。
+
 ## 贡献指南
 
 欢迎贡献代码！请遵循以下步骤：

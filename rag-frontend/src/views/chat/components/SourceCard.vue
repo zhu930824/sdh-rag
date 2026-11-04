@@ -12,6 +12,10 @@
     <div class="source-content">
       {{ truncatedContent }}
     </div>
+    <a-space v-if="source.chunks?.length" size="small" style="margin-top: 8px">
+      <a-tag>{{ source.chunks.length }} 个召回片段</a-tag>
+      <a-tag v-if="source.mixedGenerations" color="orange">包含多个索引代际</a-tag>
+    </a-space>
   </div>
 </template>
 

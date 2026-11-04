@@ -10,7 +10,7 @@ final class AgentEvaluationSnapshot {
     static String capture(AgentRun run, ChatHistory history, List<AgentStep> steps,
                           List<cn.sdh.backend.agent.AgentExecutionAttemptService.Attempt> attempts, LocalDateTime time) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("schemaVersion", 2); snapshot.put("capturedAt", time.toString());
+        snapshot.put("schemaVersion", 3); snapshot.put("capturedAt", time.toString());
         snapshot.put("provenance", "TERMINAL_RUN_ARCHIVE");
         snapshot.put("runKey", run.getRunKey()); snapshot.put("status", run.getStatus());
         snapshot.put("engine", run.getEngine()); snapshot.put("engineVersion", run.getEngineVersion());
@@ -26,6 +26,8 @@ final class AgentEvaluationSnapshot {
             snapshot.put(field, !complete || versions.contains(null) ? "UNKNOWN" : versions.size() == 1 ? versions.getFirst() : "MULTIPLE");
         }
         snapshot.put("knowledgePublicationVersion", "UNKNOWN");
+        snapshot.put("retrievalSnapshot", run.getRetrievalSnapshotJson() == null ? null : com.alibaba.fastjson2.JSON.parseObject(run.getRetrievalSnapshotJson()));
+        snapshot.put("retrievalSnapshotSha256", cn.sdh.backend.utils.ContentFingerprint.sha256(run.getRetrievalSnapshotJson()));
         snapshot.put("question", cap(run.getQuestion(), 20000)); snapshot.put("answer", cap(history == null ? null : history.getAnswer(), 64000));
         snapshot.put("evidencePreview", cap(run.getEvidenceText(), 12000)); snapshot.put("errorPreview", cap(run.getErrorMessage(), 4000));
         snapshot.put("stepCount", run.getStepCount()); snapshot.put("promptTokens", run.getPromptTokens());

@@ -92,6 +92,9 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 });
             }
 
+            // Bind the checksum to the text actually written; caller metadata must not override it.
+            doc.put("chunk_content_sha256", cn.sdh.backend.utils.ContentFingerprint.sha256((String) doc.get("content")));
+
             IndexRequest<Map<String, Object>> request = IndexRequest.of(i -> i
                     .index(indexName)
                     .id(vectorId)
@@ -630,7 +633,8 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         List<String> fields = List.of(
             "chunk_id", "chunk_index", "document_id", "document_title", "knowledge_id",
             "total_chunks", "department", "doc_type", "doc_date", "freshness_score",
-            "document_summary", "embedding_model", "create_time");
+            "document_summary", "embedding_model", "create_time", "index_revision",
+            "indexed_content_sha256", "chunk_content_sha256");
         for (String field : fields) {
             Object value = source.get(field);
             if (value != null) {

@@ -134,6 +134,8 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         properties.put("doc_date", Property.of(p -> p.date(DateProperty.of(d -> d))));
         properties.put("freshness_score", Property.of(p -> p.float_(FloatNumberProperty.of(f -> f))));
         properties.put("index_revision", Property.of(p -> p.long_(LongNumberProperty.of(l -> l))));
+        properties.put("indexed_content_sha256", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.put("chunk_content_sha256", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
         return properties;
     }
 
@@ -160,6 +162,7 @@ public class ElasticsearchIndexServiceImpl implements ElasticsearchIndexService 
         properties.put("doc_date", Property.of(p -> p.date(DateProperty.of(d -> d))));
         properties.put("freshness_score", Property.of(p -> p.float_(FloatNumberProperty.of(f -> f))));
         properties.put("create_time", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+        properties.putAll(buildMetadataMappingProperties());
 
         return properties;
     }

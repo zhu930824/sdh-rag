@@ -156,6 +156,7 @@ public class AgentAskService {
         String evidence = "";
         String sourcesEvent = null;
         String sourcesPayloadJson = null;
+        String retrievalSnapshotJson = null;
         if (effectiveKb != null) {
             ChatServiceImpl.AgentRetrieval retrieval = chatService.retrieveForAgent(
                     question, effectiveKb, userId, currentSessionId, metadataFilters);
@@ -167,6 +168,7 @@ public class AgentAskService {
             }
             sourcesEvent = retrieval.sourcesEvent();
             sourcesPayloadJson = retrieval.sourcesPayloadJson();
+            retrievalSnapshotJson = retrieval.retrievalSnapshotJson();
         }
 
         List<AgentTool> tools = agentToolService.listUsable(userId);
@@ -174,7 +176,7 @@ public class AgentAskService {
         Long historyId = chatService.saveQuestionRow(question, currentSessionId, userId,
                 effectiveKb, modelConfig.getId());
         AgentRun run = runStateService.create(userId, currentSessionId, question,
-                effectiveKb, modelConfig.getId(), maxSteps);
+                effectiveKb, modelConfig.getId(), maxSteps, retrievalSnapshotJson);
         run.setEngine(runtimeEngine);
         run.setEngineVersion(AgentRuntimeVersion.current(runtimeEngine));
         run.setMemoryEnabled(memoryEnabled);

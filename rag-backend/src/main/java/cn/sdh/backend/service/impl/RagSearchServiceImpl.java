@@ -452,7 +452,7 @@ public class RagSearchServiceImpl implements RagSearchService {
 
         List<SearchResult.RankedChunk> rankedChunks = reranked.stream().map(doc -> {
             var meta = doc.getMetadata();
-            return SearchResult.RankedChunk.builder()
+            var chunk = SearchResult.RankedChunk.builder()
                 .documentId(parseLong(meta.get("document_id")))
                 .documentTitle((String) meta.getOrDefault("document_title", ""))
                 .documentSummary((String) meta.get("document_summary"))
@@ -466,6 +466,8 @@ public class RagSearchServiceImpl implements RagSearchService {
                 .docType((String) meta.get("doc_type"))
                 .docDate(parseDate(meta.get("doc_date")))
                 .build();
+            cn.sdh.backend.dto.RetrievedChunkProvenance.from(doc).apply(chunk);
+            return chunk;
         }).collect(Collectors.toList());
 
         if (rankedChunks.isEmpty()) {
@@ -490,7 +492,7 @@ public class RagSearchServiceImpl implements RagSearchService {
                 searchQuery, kb.getId(), 5 - finalChunks.size(), kb.getEmbeddingModel(), metadataFilters);
             List<SearchResult.RankedChunk> coldChunks = coldResults.stream().map(doc -> {
                 var meta = doc.getMetadata();
-                return SearchResult.RankedChunk.builder()
+                var chunk = SearchResult.RankedChunk.builder()
                     .documentId(parseLong(meta.get("document_id")))
                     .documentTitle((String) meta.getOrDefault("document_title", ""))
                     .content(doc.getText())
@@ -498,6 +500,9 @@ public class RagSearchServiceImpl implements RagSearchService {
                     .relevanceScore(parseDouble(meta.get("score"), 0.3) * 0.9)
                     .freshnessScore(0.3)
                     .build();
+                chunk.setTotalChunks(parseInt(meta.get("total_chunks")));
+                cn.sdh.backend.dto.RetrievedChunkProvenance.from(doc).apply(chunk);
+                return chunk;
             }).collect(Collectors.toList());
             finalChunks.addAll(coldChunks);
         }

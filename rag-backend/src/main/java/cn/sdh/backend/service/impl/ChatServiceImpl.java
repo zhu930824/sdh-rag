@@ -502,14 +502,15 @@ public class ChatServiceImpl implements ChatService {
             }
 
             String context = buildHierarchicalContext(searchResult);
-            String sourcesEvent = buildSourcesEvent(searchResult.getChunks());
-            List<Map<String, Object>> sources = buildSourcesList(searchResult.getChunks());
+            List<Map<String, Object>> sources = RagEvidence.sources(searchResult.getChunks());
+            String sourcesEvent = sources == null ? null : jsonEvent("sources", "sources", sources);
             String sourcesPayloadJson = sources == null ? null : writeJson(sources);
+            String retrievalSnapshot = RagEvidence.snapshot(searchResult.getChunks(), context);
 
             log.info("级联RAG检索完成: knowledgeId={}, 召回片段数={}, 总长度={}",
                     knowledgeId, searchResult.getChunks().size(), context.length());
 
-            return new RetrievalPayload(context, sourcesEvent, sourcesPayloadJson, false);
+            return new RetrievalPayload(context, sourcesEvent, sourcesPayloadJson, retrievalSnapshot, false);
 
         } catch (Exception e) {
             log.error("RAG检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
@@ -519,37 +520,6 @@ public class ChatServiceImpl implements ChatService {
 
     private boolean canAccessKnowledgeBase(KnowledgeBase knowledgeBase, Long userId) {
         return knowledgeAccessService.canRead(knowledgeBase, userId);
-    }
-
-    private String buildSourcesEvent(List<SearchResult.RankedChunk> chunks) {
-        List<Map<String, Object>> sources = buildSourcesList(chunks);
-        return sources == null ? null : jsonEvent("sources", "sources", sources);
-    }
-
-    /** 来源列表(与 sources 事件同构,单独抽出供落库回放) */
-    private List<Map<String, Object>> buildSourcesList(List<SearchResult.RankedChunk> chunks) {
-        if (chunks == null || chunks.isEmpty()) {
-            return null;
-        }
-        Map<String, SearchResult.RankedChunk> topChunkByDocument = new LinkedHashMap<>();
-        for (SearchResult.RankedChunk chunk : chunks) {
-            String key = chunk.getDocumentId() != null
-                    ? chunk.getDocumentId().toString()
-                    : String.valueOf(chunk.getDocumentTitle());
-            topChunkByDocument.putIfAbsent(key, chunk);
-        }
-        return topChunkByDocument.values().stream().map(chunk -> {
-            Map<String, Object> source = new LinkedHashMap<>();
-            source.put("documentId", chunk.getDocumentId());
-            source.put("documentTitle", chunk.getDocumentTitle());
-            source.put("content", chunk.getContent());
-            source.put("score", chunk.getFinalScore() != null
-                    ? chunk.getFinalScore()
-                    : chunk.getRelevanceScore());
-            source.put("chunkIndex", chunk.getChunkIndex());
-            source.put("totalChunks", chunk.getTotalChunks());
-            return source;
-        }).toList();
     }
 
     /**
@@ -695,13 +665,13 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private record RetrievalPayload(String context, String sourcesEvent, String sourcesPayloadJson,
-                                    boolean forbidden) {
+                                    String retrievalSnapshotJson, boolean forbidden) {
         private static RetrievalPayload empty() {
-            return new RetrievalPayload("", null, null, false);
+            return new RetrievalPayload("", null, null, null, false);
         }
 
         private static RetrievalPayload forbiddenPayload() {
-            return new RetrievalPayload("", null, null, true);
+            return new RetrievalPayload("", null, null, null, true);
         }
     }
 
@@ -772,11 +742,11 @@ public class ChatServiceImpl implements ChatService {
                                            String sessionId, Map<String, Object> metadataFilters) {
         RetrievalPayload payload = retrieveContext(question, knowledgeId, userId, sessionId, metadataFilters);
         return new AgentRetrieval(payload.context(), payload.sourcesEvent(), payload.sourcesPayloadJson(),
-                payload.forbidden());
+                payload.retrievalSnapshotJson(), payload.forbidden());
     }
 
     public record AgentRetrieval(String context, String sourcesEvent, String sourcesPayloadJson,
-                                 boolean forbidden) {
+                                 String retrievalSnapshotJson, boolean forbidden) {
     }
 
     /** Agent 复用:注入记忆上下文段(带异常兜底,与普通问答一致) */

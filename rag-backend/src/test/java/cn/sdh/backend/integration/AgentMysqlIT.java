@@ -38,8 +38,8 @@ class AgentMysqlIT {
         mysql.admin().execute("CREATE DATABASE `" + schema + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         var source = mysql.source(schema);
         Flyway.configure().dataSource(source).target("30").load().migrate();
-        var upgraded = Flyway.configure().dataSource(source).target("36").load();
-        assertEquals(6, upgraded.migrate().migrationsExecuted, "V30 -> V36 must apply exactly six migrations");
+        var upgraded = Flyway.configure().dataSource(source).target("37").load();
+        assertEquals(7, upgraded.migrate().migrationsExecuted, "V30 -> V37 must apply exactly seven migrations");
         upgraded.validate();
         assertEquals(0, upgraded.migrate().migrationsExecuted, "Re-running the migrator must be a no-op");
         context = MysqlAgentContext.open(source);
@@ -65,10 +65,10 @@ class AgentMysqlIT {
         if (mysql != null) mysql.close();
     }
 
-    @Test void migrationsAreValidatedOnMySqlAndReachV36() {
+    @Test void migrationsAreValidatedOnMySqlAndReachV37() {
         assertTrue(jdbc.queryForObject("SELECT VERSION()", String.class).startsWith("8."));
-        assertEquals("36", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
-        assertEquals(36, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
+        assertEquals("37", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
+        assertEquals(37, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
         assertEquals(0, count("agent_run"));
     }
 
@@ -311,6 +311,29 @@ class AgentMysqlIT {
         return new AgentAskService.Prepared(run.getRunKey(), run.getId(), run.getHistoryId(), run.getSessionId(), run.getQuestion(),
                 1L, null, new AgentExecutionPreparation.ModelBinding(config, cn.sdh.backend.service.factory.ModelProvider.OPENAI, null),
                 "system", false, null, null, null, null, null, List.of(), 8, lease.fence().epoch() > 1, null, lease);
+    }
+
+    @Test void retrievalEvidenceIsInsertedOnceAndSurvivesAttemptAndArchivePublication() {
+        String evidence = "{\"scope\":\"RETRIEVED_CANDIDATES\",\"generationCoverage\":\"COMPLETE\",\"chunks\":[{\"documentId\":42,\"indexRevision\":3,\"content\":\"source text\"}]}";
+        AgentRun run = runs.create(1L, "evidence-session", "question", null, null, 8, evidence);
+        run.setEngine("agentscope"); run.setEngineVersion("2.0.3"); runs.save(run);
+        run.setRetrievalSnapshotJson("{\"replacement\":true}"); runs.save(run);
+        assertEquals(evidence, runs.getByRunKey(run.getRunKey()).getRetrievalSnapshotJson());
+        try (var lease = leases.claim(run.getRunKey(), 1L)) {
+            var saved = runs.getByRunKey(run.getRunKey());
+            var attempt = context.getBean(AgentExecutionAttemptService.class).capture(prepared(saved, lease, "model"), saved);
+            assertEquals(cn.sdh.backend.utils.ContentFingerprint.sha256(evidence), com.alibaba.fastjson2.JSON.parseObject(attempt.snapshotJson())
+                    .getJSONObject("configuration").getJSONObject("evidence").getString("retrievalSnapshotSha256"));
+            context.getBean(AgentRunLifecycle.class).complete(new AgentRunLifecycle.Context(lease.fence(), null, null),
+                    new AgentRunLifecycle.Progress(1, 4, 2, 6), "answer");
+        }
+        var evaluations = context.getBean(cn.sdh.backend.agent.evaluation.AgentEvaluationService.class);
+        var scenario = new cn.sdh.backend.agent.evaluation.AgentEvaluationData.Scenario("query", "question", null, List.of(), List.of(), "answer", List.of(),
+                cn.sdh.backend.agent.evaluation.AgentEvaluationData.Risk.LOW);
+        var dataset = evaluations.importDataset(new cn.sdh.backend.agent.evaluation.AgentEvaluationData.ImportRequest("evidence", null, List.of(scenario)), 1L);
+        var archive = evaluations.record(new cn.sdh.backend.agent.evaluation.AgentEvaluationData.RecordRequest(dataset.id(), "query", run.getRunKey()), 1L);
+        assertEquals("source text", com.alibaba.fastjson2.JSON.parseObject(archive.runSnapshotJson()).getJSONObject("retrievalSnapshot")
+                .getJSONArray("chunks").getJSONObject(0).getString("content"));
     }
 
     private AgentRun createRun() {

@@ -100,7 +100,22 @@
             :format="(percent: number) => percent.toFixed(1) + '%'"
           />
         </div>
-        <div class="detail-item">
+        <template v-if="selectedSource.chunks?.length">
+          <a-alert v-if="selectedSource.mixedGenerations" type="warning" show-icon message="本次召回包含该文档的多个索引代际，请核对内容是否一致。" />
+          <div v-for="(chunk, index) in selectedSource.chunks" :key="index" class="detail-item">
+            <label>召回片段 {{ index + 1 }}</label>
+            <a-space wrap style="margin: 8px 0">
+              <a-tag v-if="chunk.chunkIndex != null">分块 {{ chunk.chunkIndex + 1 }}{{ chunk.totalChunks ? ` / ${chunk.totalChunks}` : '' }}</a-tag>
+              <a-tag>{{ chunk.indexRevision != null ? `索引代际 ${chunk.indexRevision}` : '索引代际未知' }}</a-tag>
+              <a-tag v-if="chunk.truncated" color="orange">内容预览已截断</a-tag>
+            </a-space>
+            <div class="content-box">{{ chunk.content }}</div>
+            <a-tooltip v-if="chunk.chunkContentSha256" :title="chunk.chunkContentSha256">
+              <small>片段指纹：{{ chunk.chunkContentSha256.slice(0, 12) }}…</small>
+            </a-tooltip>
+          </div>
+        </template>
+        <div v-else class="detail-item">
           <label>相关内容</label>
           <div class="content-box">{{ selectedSource.content }}</div>
         </div>

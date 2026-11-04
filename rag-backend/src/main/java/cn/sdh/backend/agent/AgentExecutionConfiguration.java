@@ -21,6 +21,7 @@ final class AgentExecutionConfiguration {
                 "tools", p.tools().stream().sorted(Comparator.comparing(t -> String.valueOf(t.getCode())))
                         .map(AgentExecutionConfiguration::tool).toList(),
                 "evidence", map("knowledgeId", p.kbId(), "evidenceSha256", hash(p.evidenceText()),
+                        "retrievalSnapshotSha256", hash(run.getRetrievalSnapshotJson()),
                         "publicationVersion", p.kbId() == null ? "NOT_APPLICABLE" : "UNPINNED"),
                 "execution", map("memoryEnabled", p.memoryEnabled(), "maxSteps", p.maxSteps()));
     }

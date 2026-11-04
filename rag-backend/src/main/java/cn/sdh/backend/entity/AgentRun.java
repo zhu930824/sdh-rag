@@ -81,6 +81,10 @@ public class AgentRun {
     @TableField("evidence_text")
     private String evidenceText;
 
+    /** Immutable retrieved-candidate observation, captured before model execution. */
+    @TableField(value = "retrieval_snapshot_json", updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String retrievalSnapshotJson;
+
     @TableField("prompt_tokens")
     private Integer promptTokens;
 

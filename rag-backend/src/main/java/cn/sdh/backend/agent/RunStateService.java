@@ -76,6 +76,11 @@ public class RunStateService {
 
     public AgentRun create(Long userId, String sessionId, String question,
                            Long knowledgeId, Long modelId, int maxSteps) {
+        return create(userId, sessionId, question, knowledgeId, modelId, maxSteps, null);
+    }
+
+    public AgentRun create(Long userId, String sessionId, String question,
+                           Long knowledgeId, Long modelId, int maxSteps, String retrievalSnapshotJson) {
         AgentRun run = new AgentRun();
         run.setRunKey(UUID.randomUUID().toString().replace("-", ""));
         run.setUserId(userId);
@@ -85,6 +90,7 @@ public class RunStateService {
         run.setModelId(modelId);
         run.setStatus(AgentRun.STATUS_RUNNING);
         run.setMaxSteps(maxSteps);
+        run.setRetrievalSnapshotJson(retrievalSnapshotJson);
         run.setStepCount(0);
         run.setPromptTokens(0);
         run.setCompletionTokens(0);

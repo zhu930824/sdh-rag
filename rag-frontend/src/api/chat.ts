@@ -34,6 +34,21 @@ export interface Source {
   documentTitle: string
   content: string
   score: number
+  chunks?: SourceChunk[]
+  mixedGenerations?: boolean
+}
+
+export interface SourceChunk {
+  vectorId?: string | null
+  chunkIndex?: number | null
+  totalChunks?: number | null
+  indexRevision?: number | null
+  indexedContentSha256?: string | null
+  chunkContentSha256?: string | null
+  indexedChunkHashVerified?: boolean
+  content: string
+  score?: number | null
+  truncated?: boolean
 }
 
 // 知识库评分

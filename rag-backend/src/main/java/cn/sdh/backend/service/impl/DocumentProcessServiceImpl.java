@@ -232,6 +232,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
             Map<String, Object> documentMetadata = buildDocumentMetadata(document, chunkTexts.size());
             documentMetadata.put("index_revision", payload.revision());
+            documentMetadata.put("indexed_content_sha256", cn.sdh.backend.utils.ContentFingerprint.sha256(content));
 
             // 创建分块并直接存储到 ES
             int successCount = 0;

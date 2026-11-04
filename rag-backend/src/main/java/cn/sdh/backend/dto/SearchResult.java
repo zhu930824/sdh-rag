@@ -46,6 +46,11 @@ public class SearchResult {
         private String content;
         private Integer chunkIndex;
         private Integer totalChunks;
+        private String vectorId;
+        private Integer indexRevision;
+        private String indexedContentSha256;
+        private String chunkContentSha256;
+        private Boolean indexedChunkHashVerified;
         private Double relevanceScore;
         private Double freshnessScore;
         private Double finalScore;
