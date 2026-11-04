@@ -273,6 +273,8 @@ npm run type-check
 npm run build
 ```
 
+Agent 运行时升级前可执行 `./scripts/test-agent-regression.ps1`，运行 30 条固定模型响应的 SDK 场景检查。执行参数、报告及覆盖边界见 [Agent 场景回归集](docs/agent-scenario-regression.md)。
+
 ## 贡献指南
 
 欢迎贡献代码！请遵循以下步骤：
