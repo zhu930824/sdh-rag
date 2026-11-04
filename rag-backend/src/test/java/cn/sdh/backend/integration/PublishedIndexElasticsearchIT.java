@@ -27,15 +27,18 @@ class PublishedIndexElasticsearchIT {
         try (var node = new ManagedElasticsearch();
              var transport = new RestClientTransport(RestClient.builder(HttpHost.create(node.url())).build(), new JacksonJsonpMapper())) {
             var es = new ElasticsearchClient(transport);
-            var source = new SingleConnectionDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL", "sa", "", true);
+            String database="jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL";
+            var source = new SingleConnectionDataSource(database,"sa","",true);
+            source.getConnection();
+            var connections=new DriverManagerDataSource(database,"sa","");
             try {
-                var jdbc = new JdbcTemplate(source);
+                var jdbc = new JdbcTemplate(connections);
                 jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
                 jdbc.update("INSERT INTO knowledge_document_relation VALUES(1,7,42,1,11,2,1,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
-                new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql")).execute(source);
+                new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql")).execute(connections);
                 var policy=new cn.sdh.backend.config.IndexLifecycleProperties(); policy.setRetentionSeconds(0);
-                var lifecycle=new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),policy);
-                var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),lifecycle);
+                var lifecycle=new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(connections),policy);
+                var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(connections),lifecycle,new IndexPublicationGateStore(jdbc,org.mockito.Mockito.mock(AgentImprovementService.class)));
                 var indices = mock(ElasticsearchIndexService.class);
                 when(indices.indexExists(7L)).thenReturn(true); when(indices.getIndexName(7L)).thenReturn("sdh-rag-kb-7");
                 var embeddings = mock(EmbeddingService.class);
@@ -110,6 +113,54 @@ class PublishedIndexElasticsearchIT {
                 var resweep=lifecycle.claim(7L).getFirst();
                 deletion.delete(resweep); assertTrue(lifecycle.finish(resweep,true));
                 assertFalse(es.exists(e -> e.index("sdh-rag-kb-7").id("late")).value());
+                // A business draft is searchable only in the worker's candidate scope until its gate commits.
+                jdbc.execute("CREATE TABLE knowledge_document(id BIGINT PRIMARY KEY,status INT)");
+                jdbc.update("INSERT INTO knowledge_document VALUES(42,0),(43,0)");
+                String approved="approved content ".repeat(10);
+                jdbc.update("INSERT INTO knowledge_draft(id,knowledge_id,title,content,status,regression_queries,published_document_id,content_checksum,created_by,reviewed_by,reviewed_at,created_at,updated_at) VALUES(31,7,'approved',?,'PUBLISHING','[\"question\"]',42,'checksum',7,7,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",approved);
+                jdbc.update("UPDATE knowledge_draft SET published_generation=? WHERE id=31",stage.key());
+                jdbc.update("UPDATE knowledge_document_relation SET index_revision=3,job_id=13,index_source_sha256=NULL,index_write_generation=NULL,process_status=1 WHERE id=1");
+                var managedContext=mock(PlatformJobExecutionContext.class); when(managedContext.jobId()).thenReturn(13L);
+                var managedConfig=new DocumentLinkConfig(); managedConfig.setEmbeddingModel("model");
+                var managedPayload=new DocumentIndexJobPayload(1L,42L,7L,3,managedConfig);
+                String approvedSha=cn.sdh.backend.utils.ContentFingerprint.sha256(KnowledgePublicationContent.markdown("approved",approved));
+                var managed=publications.stage(managedPayload,13L,"c".repeat(64),approvedSha,managedContext);
+                es.index(i -> i.index("sdh-rag-kb-7").id("managed").document(chunk(42,3,managed.key())));
+                es.indices().refresh(r -> r.index("sdh-rag-kb-7"));
+                var proxyFactory=new org.springframework.aop.aspectj.annotation.AspectJProxyFactory(vectors);
+                proxyFactory.addAspect(new PublishedIndexReadAspect(publications));
+                VectorStoreService online=proxyFactory.getProxy();
+                try(var candidate=publications.openCandidate(managedPayload,13L,managed.key(),managedContext)) {
+                    assertIds(vectors.candidateSearch("question",7L,5,"model"),"managed");
+                    var live=java.util.concurrent.CompletableFuture.supplyAsync(() -> online.similaritySearch("question",7L,5,"model")).get(10,java.util.concurrent.TimeUnit.SECONDS);
+                    assertIds(live,"new");
+                }
+                var gate=new IndexPublicationGate(publications,new IndexPublicationGateStore(jdbc,mock(AgentImprovementService.class)),online);
+                assertTrue(gate.evaluate(managedPayload,13L,managed.key(),1,"model",managedContext));
+                assertIds(online.similaritySearch("question",7L,5,"model"),"new");
+                assertTrue(publications.publish(managedPayload,13L,managed.key(),1,managedContext));
+                assertIds(online.similaritySearch("question",7L,5,"model"),"managed");
+                // Five stronger published competitors keep an inferior candidate outside Top 5.
+                for(long id=100;id<105;id++) {
+                    String key="competitor-"+id;
+                    jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,published_generation) VALUES(?,7,?,1,?)",id,id,key);
+                    jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES(?,?,7,?,1,'PUBLISHED')",key,id,id);
+                    long document=id;
+                    es.index(i -> i.index("sdh-rag-kb-7").id(key).document(chunk(document,1,key)));
+                }
+                jdbc.update("INSERT INTO knowledge_draft(id,knowledge_id,title,content,status,regression_queries,published_document_id,content_checksum,created_by,reviewed_by,reviewed_at,created_at,updated_at) VALUES(32,7,'approved',?,'PUBLISHING','[\"question\"]',43,'checksum',7,7,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",approved);
+                jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status) VALUES(3,7,43,1,14,1)");
+                var rejectedContext=mock(PlatformJobExecutionContext.class); when(rejectedContext.jobId()).thenReturn(14L);
+                var rejectedConfig=new DocumentLinkConfig(); rejectedConfig.setEmbeddingModel("model");
+                var rejectedPayload=new DocumentIndexJobPayload(3L,43L,7L,1,rejectedConfig);
+                var rejected=publications.stage(rejectedPayload,14L,"d".repeat(64),approvedSha,rejectedContext);
+                var inferior=chunk(43,1,rejected.key()); inferior.put("embedding",List.of(-1f,0f));
+                es.index(i -> i.index("sdh-rag-kb-7").id("rejected").document(inferior));
+                es.indices().refresh(r -> r.index("sdh-rag-kb-7"));
+                assertFalse(gate.evaluate(rejectedPayload,14L,rejected.key(),1,"model",rejectedContext));
+                assertNull(jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=3",String.class));
+                assertEquals("GATE_FAILED",jdbc.queryForObject("SELECT status FROM knowledge_draft WHERE id=32",String.class));
+                assertTrue(online.similaritySearch("question",7L,10,"model").stream().noneMatch(d -> "rejected".equals(d.getMetadata().get("id"))));
             } finally { source.destroy(); }
         }
     }

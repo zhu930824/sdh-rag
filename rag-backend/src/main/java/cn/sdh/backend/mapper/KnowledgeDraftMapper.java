@@ -10,6 +10,12 @@ import java.util.List;
 
 @Mapper
 public interface KnowledgeDraftMapper extends BaseMapper<KnowledgeDraft> {
+    @Select("SELECT * FROM knowledge_draft WHERE id=#{id} FOR UPDATE")
+    KnowledgeDraft selectByIdForUpdate(@Param("id") Long id);
+    @org.apache.ibatis.annotations.Update("UPDATE knowledge_draft SET reviewed_by=NULL,reviewed_at=NULL,review_note=NULL WHERE id=#{id}")
+    int clearReview(@Param("id") Long id);
+    @org.apache.ibatis.annotations.Update("UPDATE knowledge_draft SET validation_status=#{status},validation_result=#{result},updated_at=CURRENT_TIMESTAMP WHERE id=#{id} AND status='PUBLISHED' AND (published_generation=#{generation} OR (published_generation IS NULL AND #{generation} IS NULL))")
+    int updateValidation(@Param("id") Long id,@Param("generation") String generation,@Param("status") String status,@Param("result") String result);
     @Select("""
             SELECT DISTINCT d.* FROM knowledge_draft d
             JOIN knowledge_base kb ON kb.id = d.knowledge_id

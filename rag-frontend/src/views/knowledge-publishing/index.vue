@@ -4,7 +4,7 @@
       <div><h2>知识审核与发布</h2><p>把真实业务经验编辑成可审核、可验证、可回滚的知识，再进入统一检索链路。</p></div>
       <a-space><a-select v-model:value="status" allow-clear placeholder="全部状态" style="width:150px" @change="load"><a-select-option v-for="item in statusOptions" :key="item.value" :value="item.value">{{ item.label }}</a-select-option></a-select><a-button :loading="loading" @click="load">刷新状态</a-button><a-button @click="router.push('/agent-ops')">返回改进队列</a-button><a-button type="primary" @click="openCreate">新建草稿</a-button></a-space>
     </div>
-    <a-alert type="info" show-icon message="发布会复用现有 MinIO、智能切片和 ES 增量索引；回归问题必须在 Top 5 中召回本次发布文档才算通过。" class="tip" />
+    <a-alert type="info" show-icon message="发布先构建隔离候选索引；全部回归问题须在 Top 5 中召回本次候选批次，通过后才参与线上检索。" class="tip" />
     <a-table :columns="columns" :data-source="drafts" :loading="loading" row-key="id" :pagination="{ pageSize: 12 }">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'title'"><strong>{{ record.title }}</strong><div class="muted">知识库 #{{ record.knowledgeId }} · 文档 #{{ record.publishedDocumentId || '-' }}</div></template>
@@ -29,7 +29,7 @@
         <a-form-item label="目标知识库" required><a-select v-model:value="form.knowledgeId" show-search option-filter-prop="label" :options="knowledgeOptions" /></a-form-item>
         <a-form-item label="知识标题" required><a-input v-model:value="form.title" :maxlength="255" /></a-form-item>
         <a-form-item label="知识正文" required extra="至少 50 个字符；建议写清适用场景、处理步骤、限制与验证结果。"><a-textarea v-model:value="form.content" :rows="14" show-count /></a-form-item>
-        <a-form-item label="回归问题" extra="每行一个真实业务问题，最多 10 个。"><a-textarea v-model:value="queryText" :rows="5" placeholder="例如：客户退款超过 30 天应如何处理？" /></a-form-item>
+        <a-form-item label="回归问题" extra="提交审核前至少填写 1 个，最多 10 个，每个不超过 500 字符。"><a-textarea v-model:value="queryText" :rows="5" placeholder="例如：客户退款超过 30 天应如何处理？" /></a-form-item>
       </a-form>
       <template #extra><a-space><a-button @click="editorOpen=false">取消</a-button><a-button type="primary" :loading="saving" @click="save">保存草稿</a-button></a-space></template>
     </a-drawer>
@@ -67,14 +67,14 @@ async function loadKnowledge(){const res=await getKnowledgeBaseList({page:1,page
 function openCreate(){editing.value=undefined;Object.assign(form,{knowledgeId:undefined,title:'',content:'',improvementId:undefined});queryText.value='';editorOpen.value=true}
 function openEdit(value:any){const item=value as KnowledgeDraft;editing.value=item;Object.assign(form,{knowledgeId:item.knowledgeId,title:item.title,content:item.content,improvementId:item.improvementId});queryText.value=parseQueries(item.regressionQueries).join('\n');editorOpen.value=true}
 async function save(){if(!form.knowledgeId||!form.title.trim()||form.content.trim().length<50){message.warning('请选择知识库，并填写标题和至少 50 个字符的正文');return}saving.value=true;try{const data={knowledgeId:form.knowledgeId,title:form.title.trim(),content:form.content.trim(),improvementId:form.improvementId,regressionQueries:queryText.value.split('\n').map(v=>v.trim()).filter(Boolean)};if(editing.value)await updateKnowledgeDraft(editing.value.id,data);else await createKnowledgeDraft(data);message.success('草稿已保存');editorOpen.value=false;await load()}finally{saving.value=false}}
-async function submit(value:any){const item=value as KnowledgeDraft;await submitKnowledgeDraft(item.id);message.success('已提交审核');await load()}
+async function submit(value:any){const item=value as KnowledgeDraft;if(!parseQueries(item.regressionQueries).length){message.warning('请先编辑草稿并填写至少一个回归问题');return}await submitKnowledgeDraft(item.id);message.success('已提交审核');await load()}
 function openReview(value:any){selected.value=value as KnowledgeDraft;reviewNote.value='';reviewOpen.value=true}
 async function review(approved:boolean){if(!selected.value)return;await reviewKnowledgeDraft(selected.value.id,approved,reviewNote.value);message.success(approved?'审核通过':'已驳回修改');reviewOpen.value=false;await load()}
-async function publish(value:any){const item=value as KnowledgeDraft;await publishKnowledgeDraft(item.id);message.success('已提交增量索引，请稍后刷新查看结果');await load()}
+async function publish(value:any){const item=value as KnowledgeDraft;await publishKnowledgeDraft(item.id);message.success('已提交候选索引与门禁任务，通过后才会发布');await load()}
 async function validate(value:any){const item=value as KnowledgeDraft;const res=await validateKnowledgeDraft(item.id);if(res.data?.passed)message.success('全部回归问题验证通过');else message.warning('部分回归问题未召回新知识');await load()}
 async function rollback(value:any){const item=value as KnowledgeDraft;await rollbackKnowledgeDraft(item.id);message.success('知识已从检索链路回滚');await load()}
 async function openDetail(value:any){const item=value as KnowledgeDraft;selected.value=item;detailOpen.value=true;auditRecords.value=(await getKnowledgePublishRecords(item.id)).data||[]}
-function editable(value:any){return ['DRAFT','REJECTED'].includes((value as KnowledgeDraft).status)} function parseQueries(value?:string){try{return value?JSON.parse(value):[]}catch{return[]}}
+function editable(value:any){const item=value as KnowledgeDraft;return ['DRAFT','REJECTED','APPROVED'].includes(item.status)&&!item.publishedDocumentId} function parseQueries(value?:string){try{return value?JSON.parse(value):[]}catch{return[]}}
 function statusText(value:string){return Object.fromEntries(statusOptions.map(i=>[i.value,i.label]))[value]||value} function statusColor(value:string){return ({DRAFT:'default',IN_REVIEW:'orange',APPROVED:'cyan',REJECTED:'red',PUBLISHING:'blue',PUBLISHED:'green',PUBLISH_FAILED:'red',GATE_FAILED:'red',ROLLED_BACK:'default'} as Record<string,string>)[value]||'default'}
 function validationText(value:string){return ({NOT_RUN:'未验证',PASSED:'已通过',FAILED:'未通过'} as Record<string,string>)[value]||value} function actionText(value:string){return ({PUBLISH:'发布',VALIDATE:'回归验证',ROLLBACK:'回滚'} as Record<string,string>)[value]||value}
 onMounted(()=>{load();loadKnowledge()})

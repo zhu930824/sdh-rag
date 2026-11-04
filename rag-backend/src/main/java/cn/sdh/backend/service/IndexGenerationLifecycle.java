@@ -27,11 +27,13 @@ public class IndexGenerationLifecycle {
     }
     <T> T readGuard(Long knowledgeId, Supplier<T> action) {
         return transactions.execute(status -> {
-            // Upsert acquires an exclusive lock directly. Duplicate INSERT then SELECT FOR UPDATE
-            // upgrades two shared duplicate-key locks and can deadlock competing readers/cleaners.
-            jdbc.update("INSERT INTO knowledge_index_read_guard(knowledge_id) VALUES(?) ON DUPLICATE KEY UPDATE knowledge_id=knowledge_id",knowledgeId);
+            lockInTransaction(knowledgeId);
             return action.get();
         });
+    }
+    void lockInTransaction(Long knowledgeId) {
+        // Every publication protocol takes this exclusive lock before job/relation/generation locks.
+        jdbc.update("INSERT INTO knowledge_index_read_guard(knowledge_id) VALUES(?) ON DUPLICATE KEY UPDATE knowledge_id=knowledge_id",knowledgeId);
     }
     String pin(Long knowledgeId, String snapshot, List<PublishedIndexService.Generation> generations) {
         if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT generations_registered FROM knowledge_index_read_snapshot WHERE snapshot_sha256=?",Boolean.class,snapshot))) {

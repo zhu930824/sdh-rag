@@ -42,6 +42,7 @@ class KnowledgePublishingServiceTest {
         UserContext.setUserContext(context);
         service = new KnowledgePublishingService(drafts, records, documents, relations, access,
                 improvements, minio, processor, vectors);
+        lenient().when(drafts.selectByIdForUpdate(anyLong())).thenAnswer(call -> drafts.selectById((Long)call.getArgument(0)));
     }
 
     @AfterEach void cleanup() { UserContext.clear(); }
@@ -72,6 +73,7 @@ class KnowledgePublishingServiceTest {
         Document hit = new Document("命中的业务知识");
         hit.getMetadata().put("document_id", 88L);
         when(vectors.similaritySearch(anyString(), eq(9L), eq(5))).thenReturn(List.of(hit));
+        when(drafts.updateValidation(eq(31L),isNull(),eq("PASSED"),anyString())).thenReturn(1);
 
         KnowledgePublishingService.ValidationResult result = service.validate(31L);
 
@@ -124,27 +126,30 @@ class KnowledgePublishingServiceTest {
         assertEquals("ROLLED_BACK", draft.getStatus());
     }
 
-    @Test void completedIndexIsRemovedWhenAutomaticQualityGateFails() {
+    @Test void listingPublishingDraftsNeverRunsTheGateOrChangesVisibility() {
         KnowledgeDraft draft = publishedDraft();
         draft.setStatus("PUBLISHING");
-        KnowledgeDocument document = new KnowledgeDocument();
-        document.setId(88L);
-        cn.sdh.backend.entity.KnowledgeDocumentRelation relation = new cn.sdh.backend.entity.KnowledgeDocumentRelation();
-        relation.setProcessStatus(2);
-        relation.setChunkCount(3);
         when(drafts.selectAccessible(7L, null)).thenReturn(List.of(draft));
-        when(relations.selectByKnowledgeIdAndDocumentId(9L, 88L)).thenReturn(relation);
-        when(documents.selectById(88L)).thenReturn(document);
-        when(vectors.similaritySearch(anyString(), eq(9L), eq(5))).thenReturn(List.of());
 
         service.list(null);
 
-        assertEquals("GATE_FAILED", draft.getStatus());
-        assertEquals("FAILED", draft.getValidationStatus());
-        assertEquals(2, document.getStatus());
-        verify(processor).unlinkDocumentFromKnowledge(88L, 9L);
-        verify(records).insert(argThat((KnowledgePublishRecord record) ->
-                "VALIDATE".equals(record.getAction()) && "FAILED".equals(record.getStatus())));
+        assertEquals("PUBLISHING", draft.getStatus());
+        verifyNoInteractions(vectors,processor,relations,documents,records,improvements);
+        verify(drafts,never()).updateById(any(KnowledgeDraft.class));
+    }
+    @Test void editingAnUnpublishedApprovalRequiresFreshReview() {
+        var draft=publishedDraft(); draft.setStatus("APPROVED"); draft.setPublishedDocumentId(null);
+        when(drafts.selectById(31L)).thenReturn(draft);
+        var result=service.update(31L,new KnowledgePublishingService.DraftCommand(null,9L,"updated","approved content ".repeat(10),List.of("question")));
+        assertEquals("DRAFT",result.getStatus()); assertNull(result.getReviewedBy()); assertNull(result.getReviewedAt());
+        verify(drafts).clearReview(31L);
+    }
+    @Test void emptyRegressionQueriesCannotReachReview() {
+        var draft=publishedDraft(); draft.setStatus("DRAFT"); draft.setPublishedDocumentId(null);
+        draft.setContent("approved content ".repeat(10)); draft.setRegressionQueries("[]");
+        when(drafts.selectById(31L)).thenReturn(draft); when(access.requireEdit(9L,7L)).thenReturn(base());
+        assertThrows(cn.sdh.backend.common.exception.BusinessException.class,() -> service.submit(31L));
+        verify(drafts,never()).updateById(any(KnowledgeDraft.class));
     }
 
     private KnowledgeBase base() {
@@ -161,6 +166,7 @@ class KnowledgePublishingServiceTest {
         draft.setId(31L);
         draft.setKnowledgeId(9L);
         draft.setCreatedBy(7L);
+        draft.setReviewedBy(7L); draft.setReviewedAt(java.time.LocalDateTime.now());
         draft.setTitle("退款处理经验");
         draft.setContent("完整正文");
         draft.setStatus("PUBLISHED");

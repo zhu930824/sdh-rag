@@ -19,6 +19,8 @@ public class KnowledgeDraft {
     private String status;
     @TableField("regression_queries") private String regressionQueries;
     @TableField("published_document_id") private Long publishedDocumentId;
+    @TableField(value="published_generation",insertStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER,updateStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String publishedGeneration;
     @TableField("content_checksum") private String contentChecksum;
     @TableField("validation_status") private String validationStatus;
     @TableField("validation_result") private String validationResult;

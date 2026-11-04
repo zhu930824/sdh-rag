@@ -19,10 +19,10 @@ class PublishedIndexLeaseTest {
         jdbc = new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
         jdbc.update("INSERT INTO knowledge_document_relation VALUES(1,7,42,1,11,2,1,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql")).execute(source);
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql")).execute(source);
         policy=new cn.sdh.backend.config.IndexLifecycleProperties(); policy.setRetentionSeconds(0);
         lifecycle=new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),policy);
-        publications = new PublishedIndexService(jdbc,new DataSourceTransactionManager(source),lifecycle);
+        publications = new PublishedIndexService(jdbc,new DataSourceTransactionManager(source),lifecycle,new IndexPublicationGateStore(jdbc,org.mockito.Mockito.mock(AgentImprovementService.class)));
     }
     @AfterEach void close() { source.destroy(); }
     @Test void nestedViewsShareOneDurableLeaseAndCloseReleasesIt() {

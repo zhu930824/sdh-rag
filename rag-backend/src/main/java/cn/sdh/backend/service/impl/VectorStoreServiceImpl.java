@@ -217,8 +217,15 @@ public class VectorStoreServiceImpl implements VectorStoreService {
     @Override
     public List<Document> similaritySearch(String query, Long knowledgeId, int topK,
                                             String embeddingModelName, Double minScore) {
+        return similaritySearchInternal(query,knowledgeId,topK,embeddingModelName,minScore,false);
+    }
+    @Override public List<Document> candidateSearch(String query,Long knowledgeId,int topK,String embeddingModelName) {
+        return similaritySearchInternal(query,knowledgeId,topK,embeddingModelName,null,true);
+    }
+    private List<Document> similaritySearchInternal(String query,Long knowledgeId,int topK,String embeddingModelName,Double minScore,boolean strict) {
         try {
             if (!elasticsearchIndexService.indexExists(knowledgeId)) {
+                if(strict) throw new IllegalStateException("候选索引不可用");
                 log.info("知识库索引不存在: knowledgeId={}", knowledgeId);
                 return Collections.emptyList();
             }
@@ -227,6 +234,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             float[] queryEmbedding = embeddingService.getEmbeddingByModel(query, embeddingModelName);
             if (queryEmbedding == null || queryEmbedding.length == 0) {
+                if(strict) throw new IllegalStateException("候选查询嵌入不可用");
                 return Collections.emptyList();
             }
 
@@ -263,6 +271,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
         } catch (Exception e) {
             log.error("相似度搜索失败: knowledgeId={}, embeddingModel={}, error={}",
                     knowledgeId, embeddingModelName, e.getMessage(), e);
+            if(strict) throw new IllegalStateException("候选检索失败，等待任务重试",e);
             return Collections.emptyList();
         }
     }

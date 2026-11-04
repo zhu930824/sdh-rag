@@ -25,16 +25,24 @@ public class PublishedIndexService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final IndexGenerationLifecycle lifecycle;
+    private final IndexPublicationGateStore gates;
     private final ThreadLocal<Deque<ReadView>> views = ThreadLocal.withInitial(ArrayDeque::new);
-    public PublishedIndexService(JdbcTemplate jdbc, PlatformTransactionManager manager, IndexGenerationLifecycle lifecycle) {
+    public PublishedIndexService(JdbcTemplate jdbc, PlatformTransactionManager manager, IndexGenerationLifecycle lifecycle,IndexPublicationGateStore gates) {
         this.jdbc = jdbc; this.transactions = new TransactionTemplate(manager);
         this.lifecycle=lifecycle;
+        this.gates=gates;
     }
     public Stage stage(DocumentIndexJobPayload payload, Long jobId, String sourceSha256, PlatformJobExecutionContext context) {
+        return stage(payload,jobId,sourceSha256,null,context);
+    }
+    public boolean requiresGate(Long documentId) { return gates.managed(documentId); }
+    public Stage stage(DocumentIndexJobPayload payload, Long jobId, String sourceSha256,String rawSourceSha256, PlatformJobExecutionContext context) {
         if (sourceSha256 == null || !sourceSha256.matches("[a-f0-9]{64}")) throw new BusinessException(400, "索引内容指纹无效");
         return transactions.execute(status -> {
+            lifecycle.lockInTransaction(payload.knowledgeId());
             checkpoint(context, jobId);
             var current = requireCurrent(payload, jobId);
+            var policy=gates.verifySource(payload,rawSourceSha256);
             if (current.get("index_source_sha256") != null && !sourceSha256.equals(current.get("index_source_sha256"))) throw new BusinessException(409, "同一索引代际的源内容已变化，请创建新的索引任务");
             if (current.get("published_generation") != null) {
                 var published = jdbc.queryForList("SELECT generation_key,index_revision,chunk_count FROM knowledge_index_generation WHERE generation_key=? FOR UPDATE", current.get("published_generation"));
@@ -46,12 +54,14 @@ public class PublishedIndexService {
             jdbc.update("INSERT INTO knowledge_index_generation (generation_key,relation_id,knowledge_id,document_id,index_revision,source_sha256,state) VALUES (?,?,?,?,?,?,'STAGING')",
                     key, payload.relationId(), payload.knowledgeId(), payload.documentId(), payload.revision(), sourceSha256);
             jdbc.update("UPDATE knowledge_document_relation SET index_write_generation=?,index_source_sha256=? WHERE id=?", key, sourceSha256, payload.relationId());
+            gates.freeze(key,policy);
             return new Stage(key, false, 0);
         });
     }
     public boolean publish(DocumentIndexJobPayload payload, Long jobId, String generation, int chunks, PlatformJobExecutionContext context) {
         if (chunks < 0) throw new IllegalArgumentException("Negative chunk count");
         return Boolean.TRUE.equals(transactions.execute(status -> {
+            lifecycle.lockInTransaction(payload.knowledgeId());
             checkpoint(context, jobId);
             var current = requireCurrent(payload, jobId);
             if (!Objects.equals(current.get("index_write_generation"), generation)) throw new BusinessException(409, "索引写入批次已被接管，不能发布");
@@ -60,11 +70,34 @@ public class PublishedIndexService {
             var row = rows.getFirst();
             if (!Set.of("STAGING","PUBLISHED").contains(row.get("state"))) throw new BusinessException(409,"索引批次已进入回收，不能重新发布");
             if ("PUBLISHED".equals(row.get("state")) && ((Number)row.get("chunk_count")).intValue() != chunks) throw new BusinessException(409, "不能覆盖已发布代际");
+            gates.authorize(payload,generation,() -> headVersion(payload.knowledgeId(),true),Objects.equals(current.get("published_generation"),generation));
             jdbc.update("UPDATE knowledge_index_generation SET state='PUBLISHED',chunk_count=?,published_at=COALESCE(published_at,?) WHERE generation_key=?", chunks, LocalDateTime.now(), generation);
             if (jdbc.update("UPDATE knowledge_document_relation SET published_generation=?,process_status=2,chunk_count=?,error_message=NULL,process_time=? WHERE id=? AND index_revision=? AND job_id=?",
                     generation, chunks, LocalDateTime.now(), payload.relationId(), payload.revision(), jobId) != 1) throw new BusinessException(409, "发布指针已变化");
+            gates.published(payload,generation);
             return true;
         }));
+    }
+    public void saveGateEvaluation(DocumentIndexJobPayload payload,Long jobId,String generation,String basis,String candidate,KnowledgePublishingService.ValidationResult result,PlatformJobExecutionContext context) {
+        transactions.executeWithoutResult(status -> {
+            lifecycle.lockInTransaction(payload.knowledgeId()); checkpoint(context,jobId);
+            requireWriter(payload,jobId,generation);
+            gates.record(payload,generation,basis,candidate,result);
+        });
+    }
+    public void fail(DocumentIndexJobPayload payload,Long jobId,String generation,String error,PlatformJobExecutionContext context) {
+        transactions.executeWithoutResult(status -> {
+            lifecycle.lockInTransaction(payload.knowledgeId()); checkpoint(context,jobId);
+            var current=requireCurrent(payload,jobId);
+            if(generation!=null && !Objects.equals(current.get("index_write_generation"),generation)) throw new BusinessException(409,"失败回写已被新批次接管");
+            jdbc.update("UPDATE knowledge_document_relation SET process_status=3,error_message=?,process_time=CURRENT_TIMESTAMP WHERE id=?",error,payload.relationId());
+            gates.failed(payload,error);
+        });
+    }
+    private void requireWriter(DocumentIndexJobPayload payload,Long jobId,String generation) {
+        var current=requireCurrent(payload,jobId);
+        if(!Objects.equals(current.get("index_write_generation"),generation)) throw new BusinessException(409,"索引批次已被接管");
+        if(!"STAGING".equals(jdbc.queryForObject("SELECT state FROM knowledge_index_generation WHERE generation_key=? FOR UPDATE",String.class,generation))) throw new BusinessException(409,"候选批次不在暂存状态");
     }
     private void checkpoint(PlatformJobExecutionContext context, Long jobId) {
         if (!Objects.equals(jobId, context.jobId())) throw new BusinessException(409, "发布任务上下文不匹配");
@@ -86,19 +119,51 @@ public class PublishedIndexService {
         var view=lifecycle.readGuard(knowledgeId,() -> openUnderGuard(knowledgeId));
         views.get().push(view); return view;
     }
+    public ReadView openCandidate(DocumentIndexJobPayload payload,Long jobId,String generation,PlatformJobExecutionContext context) {
+        if(views.get().stream().anyMatch(v -> v.knowledgeId.equals(payload.knowledgeId()))) throw new BusinessException(409,"候选验证必须使用独立读作用域");
+        var view=lifecycle.readGuard(payload.knowledgeId(),() -> {
+            checkpoint(context,jobId); requireWriter(payload,jobId,generation);
+            if(gates.frozen(generation)==null) throw new BusinessException(409,"候选批次没有冻结门禁策略");
+            var candidate=jdbc.queryForObject("SELECT * FROM knowledge_index_generation WHERE generation_key=?",(rs,n) -> new Generation(generation,rs.getLong("document_id"),rs.getInt("index_revision"),false,rs.getString("source_sha256")),generation);
+            return openUnderGuard(payload.knowledgeId(),candidate);
+        });
+        views.get().push(view); return view;
+    }
     private ReadView openUnderGuard(Long knowledgeId) {
+        return openUnderGuard(knowledgeId,null);
+    }
+    private record Heads(List<Generation> generations,boolean summariesComplete) {}
+    private Heads heads(Long knowledgeId,boolean locked) {
         List<Boolean> readiness = new ArrayList<>();
-        var generations = jdbc.query("SELECT g.* FROM knowledge_document_relation r JOIN knowledge_index_generation g ON r.published_generation=g.generation_key WHERE r.knowledge_id=? AND g.state='PUBLISHED' ORDER BY g.generation_key",
+        var generations = jdbc.query("SELECT g.* FROM knowledge_document_relation r JOIN knowledge_index_generation g ON r.published_generation=g.generation_key WHERE r.knowledge_id=? AND g.state='PUBLISHED' AND NOT EXISTS (SELECT 1 FROM knowledge_draft d WHERE d.published_document_id=r.document_id AND (d.knowledge_id<>r.knowledge_id OR d.published_generation IS NULL OR d.published_generation<>g.generation_key OR d.status='ROLLED_BACK')) ORDER BY g.generation_key" + (locked?" FOR UPDATE":""),
                 (rs, n) -> {
                     readiness.add(rs.getBoolean("summary_ready"));
                     return new Generation(rs.getString("generation_key"), rs.getLong("document_id"), rs.getInt("index_revision"), rs.getBoolean("legacy_vectors"), rs.getString("source_sha256"));
                 }, knowledgeId);
+        return new Heads(List.copyOf(generations),!generations.isEmpty() && readiness.stream().allMatch(Boolean::booleanValue));
+    }
+    private String headVersion(Long knowledgeId,boolean locked) { return ContentFingerprint.sha256(manifest(knowledgeId,heads(knowledgeId,locked).generations())); }
+    private String manifest(Long knowledgeId,List<Generation> generations) {
         var manifest = new TreeMap<String,Object>(); manifest.put("knowledgeId", knowledgeId); manifest.put("generations", generations);
-        String json = JSON.toJSONString(manifest), version = ContentFingerprint.sha256(json);
+        return JSON.toJSONString(manifest);
+    }
+    private String saveManifest(Long knowledgeId,List<Generation> generations) {
+        String json=manifest(knowledgeId,generations),version=ContentFingerprint.sha256(json);
         try { jdbc.update("INSERT INTO knowledge_index_read_snapshot (snapshot_sha256,knowledge_id,manifest_json,created_at) VALUES (?,?,?,?)", version, knowledgeId, json, LocalDateTime.now()); }
         catch (DuplicateKeyException duplicate) { /* The manifest is content addressed and immutable. */ }
+        return version;
+    }
+    private ReadView openUnderGuard(Long knowledgeId,Generation candidate) {
+        var heads=heads(knowledgeId,false);
+        String basis=saveManifest(knowledgeId,heads.generations());
+        List<Generation> generations=heads.generations();
+        if(candidate!=null) {
+            var merged=new ArrayList<>(generations.stream().filter(g -> !g.documentId().equals(candidate.documentId())).toList());
+            merged.add(candidate); merged.sort(Comparator.comparing(Generation::key)); generations=List.copyOf(merged);
+        }
+        String version=candidate==null?basis:saveManifest(knowledgeId,generations);
         String lease=lifecycle.pin(knowledgeId,version,generations);
-        return new ReadView(knowledgeId, List.copyOf(generations), version, !generations.isEmpty() && readiness.stream().allMatch(Boolean::booleanValue),lease);
+        return new ReadView(knowledgeId,generations,version,candidate==null && heads.summariesComplete(),lease,basis);
     }
     public ReadView current(Long knowledgeId) {
         for (var view : views.get()) if (view.knowledgeId.equals(knowledgeId)) return view;
@@ -111,13 +176,16 @@ public class PublishedIndexService {
         private final boolean borrowed;
         private final String lease;
         private final ReadView root;
+        private final String basisVersion;
         private boolean closed;
-        private ReadView(Long knowledgeId, List<Generation> generations, String version, boolean summariesComplete,String lease) {
+        private ReadView(Long knowledgeId, List<Generation> generations, String version, boolean summariesComplete,String lease,String basisVersion) {
             this.knowledgeId = knowledgeId; this.generations = generations; this.borrowed = false;
             this.lease=lease; this.root=this;
+            this.basisVersion=basisVersion;
             this.snapshot = new IndexPublicationSnapshot(version, generations.size(), (int)generations.stream().filter(Generation::legacy).count(), summariesComplete);
         }
-        private ReadView(ReadView parent) { this.knowledgeId = parent.knowledgeId; this.generations = parent.generations; this.snapshot = parent.snapshot; this.borrowed = true; this.lease=parent.lease; this.root=parent.root; }
+        private ReadView(ReadView parent) { this.knowledgeId = parent.knowledgeId; this.generations = parent.generations; this.snapshot = parent.snapshot; this.borrowed = true; this.lease=parent.lease; this.root=parent.root; this.basisVersion=parent.basisVersion; }
+        public String basisVersion() { checkActive(); return basisVersion; }
         public void checkActive() {
             if(closed || root.closed) throw new IllegalStateException("索引读视图已关闭");
             lifecycle.assertActive(lease);

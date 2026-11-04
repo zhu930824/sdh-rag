@@ -22,10 +22,10 @@ class PublishedIndexQueryTest {
         try {
             var jdbc = new JdbcTemplate(source);
             jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
-            new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql")).execute(source);
+            new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql")).execute(source);
             jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status,published_generation) VALUES(1,7,42,2,12,1,'g:1:1')");
             jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES('g:1:1',1,7,42,1,'PUBLISHED')");
-            var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),new cn.sdh.backend.config.IndexLifecycleProperties()));
+            var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),new cn.sdh.backend.config.IndexLifecycleProperties()),new IndexPublicationGateStore(jdbc,org.mockito.Mockito.mock(AgentImprovementService.class)));
             var elastic = mock(ElasticsearchClient.class); var indices = mock(ElasticsearchIndexService.class); var embeddings = mock(EmbeddingService.class);
             when(indices.indexExists(7L)).thenReturn(true); when(indices.getIndexName(7L)).thenReturn("index-7");
             when(embeddings.getEmbeddingByModel("question", "model")).thenReturn(new float[]{1,0});

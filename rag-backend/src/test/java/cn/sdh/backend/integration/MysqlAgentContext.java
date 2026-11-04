@@ -29,8 +29,8 @@ final class MysqlAgentContext {
     @MapperScan(basePackageClasses = AgentRunMapper.class)
     @Import({RunExecutionLeaseService.class, RunStateService.class, AgentRunLifecycle.class, AgentExecutionAttemptService.class, JdbcAgentStateStore.class,
             AgentRunRecoveryService.class, AgentActionService.class, AgentActionJobs.class,
-            AgentActionExecutor.class, AgentActionCompletionService.class, PlatformJobService.class, PublishedIndexService.class, IndexGenerationLifecycle.class,cn.sdh.backend.config.IndexLifecycleProperties.class,
-            cn.sdh.backend.agent.evaluation.AgentEvaluationService.class})
+            AgentActionExecutor.class, AgentActionCompletionService.class, PlatformJobService.class, PublishedIndexService.class, IndexPublicationGateStore.class,IndexGenerationLifecycle.class,cn.sdh.backend.config.IndexLifecycleProperties.class,
+            KnowledgePublishingService.class,cn.sdh.backend.agent.evaluation.AgentEvaluationService.class})
     static class Config {
         @Bean JdbcTemplate jdbcTemplate(DataSource source) { return new JdbcTemplate(source); }
         @Bean PlatformTransactionManager transactionManager(DataSource source) { return new DataSourceTransactionManager(source); }
@@ -47,5 +47,18 @@ final class MysqlAgentContext {
         @Bean AgentToolHttpClient http(ObjectMapper json) { return new AgentToolHttpClient(json, mock(KnowledgeSourceCredentialResolver.class)); }
         @Bean InternalToolDispatcher internal() { return mock(InternalToolDispatcher.class); }
         @Bean AgentImprovementService improvements() { return mock(AgentImprovementService.class); }
+        @Bean KnowledgeAccessService knowledgeAccess(KnowledgeBaseMapper bases) {
+            var service=mock(KnowledgeAccessService.class);
+            when(service.requireRead(anyLong(),anyLong())).thenAnswer(call -> bases.selectById((Long)call.getArgument(0)));
+            when(service.requireEdit(anyLong(),anyLong())).thenAnswer(call -> bases.selectById((Long)call.getArgument(0)));
+            return service;
+        }
+        @Bean DocumentProcessService documentProcessor() { return mock(DocumentProcessService.class); }
+        @Bean VectorStoreService vectors() { return mock(VectorStoreService.class); }
+        @Bean MinioService minio() {
+            var service=mock(MinioService.class);
+            when(service.uploadFile(any(),anyString(),anyString(),anyLong())).thenAnswer(call -> call.getArgument(1));
+            return service;
+        }
     }
 }

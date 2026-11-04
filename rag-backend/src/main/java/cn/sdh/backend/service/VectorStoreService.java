@@ -11,6 +11,8 @@ import java.util.Set;
  * 向量存储服务接口
  */
 public interface VectorStoreService {
+    /** Strict candidate retrieval: infrastructure failure must retry the job instead of failing the quality gate. */
+    List<Document> candidateSearch(String query,Long knowledgeId,int topK,String embeddingModelName);
     /** Makes all completed writes searchable before switching the SQL publication pointer. */
     void refreshIndex(Long knowledgeId);
 

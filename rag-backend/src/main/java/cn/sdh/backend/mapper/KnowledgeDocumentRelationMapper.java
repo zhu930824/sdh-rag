@@ -72,12 +72,6 @@ public interface KnowledgeDocumentRelationMapper extends BaseMapper<KnowledgeDoc
     int markIndexRunning(@Param("id") Long id, @Param("revision") Integer revision,
                          @Param("jobId") Long jobId, @Param("now") java.time.LocalDateTime now);
 
-    @Update("UPDATE knowledge_document_relation SET process_status=3, error_message=#{error}, process_time=#{now} " +
-            "WHERE id=#{id} AND index_revision=#{revision} AND job_id=#{jobId}")
-    int markIndexFailed(@Param("id") Long id, @Param("revision") Integer revision,
-                        @Param("jobId") Long jobId, @Param("error") String error,
-                        @Param("now") java.time.LocalDateTime now);
-
     @Select("SELECT * FROM knowledge_document_relation WHERE process_status=0 AND job_id IS NULL " +
             "ORDER BY id ASC LIMIT #{limit}")
     List<KnowledgeDocumentRelation> selectPendingWithoutJob(@Param("limit") int limit);

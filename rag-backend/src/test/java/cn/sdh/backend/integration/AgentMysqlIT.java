@@ -40,6 +40,23 @@ class AgentMysqlIT {
         Flyway.configure().dataSource(source).target("30").load().migrate();
         var upgraded = Flyway.configure().dataSource(source).target("39").load();
         assertEquals(9, upgraded.migrate().migrationsExecuted, "V30 -> V39 must apply exactly nine migrations");
+        var beforeGate=new JdbcTemplate(source);
+        beforeGate.update("INSERT INTO knowledge_base(id,name,user_id) VALUES(900001,'legacy-gate',1)");
+        var statuses=List.of("PUBLISHING","GATE_FAILED","PUBLISH_FAILED","ROLLED_BACK","PUBLISHED");
+        for(int i=0;i<statuses.size();i++) {
+            long id=900001L+i;
+            beforeGate.update("INSERT INTO knowledge_document(id,title,user_id) VALUES(?,'legacy',1)",id);
+            beforeGate.update("INSERT INTO knowledge_draft(id,knowledge_id,title,content,status,published_document_id,content_checksum,created_by,created_at,updated_at) VALUES(?,900001,'legacy','legacy',?,?,'legacy',1,NOW(),NOW())",id,statuses.get(i),id);
+            beforeGate.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,process_status,published_generation) VALUES(?,900001,?,1,2,?)",id,id,"legacy-gate-"+id);
+            beforeGate.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES(?,?,900001,?,1,'PUBLISHED')","legacy-gate-"+id,id,id);
+        }
+        upgraded=Flyway.configure().dataSource(source).target("40").load();
+        assertEquals(1,upgraded.migrate().migrationsExecuted);
+        for(int i=0;i<statuses.size();i++) {
+            long id=900001L+i;
+            assertEquals(i==4?"legacy-gate-"+id:null,beforeGate.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=?",String.class,id));
+            assertEquals(i==4?2:i==0?0:3,beforeGate.queryForObject("SELECT process_status FROM knowledge_document_relation WHERE id=?",Integer.class,id));
+        }
         upgraded.validate();
         assertEquals(0, upgraded.migrate().migrationsExecuted, "Re-running the migrator must be a no-op");
         context = MysqlAgentContext.open(source);
@@ -51,7 +68,7 @@ class AgentMysqlIT {
     }
 
     @BeforeEach void reset() {
-        for (String table : List.of("knowledge_index_read_lease", "knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
+        for (String table : List.of("knowledge_index_publication_gate", "knowledge_draft", "knowledge_index_read_lease", "knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
             jdbc.execute("DELETE FROM " + table); // Only this freshly created, private schema is connected.
         }
     }
@@ -65,10 +82,10 @@ class AgentMysqlIT {
         if (mysql != null) mysql.close();
     }
 
-    @Test void migrationsAreValidatedOnMySqlAndReachV39() {
+    @Test void migrationsAreValidatedOnMySqlAndReachV40() {
         assertTrue(jdbc.queryForObject("SELECT VERSION()", String.class).startsWith("8."));
-        assertEquals("39", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
-        assertEquals(39, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
+        assertEquals("40", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
+        assertEquals(40, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
         assertEquals(0, count("agent_run"));
     }
 
@@ -120,6 +137,77 @@ class AgentMysqlIT {
             assertEquals(1, results.stream().mapToInt(Integer::intValue).sum());
             assertEquals(1, runs.getByRunKey(run.getRunKey()).getExecutionEpoch());
         } finally { claimed.forEach(RunExecutionLeaseService.Lease::close); }
+    }
+    @Test void gateReceiptAndBusinessPublicationShareTheHeadSwitchTransaction() {
+        jdbc.update("UPDATE knowledge_document SET status=0 WHERE id=900001");
+        jdbc.update("INSERT INTO knowledge_draft(id,knowledge_id,title,content,status,regression_queries,published_document_id,content_checksum,created_by,reviewed_by,reviewed_at,created_at,updated_at) VALUES(900001,900001,'approved',?,'PUBLISHING','[\"question\"]',900001,'checksum',1,1,NOW(),NOW(),NOW())","approved content ".repeat(10));
+        var jobs=context.getBean(PlatformJobService.class);
+        var job=jobs.enqueue(new PlatformJobService.EnqueueCommand("gate-index","DOCUMENT_INDEX","DOCUMENT",900001L,"{}",1,3,1L));
+        assertEquals(1,jobs.claimAvailable("gate-owner",100).size());
+        jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status) VALUES(900001,900001,900001,1,?,1)",job.getId());
+        var payload=new cn.sdh.backend.job.DocumentIndexJobPayload(900001L,900001L,900001L,1,new cn.sdh.backend.dto.DocumentLinkConfig());
+        var worker=new cn.sdh.backend.job.PlatformJobExecutionContext(job.getId(),"gate-owner",jobs);
+        var publications=context.getBean(PublishedIndexService.class);
+        String raw=cn.sdh.backend.utils.ContentFingerprint.sha256(KnowledgePublicationContent.markdown("approved","approved content ".repeat(10)));
+        var stage=publications.stage(payload,job.getId(),"b".repeat(64),raw,worker);
+        assertThrows(BusinessException.class,() -> publications.publish(payload,job.getId(),stage.key(),1,worker));
+        try(var view=publications.openCandidate(payload,job.getId(),stage.key(),worker)) {
+            publications.saveGateEvaluation(payload,job.getId(),stage.key(),view.basisVersion(),view.snapshot().version(),new KnowledgePublishingService.ValidationResult(true,List.of(new KnowledgePublishingService.ValidationItem("question",true,1))),worker);
+        }
+        jdbc.execute("CREATE TRIGGER it_reject_business_publication BEFORE UPDATE ON knowledge_draft FOR EACH ROW BEGIN IF NEW.status='PUBLISHED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected business publication failure'; END IF; END");
+        try {
+            assertThrows(org.springframework.dao.DataAccessException.class,() -> publications.publish(payload,job.getId(),stage.key(),1,worker));
+            assertNull(jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=900001",String.class));
+            assertEquals("STAGING",jdbc.queryForObject("SELECT state FROM knowledge_index_generation WHERE generation_key=?",String.class,stage.key()));
+            assertEquals("PUBLISHING",jdbc.queryForObject("SELECT status FROM knowledge_draft WHERE id=900001",String.class));
+        } finally { jdbc.execute("DROP TRIGGER it_reject_business_publication"); }
+        assertTrue(publications.publish(payload,job.getId(),stage.key(),1,worker));
+        assertEquals(stage.key(),jdbc.queryForObject("SELECT published_generation FROM knowledge_draft WHERE id=900001",String.class));
+        assertEquals(1,jdbc.queryForObject("SELECT status FROM knowledge_document WHERE id=900001",Integer.class));
+        assertEquals("PASSED",jdbc.queryForObject("SELECT status FROM knowledge_index_publication_gate",String.class));
+        jdbc.update("UPDATE knowledge_draft SET status='ROLLED_BACK' WHERE id=900001");
+        assertEquals(0,context.getBean(KnowledgeDraftMapper.class).updateValidation(900001L,stage.key(),"FAILED","{}"));
+        try(var revoked=publications.open(900001L)) { assertEquals(0,revoked.snapshot().generationCount(),"Revoked business admission must hide a lingering technical head"); }
+    }
+
+    @Test void cancelledIndexJobsDoNotLeaveDraftsPublishingForever() {
+        jdbc.update("INSERT INTO knowledge_draft(id,knowledge_id,title,content,status,published_document_id,content_checksum,created_by,created_at,updated_at) VALUES(900001,900001,'cancelled','content','PUBLISHING',900001,'checksum',1,NOW(),NOW())");
+        var job=context.getBean(PlatformJobService.class).enqueue(new PlatformJobService.EnqueueCommand("cancel-index","DOCUMENT_INDEX","DOCUMENT",900001L,"{}",1,1,1L));
+        jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status) VALUES(900001,900001,900001,1,?,0)",job.getId());
+        jdbc.update("UPDATE platform_job SET status='CANCELLED' WHERE id=?",job.getId());
+        context.getBean(IndexPublicationGateStore.class).reconcileTerminatedJobs();
+        assertEquals("PUBLISH_FAILED",jdbc.queryForObject("SELECT status FROM knowledge_draft WHERE id=900001",String.class));
+        assertNull(jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=900001",String.class));
+    }
+    @Test void competingPublishRequestsCreateOneJobAndDispatchFailureRollsBackEverything() throws Exception {
+        jdbc.update("INSERT INTO knowledge_draft(id,knowledge_id,title,content,status,regression_queries,content_checksum,created_by,reviewed_by,reviewed_at,created_at,updated_at) VALUES(900001,900001,'atomic-publish',?,'APPROVED','[\"question\"]','checksum',1,1,NOW(),NOW(),NOW())","approved content ".repeat(10));
+        var jobs=context.getBean(PlatformJobService.class);
+        var processor=context.getBean(DocumentProcessService.class);
+        var minio=context.getBean(MinioService.class);
+        var publishing=context.getBean(KnowledgePublishingService.class);
+        var actor=new UserContext(); actor.setUserId(1L); UserContext.setUserContext(actor);
+        org.mockito.Mockito.doAnswer(call -> {
+            Long document=call.getArgument(0);
+            jobs.enqueue(new PlatformJobService.EnqueueCommand("draft-index:"+document,"DOCUMENT_INDEX","DOCUMENT",document,"{}",1,3,1L));
+            throw new IllegalStateException("injected dispatch failure");
+        }).when(processor).processDocumentForKnowledge(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any(cn.sdh.backend.dto.DocumentLinkConfig.class));
+        assertThrows(IllegalStateException.class,() -> publishing.publish(900001L));
+        assertEquals(0,count("platform_job")); assertEquals(0,count("knowledge_document_relation")); assertEquals(0,count("knowledge_publish_record"));
+        assertEquals("APPROVED",jdbc.queryForObject("SELECT status FROM knowledge_draft WHERE id=900001",String.class));
+        org.mockito.Mockito.verify(minio).deleteFile(org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.doAnswer(call -> {
+            Long document=call.getArgument(0);
+            jobs.enqueue(new PlatformJobService.EnqueueCommand("draft-index:"+document,"DOCUMENT_INDEX","DOCUMENT",document,"{}",1,3,1L)); return null;
+        }).when(processor).processDocumentForKnowledge(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any(cn.sdh.backend.dto.DocumentLinkConfig.class));
+        var results=simultaneous(() -> {
+            var user=new UserContext(); user.setUserId(1L); UserContext.setUserContext(user);
+            try { return publishing.publish(900001L).getStatus(); }
+            catch(BusinessException conflict) { assertEquals(409,conflict.getCode()); return "CONFLICT"; }
+            finally { UserContext.clear(); }
+        });
+        assertEquals(Set.of("PUBLISHING","CONFLICT"),new HashSet<>(results));
+        assertEquals(1,count("platform_job")); assertEquals(1,count("knowledge_document_relation")); assertEquals(1,count("knowledge_publish_record"));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_document WHERE title='atomic-publish'",Integer.class));
     }
 
     @Test void indexReadsUseFreshLeasesOutsideAnOlderRepeatableReadSnapshot() {

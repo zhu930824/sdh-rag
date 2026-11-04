@@ -8,7 +8,11 @@ public final class ContentFingerprint {
     private ContentFingerprint() {}
     public static String sha256(String value) {
         if (value == null) return null;
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
+        return sha256Bytes(value.getBytes(StandardCharsets.UTF_8));
+    }
+    public static String sha256Bytes(byte[] value) {
+        if(value==null) return null;
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)); }
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 }

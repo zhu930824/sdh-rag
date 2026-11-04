@@ -66,6 +66,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     private final DocumentIndexLock documentIndexLock;
     private final ObjectMapper objectMapper;
     private final cn.sdh.backend.service.PublishedIndexService publications;
+    private final cn.sdh.backend.service.IndexPublicationGate publicationGate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -107,6 +108,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         Long knowledgeId = payload.knowledgeId();
         DocumentLinkConfig config = payload.config() == null ? new DocumentLinkConfig() : payload.config();
         KnowledgeDocumentRelation relation = relationMapper.selectById(payload.relationId());
+        String generation=null;
         log.info("开始可靠文档索引: relationId={}, revision={}, documentId={}, knowledgeId={}, chunkMode={}",
                 payload.relationId(), payload.revision(), documentId, knowledgeId, config.getChunkMode());
 
@@ -119,9 +121,11 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             }
 
             // 解析文档内容
-            String content = parseDocumentContent(document.getFilePath());
+            var parsed = parseDocumentContent(document.getFilePath(),publications.requiresGate(documentId));
+            String content=parsed.text();
             String sourceSha256 = cn.sdh.backend.utils.ContentFingerprint.sha256(content == null ? "" : content);
-            var stage = publications.stage(payload, jobId, sourceSha256, context);
+            var stage = publications.stage(payload, jobId, sourceSha256,parsed.rawSha256(), context);
+            generation=stage.key();
             if (stage.published()) {
                 publications.publish(payload, jobId, stage.key(), stage.chunkCount(), context);
                 return "索引代际已发布，安全跳过重复写入";
@@ -268,6 +272,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
             // Refresh first, then atomically move the SQL head. Old generations remain available to pinned reads.
             vectorStoreService.refreshIndex(knowledgeId);
+            if(!publicationGate.evaluate(payload,jobId,stage.key(),successCount,embeddingModelName,context)) return "质量门禁未通过，本次批次未发布";
             if (!publications.publish(payload, jobId, stage.key(), successCount, context)) {
                 return "索引已写入，但当前版本已更新，等待新版本接管";
             }
@@ -290,8 +295,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
         } catch (Exception e) {
             log.error("文档处理失败: documentId={}, knowledgeId={}, error={}", documentId, knowledgeId, e.getMessage(), e);
-            relationMapper.markIndexFailed(payload.relationId(), payload.revision(), jobId,
-                    capError(e.getMessage()), LocalDateTime.now());
+            try { publications.fail(payload,jobId,generation,capError(e.getMessage()),context); }
+            catch(RuntimeException fenced) { log.warn("索引失败回写已过期或暂不可用，保留原发布头: relationId={}",payload.relationId()); }
             if (e instanceof RuntimeException runtimeException) throw runtimeException;
             throw new IllegalStateException(e.getMessage(), e);
         }
@@ -299,6 +304,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
 
     private void completeEmptyIndex(DocumentIndexJobPayload payload, Long jobId, String generation,
                                     PlatformJobExecutionContext context) {
+        if(!publicationGate.evaluate(payload,jobId,generation,0,null,context)) return;
         if (!publications.publish(payload, jobId, generation, 0, context)) {
             throw new IllegalStateException("文档索引版本已变化");
         }
@@ -481,19 +487,22 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     /**
      * 解析文档内容
      */
-    private String parseDocumentContent(String filePath) {
+    private record ParsedContent(String text,String rawSha256) {}
+    private ParsedContent parseDocumentContent(String filePath,boolean managed) {
         try {
             if (filePath == null || filePath.isEmpty()) {
                 throw new IllegalStateException("文档文件路径为空");
             }
 
             // 从 MinIO 获取文件流
-            InputStream inputStream = minioService.getFile(filePath);
+            try(InputStream inputStream = minioService.getFile(filePath)) {
             if (inputStream == null) {
                 throw new IllegalStateException("无法获取文档文件: " + filePath);
             }
 
-            InputStreamResource resource = new InputStreamResource(inputStream);
+            byte[] source=managed?inputStream.readNBytes(cn.sdh.backend.service.KnowledgePublicationContent.MAX_SOURCE_BYTES+1):null;
+            if(source!=null && source.length>cn.sdh.backend.service.KnowledgePublicationContent.MAX_SOURCE_BYTES) throw new IllegalStateException("发布草稿文件超过 1 MiB");
+            InputStreamResource resource = new InputStreamResource(source==null?inputStream:new java.io.ByteArrayInputStream(source));
             TikaDocumentReader reader = new TikaDocumentReader(resource);
             List<Document> documents = reader.get();
 
@@ -502,7 +511,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
                 content.append(doc.getText()).append("\n");
             }
 
-            return content.toString().trim();
+            return new ParsedContent(content.toString().trim(),cn.sdh.backend.utils.ContentFingerprint.sha256Bytes(source));
+            }
         } catch (Exception e) {
             log.error("解析文档内容失败: {} - {}", filePath, e.getMessage());
             if (e instanceof RuntimeException runtimeException) throw runtimeException;

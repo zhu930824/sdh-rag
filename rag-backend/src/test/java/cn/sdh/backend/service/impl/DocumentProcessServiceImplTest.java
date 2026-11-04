@@ -26,6 +26,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentProcessServiceImplTest {
+    private static final String SOURCE="This document explains published index generations and why queries must continue reading a complete version while a new version is being prepared.";
     @Mock KnowledgeDocumentMapper documents;
     @Mock KnowledgeDocumentRelationMapper relations;
     @Mock KnowledgeBaseMapper knowledgeBases;
@@ -37,6 +38,7 @@ class DocumentProcessServiceImplTest {
     @Mock DocumentIndexLock indexLock;
     @Mock PlatformJobExecutionContext executionContext;
     @Mock PublishedIndexService publications;
+    @Mock IndexPublicationGate publicationGate;
 
     private DocumentProcessServiceImpl service;
 
@@ -46,7 +48,7 @@ class DocumentProcessServiceImplTest {
         user.setUserId(7L);
         UserContext.setUserContext(user);
         service = new DocumentProcessServiceImpl(documents, relations, knowledgeBases, minio,
-                vectors, dedup, summaries, jobs, indexLock, new ObjectMapper(), publications);
+                vectors, dedup, summaries, jobs, indexLock, new ObjectMapper(), publications,publicationGate);
     }
 
     @AfterEach
@@ -111,7 +113,7 @@ class DocumentProcessServiceImplTest {
         when(publications.publish(eq(payload),eq(9L),eq("physical-attempt"),anyInt(),eq(executionContext))).thenReturn(true);
         service.executeIndexJob(payload,9L,executionContext);
         var order = inOrder(vectors,publications);
-        order.verify(publications).stage(eq(payload),eq(9L),anyString(),eq(executionContext));
+        order.verify(publications).stage(eq(payload),eq(9L),anyString(),isNull(),eq(executionContext));
         order.verify(vectors,atLeastOnce()).addVector(any(),eq(5L),eq("model"),anyMap());
         order.verify(vectors).refreshIndex(5L);
         order.verify(publications).publish(eq(payload),eq(9L),eq("physical-attempt"),anyInt(),eq(executionContext));
@@ -123,8 +125,15 @@ class DocumentProcessServiceImplTest {
         doThrow(new IllegalStateException("refresh failed")).when(vectors).refreshIndex(5L);
         assertThrows(IllegalStateException.class,() -> service.executeIndexJob(payload,9L,executionContext));
         verify(publications,never()).publish(any(),anyLong(),anyString(),anyInt(),any());
-        verify(relations).markIndexFailed(eq(3L),eq(1),eq(9L),eq("refresh failed"),any());
+        verify(publications).fail(eq(payload),eq(9L),eq("physical-attempt"),eq("refresh failed"),eq(executionContext));
         verify(vectors,never()).deleteVectorsByDocumentIdAndKnowledgeId(anyLong(),anyLong());
+    }
+    @Test void managedSourcesPassTheExactFileChecksumIntoTheStageFence() {
+        var payload=processingFixture();
+        when(publications.requiresGate(4L)).thenReturn(true);
+        when(publications.publish(eq(payload),eq(9L),eq("physical-attempt"),anyInt(),eq(executionContext))).thenReturn(true);
+        service.executeIndexJob(payload,9L,executionContext);
+        verify(publications).stage(eq(payload),eq(9L),anyString(),eq(cn.sdh.backend.utils.ContentFingerprint.sha256(SOURCE)),eq(executionContext));
     }
 
     private DocumentIndexJobPayload processingFixture() {
@@ -137,8 +146,9 @@ class DocumentProcessServiceImplTest {
         document.setId(4L); document.setFilePath("test.txt"); document.setTitle("publication");
         when(documents.selectById(4L)).thenReturn(document);
         when(minio.getFile("test.txt")).thenReturn(new java.io.ByteArrayInputStream(
-                "This document explains published index generations and why queries must continue reading a complete version while a new version is being prepared.".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-        when(publications.stage(any(),eq(9L),anyString(),eq(executionContext))).thenReturn(new PublishedIndexService.Stage("physical-attempt",false,0));
+                SOURCE.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        when(publications.stage(any(),eq(9L),anyString(),nullable(String.class),eq(executionContext))).thenReturn(new PublishedIndexService.Stage("physical-attempt",false,0));
+        lenient().when(publicationGate.evaluate(any(),anyLong(),anyString(),anyInt(),any(),any())).thenReturn(true);
         when(vectors.addVector(any(),eq(5L),eq("model"),anyMap())).thenReturn("vector");
         var config = new DocumentLinkConfig(); config.setEmbeddingModel("model");
         return new DocumentIndexJobPayload(3L,4L,5L,1,config);
