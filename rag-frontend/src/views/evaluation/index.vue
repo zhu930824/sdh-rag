@@ -2,8 +2,8 @@
   <div class="evaluation-page">
     <!-- Tab 切换 -->
     <a-card style="margin-bottom: 16px">
-      <a-alert type="info" show-icon class="evaluation-guide-tip" message="推荐顺序：先跑检索评测，再跑生成/完整评测；Full 模式会调用评审模型，成本和耗时更高。" />
-      <div class="evaluation-config">
+      <a-alert v-if="activeTab !== 'agent'" type="info" show-icon class="evaluation-guide-tip" message="推荐顺序：先跑检索评测，再跑生成/完整评测；Full 模式会调用评审模型，成本和耗时更高。" />
+      <div v-if="activeTab !== 'agent'" class="evaluation-config">
         <a-form layout="inline">
           <a-form-item label="评测层级">
             <a-select v-model:value="runConfig.evaluationMode" style="width: 150px">
@@ -24,6 +24,9 @@
         </a-form>
       </div>
       <a-tabs v-model:activeKey="activeTab">
+        <a-tab-pane key="agent" tab="Agent 场景与结果">
+          <AgentEvaluationPanel />
+        </a-tab-pane>
         <a-tab-pane key="generate" tab="生成测试集">
           <a-form layout="inline" :model="generateForm">
             <a-form-item label="知识库">
@@ -160,7 +163,7 @@
     </a-card>
 
     <!-- 评估任务列表 -->
-    <a-card title="评估记录">
+    <a-card v-if="activeTab !== 'agent'" title="评估记录">
       <a-table
         :columns="taskColumns"
         :data-source="tasks"
@@ -591,6 +594,7 @@
 </template>
 
 <script setup lang="ts">
+import AgentEvaluationPanel from './components/AgentEvaluationPanel.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
