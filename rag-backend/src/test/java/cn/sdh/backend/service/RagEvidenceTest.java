@@ -10,6 +10,14 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class RagEvidenceTest {
+    @Test void expiredEvidenceMustNotSilentlyBecomeAnAnswerWithoutRag() {
+        var bases=mock(KnowledgeBaseService.class); var search=mock(RagSearchService.class); var access=mock(KnowledgeAccessService.class);
+        var base=new cn.sdh.backend.entity.KnowledgeBase(); base.setId(7L);
+        when(bases.getKnowledgeBaseById(7L)).thenReturn(base); when(access.canRead(base,1L)).thenReturn(true);
+        when(search.searchWithCascade(anyString(),eq(base),anyList(),anyMap())).thenThrow(new cn.sdh.backend.common.exception.IndexReadLeaseExpiredException());
+        var chat=new cn.sdh.backend.service.impl.ChatServiceImpl(null,null,null,null,bases,search,null,null,null,null,null,null,new com.fasterxml.jackson.databind.ObjectMapper(),access,null,null);
+        assertThrows(cn.sdh.backend.common.exception.IndexReadLeaseExpiredException.class,() -> chat.retrieveForAgent("question",7L,1L,null,Map.of()));
+    }
     @Test void emptyRetrievalStillPreservesItsPublishedKnowledgeVersion() {
         var publication = new IndexPublicationSnapshot("a".repeat(64),0,0,false);
         var snapshot = JSON.parseObject(RagEvidence.snapshot(List.of(),"",publication));

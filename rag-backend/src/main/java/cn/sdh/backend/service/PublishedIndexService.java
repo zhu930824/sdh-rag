@@ -24,9 +24,11 @@ public class PublishedIndexService {
     public record Stage(String key, boolean published, int chunkCount) {}
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
+    private final IndexGenerationLifecycle lifecycle;
     private final ThreadLocal<Deque<ReadView>> views = ThreadLocal.withInitial(ArrayDeque::new);
-    public PublishedIndexService(JdbcTemplate jdbc, PlatformTransactionManager manager) {
+    public PublishedIndexService(JdbcTemplate jdbc, PlatformTransactionManager manager, IndexGenerationLifecycle lifecycle) {
         this.jdbc = jdbc; this.transactions = new TransactionTemplate(manager);
+        this.lifecycle=lifecycle;
     }
     public Stage stage(DocumentIndexJobPayload payload, Long jobId, String sourceSha256, PlatformJobExecutionContext context) {
         if (sourceSha256 == null || !sourceSha256.matches("[a-f0-9]{64}")) throw new BusinessException(400, "索引内容指纹无效");
@@ -56,6 +58,7 @@ public class PublishedIndexService {
             var rows = jdbc.queryForList("SELECT state,chunk_count FROM knowledge_index_generation WHERE generation_key=? AND relation_id=? AND index_revision=? FOR UPDATE", generation, payload.relationId(), payload.revision());
             if (rows.isEmpty()) throw new BusinessException(409, "索引代际尚未登记");
             var row = rows.getFirst();
+            if (!Set.of("STAGING","PUBLISHED").contains(row.get("state"))) throw new BusinessException(409,"索引批次已进入回收，不能重新发布");
             if ("PUBLISHED".equals(row.get("state")) && ((Number)row.get("chunk_count")).intValue() != chunks) throw new BusinessException(409, "不能覆盖已发布代际");
             jdbc.update("UPDATE knowledge_index_generation SET state='PUBLISHED',chunk_count=?,published_at=COALESCE(published_at,?) WHERE generation_key=?", chunks, LocalDateTime.now(), generation);
             if (jdbc.update("UPDATE knowledge_document_relation SET published_generation=?,process_status=2,chunk_count=?,error_message=NULL,process_time=? WHERE id=? AND index_revision=? AND job_id=?",
@@ -80,6 +83,10 @@ public class PublishedIndexService {
     public ReadView open(Long knowledgeId) {
         if (knowledgeId == null || knowledgeId <= 0) throw new BusinessException(400, "知识库 ID 无效");
         for (var view : views.get()) if (view.knowledgeId.equals(knowledgeId)) return new ReadView(view);
+        var view=lifecycle.readGuard(knowledgeId,() -> openUnderGuard(knowledgeId));
+        views.get().push(view); return view;
+    }
+    private ReadView openUnderGuard(Long knowledgeId) {
         List<Boolean> readiness = new ArrayList<>();
         var generations = jdbc.query("SELECT g.* FROM knowledge_document_relation r JOIN knowledge_index_generation g ON r.published_generation=g.generation_key WHERE r.knowledge_id=? AND g.state='PUBLISHED' ORDER BY g.generation_key",
                 (rs, n) -> {
@@ -90,8 +97,8 @@ public class PublishedIndexService {
         String json = JSON.toJSONString(manifest), version = ContentFingerprint.sha256(json);
         try { jdbc.update("INSERT INTO knowledge_index_read_snapshot (snapshot_sha256,knowledge_id,manifest_json,created_at) VALUES (?,?,?,?)", version, knowledgeId, json, LocalDateTime.now()); }
         catch (DuplicateKeyException duplicate) { /* The manifest is content addressed and immutable. */ }
-        var view = new ReadView(knowledgeId, List.copyOf(generations), version, !generations.isEmpty() && readiness.stream().allMatch(Boolean::booleanValue));
-        views.get().push(view); return view;
+        String lease=lifecycle.pin(knowledgeId,version,generations);
+        return new ReadView(knowledgeId, List.copyOf(generations), version, !generations.isEmpty() && readiness.stream().allMatch(Boolean::booleanValue),lease);
     }
     public ReadView current(Long knowledgeId) {
         for (var view : views.get()) if (view.knowledgeId.equals(knowledgeId)) return view;
@@ -102,15 +109,33 @@ public class PublishedIndexService {
         private final List<Generation> generations;
         private final IndexPublicationSnapshot snapshot;
         private final boolean borrowed;
+        private final String lease;
+        private final ReadView root;
         private boolean closed;
-        private ReadView(Long knowledgeId, List<Generation> generations, String version, boolean summariesComplete) {
+        private ReadView(Long knowledgeId, List<Generation> generations, String version, boolean summariesComplete,String lease) {
             this.knowledgeId = knowledgeId; this.generations = generations; this.borrowed = false;
+            this.lease=lease; this.root=this;
             this.snapshot = new IndexPublicationSnapshot(version, generations.size(), (int)generations.stream().filter(Generation::legacy).count(), summariesComplete);
         }
-        private ReadView(ReadView parent) { this.knowledgeId = parent.knowledgeId; this.generations = parent.generations; this.snapshot = parent.snapshot; this.borrowed = true; }
-        public IndexPublicationSnapshot snapshot() { return snapshot; }
+        private ReadView(ReadView parent) { this.knowledgeId = parent.knowledgeId; this.generations = parent.generations; this.snapshot = parent.snapshot; this.borrowed = true; this.lease=parent.lease; this.root=parent.root; }
+        public void checkActive() {
+            if(closed || root.closed) throw new IllegalStateException("索引读视图已关闭");
+            lifecycle.assertActive(lease);
+        }
+        public IndexPublicationSnapshot snapshot() { checkActive(); return snapshot; }
         public Query filter(String documentField) {
-            if (closed) throw new IllegalStateException("索引读视图已关闭");
+            checkActive();
+            return generationFilter(generations,documentField);
+        }
+        @Override public void close() {
+            if (closed) return; closed = true;
+            if (!borrowed) {
+                views.get().remove(this); if (views.get().isEmpty()) views.remove();
+                lifecycle.release(lease);
+            }
+        }
+    }
+    static Query generationFilter(List<Generation> generations,String documentField) {
             if (generations.isEmpty()) return Query.of(q -> q.matchNone(m -> m));
             List<Query> alternatives = new ArrayList<>();
             var keys = generations.stream().filter(g -> !g.legacy()).map(Generation::key).toList();
@@ -126,11 +151,6 @@ public class PublishedIndexService {
             }
             return alternatives.isEmpty() ? Query.of(q -> q.matchNone(m -> m)) : Query.of(q -> q.bool(b -> b.should(alternatives).minimumShouldMatch("1")));
         }
-        @Override public void close() {
-            if (closed) return; closed = true;
-            if (!borrowed) { views.get().remove(this); if (views.get().isEmpty()) views.remove(); }
-        }
-    }
     private static final String LEGACY_FILTER = """
         if (!doc.containsKey('document_id') || doc['document_id'].size()==0) return false;
         def expected = params.legacy.get(doc['document_id'].value.toString());

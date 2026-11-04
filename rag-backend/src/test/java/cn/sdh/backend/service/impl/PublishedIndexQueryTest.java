@@ -22,10 +22,10 @@ class PublishedIndexQueryTest {
         try {
             var jdbc = new JdbcTemplate(source);
             jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
-            new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql")).execute(source);
+            new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql")).execute(source);
             jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status,published_generation) VALUES(1,7,42,2,12,1,'g:1:1')");
             jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES('g:1:1',1,7,42,1,'PUBLISHED')");
-            var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source));
+            var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),new cn.sdh.backend.config.IndexLifecycleProperties()));
             var elastic = mock(ElasticsearchClient.class); var indices = mock(ElasticsearchIndexService.class); var embeddings = mock(EmbeddingService.class);
             when(indices.indexExists(7L)).thenReturn(true); when(indices.getIndexName(7L)).thenReturn("index-7");
             when(embeddings.getEmbeddingByModel("question", "model")).thenReturn(new float[]{1,0});
@@ -54,6 +54,11 @@ class PublishedIndexQueryTest {
             assertTrue(request.get().knn().getFirst().filter().toString().contains("g:1:1"));
             proxied.searchByDocumentIds(List.of("question"), Set.of(42L), 7L, 3, "model", Map.of());
             assertTrue(request.get().knn().getFirst().filter().toString().contains("g:1:1"));
+            doAnswer(call -> {
+                jdbc.update("UPDATE knowledge_index_read_lease SET expires_at=TIMESTAMPADD(SECOND,-1,CURRENT_TIMESTAMP)");
+                return new SearchResponse.Builder<Map>().took(0).timedOut(false).shards(s -> s.total(1).successful(1).failed(0)).hits(h -> h.hits(List.of())).build();
+            }).when(elastic).search(any(Function.class),eq(Map.class));
+            assertThrows(cn.sdh.backend.common.exception.IndexReadLeaseExpiredException.class,() -> proxied.keywordSearch("question",7L,3),"A response arriving after the lease deadline must not be returned");
         } finally { source.destroy(); }
     }
 }

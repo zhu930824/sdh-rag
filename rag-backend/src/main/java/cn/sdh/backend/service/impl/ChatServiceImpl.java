@@ -513,6 +513,8 @@ public class ChatServiceImpl implements ChatService {
 
             return new RetrievalPayload(context, sourcesEvent, sourcesPayloadJson, retrievalSnapshot, false);
 
+        } catch (cn.sdh.backend.common.exception.IndexReadLeaseExpiredException expired) {
+            throw expired;
         } catch (Exception e) {
             log.error("RAG检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
             return RetrievalPayload.empty();

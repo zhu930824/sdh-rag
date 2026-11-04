@@ -38,8 +38,8 @@ class AgentMysqlIT {
         mysql.admin().execute("CREATE DATABASE `" + schema + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         var source = mysql.source(schema);
         Flyway.configure().dataSource(source).target("30").load().migrate();
-        var upgraded = Flyway.configure().dataSource(source).target("38").load();
-        assertEquals(8, upgraded.migrate().migrationsExecuted, "V30 -> V38 must apply exactly eight migrations");
+        var upgraded = Flyway.configure().dataSource(source).target("39").load();
+        assertEquals(9, upgraded.migrate().migrationsExecuted, "V30 -> V39 must apply exactly nine migrations");
         upgraded.validate();
         assertEquals(0, upgraded.migrate().migrationsExecuted, "Re-running the migrator must be a no-op");
         context = MysqlAgentContext.open(source);
@@ -51,7 +51,7 @@ class AgentMysqlIT {
     }
 
     @BeforeEach void reset() {
-        for (String table : List.of("knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
+        for (String table : List.of("knowledge_index_read_lease", "knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
             jdbc.execute("DELETE FROM " + table); // Only this freshly created, private schema is connected.
         }
     }
@@ -65,10 +65,10 @@ class AgentMysqlIT {
         if (mysql != null) mysql.close();
     }
 
-    @Test void migrationsAreValidatedOnMySqlAndReachV38() {
+    @Test void migrationsAreValidatedOnMySqlAndReachV39() {
         assertTrue(jdbc.queryForObject("SELECT VERSION()", String.class).startsWith("8."));
-        assertEquals("38", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
-        assertEquals(38, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
+        assertEquals("39", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
+        assertEquals(39, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
         assertEquals(0, count("agent_run"));
     }
 
@@ -77,7 +77,7 @@ class AgentMysqlIT {
         jdbc.update("INSERT IGNORE INTO knowledge_document(id,title,user_id) VALUES(900001,'index-it',1)");
         var jobs = context.getBean(PlatformJobService.class);
         var job = jobs.enqueue(new PlatformJobService.EnqueueCommand("index-fence", "DOCUMENT_INDEX", "DOCUMENT", 900001L, "{}", 1, 3, 1L));
-        jobs.claimAvailable("index-owner-a",100);
+        assertEquals(1,jobs.claimAvailable("index-owner-a",100).size(),"An immediate index job must be claimable after enqueue");
         jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,job_id,process_status) VALUES(900001,900001,900001,1,?,1)",job.getId());
         var publications = context.getBean(PublishedIndexService.class);
         var payload = new cn.sdh.backend.job.DocumentIndexJobPayload(900001L,900001L,900001L,1,new cn.sdh.backend.dto.DocumentLinkConfig());
@@ -120,6 +120,56 @@ class AgentMysqlIT {
             assertEquals(1, results.stream().mapToInt(Integer::intValue).sum());
             assertEquals(1, runs.getByRunKey(run.getRunKey()).getExecutionEpoch());
         } finally { claimed.forEach(RunExecutionLeaseService.Lease::close); }
+    }
+
+    @Test void indexReadsUseFreshLeasesOutsideAnOlderRepeatableReadSnapshot() {
+        jdbc.update("INSERT IGNORE INTO knowledge_base(id,name,user_id) VALUES(900001,'index-it',1)");
+        jdbc.update("INSERT IGNORE INTO knowledge_document(id,title,user_id) VALUES(900001,'index-it',1)");
+        jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,process_status,published_generation) VALUES(900001,900001,900001,1,2,'published-old')");
+        jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES('published-old',900001,900001,900001,1,'PUBLISHED')");
+        var publications=context.getBean(PublishedIndexService.class);
+        var lifecycle=context.getBean(IndexGenerationLifecycle.class);
+        context.getBean(cn.sdh.backend.config.IndexLifecycleProperties.class).setRetentionSeconds(0);
+        var transactions=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        transactions.executeWithoutResult(status -> {
+            assertEquals("published-old",jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=900001",String.class));
+            assertDoesNotThrow(() -> CompletableFuture.runAsync(() -> {
+                var separate=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+                separate.executeWithoutResult(s -> {
+                    jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES('published-new',900001,900001,900001,2,'PUBLISHED')");
+                    jdbc.update("UPDATE knowledge_document_relation SET index_revision=2,published_generation='published-new' WHERE id=900001");
+                });
+            }).get(10,TimeUnit.SECONDS));
+            try(var view=publications.open(900001L)) {
+                assertTrue(view.filter("document_id").toString().contains("published-new"));
+                assertEquals(1,view.snapshot().generationCount());
+                var retired=lifecycle.claim(900001L);
+                assertEquals(List.of("published-old"),retired.stream().map(c -> c.generation().key()).toList());
+                assertTrue(lifecycle.finish(retired.getFirst(),true));
+            }
+            status.setRollbackOnly();
+        });
+        assertEquals(0,count("knowledge_index_read_lease"),"Closing a lease must commit independently of the caller rollback");
+        assertEquals(1,count("knowledge_index_read_snapshot_generation"),"The immutable generation references remain available for the next reader");
+    }
+
+    @Test void competingCleanupWorkersRespectReadersAndRecoverAfterExpiry() throws Exception {
+        jdbc.update("INSERT IGNORE INTO knowledge_base(id,name,user_id) VALUES(900001,'index-it',1)");
+        jdbc.update("INSERT IGNORE INTO knowledge_document(id,title,user_id) VALUES(900001,'index-it',1)");
+        jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,process_status,published_generation) VALUES(900001,900001,900001,1,2,'orphan')");
+        jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES('orphan',900001,900001,900001,1,'PUBLISHED')");
+        var lifecycle=context.getBean(IndexGenerationLifecycle.class);
+        context.getBean(cn.sdh.backend.config.IndexLifecycleProperties.class).setRetentionSeconds(0);
+        try(var reader=context.getBean(PublishedIndexService.class).open(900001L)) {
+            jdbc.update("UPDATE knowledge_document_relation SET published_generation=NULL WHERE id=900001");
+            assertTrue(lifecycle.claim(900001L).isEmpty());
+            assertTrue(reader.filter("document_id").toString().contains("orphan"));
+        }
+        assertEquals(1,simultaneous(() -> lifecycle.claim(900001L).size()).stream().mapToInt(Integer::intValue).sum());
+        assertEquals(1,jdbc.queryForObject("SELECT cleanup_attempts FROM knowledge_index_generation WHERE generation_key='orphan'",Integer.class));
+        jdbc.update("UPDATE knowledge_index_generation SET cleanup_until=TIMESTAMPADD(SECOND,-1,NOW()) WHERE generation_key='orphan'");
+        assertEquals(1,lifecycle.claim(900001L).size());
+        lifecycle.reapExpiredLeases();
     }
 
     @Test void duplicateBusinessCommandsCommitOneActionAndOneJob() throws Exception {

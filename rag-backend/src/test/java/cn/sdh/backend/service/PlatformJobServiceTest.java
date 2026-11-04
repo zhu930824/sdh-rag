@@ -37,6 +37,7 @@ class PlatformJobServiceTest {
         assertEquals(42L, job.getId());
         assertEquals(PlatformJob.PENDING, job.getStatus());
         assertEquals(0, job.getAttempts());
+        assertEquals(0,job.getAvailableAt().getNano(),"Immediate jobs must not round into the next second in MySQL DATETIME columns");
         assertNotNull(job.getTraceId());
         verify(mapper).insert(job);
     }

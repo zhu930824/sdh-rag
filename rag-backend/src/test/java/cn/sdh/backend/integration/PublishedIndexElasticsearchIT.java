@@ -32,14 +32,18 @@ class PublishedIndexElasticsearchIT {
                 var jdbc = new JdbcTemplate(source);
                 jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
                 jdbc.update("INSERT INTO knowledge_document_relation VALUES(1,7,42,1,11,2,1,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
-                new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql")).execute(source);
-                var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source));
+                new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql")).execute(source);
+                var policy=new cn.sdh.backend.config.IndexLifecycleProperties(); policy.setRetentionSeconds(0);
+                var lifecycle=new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),policy);
+                var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),lifecycle);
                 var indices = mock(ElasticsearchIndexService.class);
-                when(indices.indexExists(7L)).thenReturn(true); when(indices.getIndexName(7L)).thenReturn("it-hot");
+                when(indices.indexExists(7L)).thenReturn(true); when(indices.getIndexName(7L)).thenReturn("sdh-rag-kb-7");
                 var embeddings = mock(EmbeddingService.class);
                 when(embeddings.getEmbeddingByModel(anyString(), eq("model"))).thenReturn(new float[]{1,0});
                 var vectors = new VectorStoreServiceImpl(es, indices, embeddings, null, publications);
-                for (String index : List.of("it-hot", "sdh-rag-kb-7-cold")) {
+                var chunkIndices=List.of("sdh-rag-kb-7","sdh-rag-kb-7-cold");
+                var deletion=new IndexGenerationDeletion(es,indices);
+                for (String index : chunkIndices) {
                     es.indices().create(c -> c.index(index).withJson(new StringReader("""
                         {"mappings":{"properties":{"document_id":{"type":"keyword"},"index_generation":{"type":"keyword"},"index_revision":{"type":"integer"},"content":{"type":"text","analyzer":"standard"},"embedding":{"type":"dense_vector","dims":2,"index":true,"similarity":"cosine"}}}}
                         """)));
@@ -50,7 +54,7 @@ class PublishedIndexElasticsearchIT {
                 var payload = new DocumentIndexJobPayload(1L,42L,7L,2,new DocumentLinkConfig());
                 jdbc.update("UPDATE knowledge_document_relation SET index_revision=2,job_id=12,process_status=1 WHERE id=1");
                 var stage = publications.stage(payload,12L,"a".repeat(64),ctx);
-                for (String index : List.of("it-hot", "sdh-rag-kb-7-cold")) {
+                for (String index : chunkIndices) {
                     es.index(i -> i.index(index).id("new").document(chunk(42,2,stage.key())));
                     es.indices().refresh(r -> r.index(index));
                 }
@@ -61,13 +65,19 @@ class PublishedIndexElasticsearchIT {
                     assertTrue(publications.publish(payload,12L,stage.key(),1,ctx));
                     assertSearches(vectors,"old");
                     assertEquals(oldVersion,publications.current(7L).snapshot().version());
+                    assertTrue(lifecycle.claim(7L).isEmpty(),"The pinned reader must protect legacy vectors from cleanup");
+                    assertTrue(es.exists(e -> e.index("sdh-rag-kb-7").id("old")).value());
                 }
+                var retired=lifecycle.claim(7L);
+                assertEquals(1,retired.size());
+                deletion.delete(retired.getFirst()); assertTrue(lifecycle.finish(retired.getFirst(),true));
+                assertFalse(es.exists(e -> e.index("sdh-rag-kb-7").id("old")).value());
+                assertFalse(es.exists(e -> e.index("sdh-rag-kb-7-cold").id("old")).value());
                 try (var current = publications.open(7L)) {
                     assertNotEquals(oldVersion,current.snapshot().version());
                     assertSearches(vectors,"new");
                     assertFalse(current.snapshot().summariesComplete());
                 }
-                assertTrue(es.exists(e -> e.index("it-hot").id("old")).value(),"Published old vectors must remain available to pinned readers");
                 es.indices().create(c -> c.index(SummaryIndexService.SUMMARY_INDEX_PREFIX+7).withJson(new StringReader("""
                     {"mappings":{"properties":{"doc_id":{"type":"long"},"index_generation":{"type":"keyword"},"summary_embedding":{"type":"dense_vector","dims":2,"index":true,"similarity":"cosine"}}}}
                     """)));
@@ -79,6 +89,27 @@ class PublishedIndexElasticsearchIT {
                     assertTrue(current.snapshot().summariesComplete());
                     assertEquals(Set.of(42L),summaries.coarseRetrieval("question",7L,10,"model",Map.of()).keySet());
                 }
+                es.indices().create(c -> c.index("sdh-rag-summary-cold-7").mappings(m -> m.properties("index_generation",p -> p.keyword(k -> k))));
+                var summaryIndices=List.of("sdh-rag-summary-7","sdh-rag-summary-cold-7");
+                var allIndices=List.of("sdh-rag-kb-7","sdh-rag-kb-7-cold","sdh-rag-summary-7","sdh-rag-summary-cold-7");
+                jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state) VALUES('retired-stage',1,7,42,2,'STAGING')");
+                for(String index:chunkIndices) es.index(i -> i.index(index).id("late").document(chunk(42,2,"retired-stage")));
+                for(String index:summaryIndices) es.index(i -> i.index(index).id("late").document(Map.of("doc_id",42,"index_generation","retired-stage","summary_embedding",List.of(1f,0f))));
+                es.indices().refresh(r -> r.index(allIndices));
+                var orphan=lifecycle.claim(7L).getFirst();
+                assertEquals("retired-stage",orphan.generation().key());
+                deletion.delete(orphan); assertTrue(lifecycle.finish(orphan,true));
+                for(String index:allIndices) assertFalse(es.exists(e -> e.index(index).id("late")).value());
+                assertTrue(es.exists(e -> e.index("sdh-rag-kb-7").id("new")).value());
+                assertTrue(es.exists(e -> e.index("sdh-rag-summary-7").id(stage.key())).value());
+                // An expired writer can wake after the first deletion: the durable tombstone must resweep it.
+                es.index(i -> i.index("sdh-rag-kb-7").id("late").document(chunk(42,2,"retired-stage")));
+                es.indices().refresh(r -> r.index("sdh-rag-kb-7"));
+                jdbc.update("UPDATE knowledge_index_generation SET next_cleanup_at=TIMESTAMPADD(SECOND,-1,CURRENT_TIMESTAMP) WHERE generation_key='retired-stage'");
+                assertEquals(List.of(7L),lifecycle.dueKnowledgeBases());
+                var resweep=lifecycle.claim(7L).getFirst();
+                deletion.delete(resweep); assertTrue(lifecycle.finish(resweep,true));
+                assertFalse(es.exists(e -> e.index("sdh-rag-kb-7").id("late")).value());
             } finally { source.destroy(); }
         }
     }

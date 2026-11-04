@@ -14,6 +14,19 @@ import java.util.concurrent.Executor;
 @EnableAsync
 public class AsyncConfig {
 
+    /** Generation deletion must not occupy the shared scheduled-task thread. */
+    @Bean("indexCleanupExecutor")
+    public ThreadPoolTaskExecutor indexCleanupExecutor() {
+        var executor=new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(0);
+        executor.setThreadNamePrefix("index-cleanup-");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+        executor.initialize();
+        return executor;
+    }
+
     /**
      * 图谱构建专用线程池
      */

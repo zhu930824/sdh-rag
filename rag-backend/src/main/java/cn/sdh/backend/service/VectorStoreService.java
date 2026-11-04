@@ -129,12 +129,6 @@ public interface VectorStoreService {
      */
     void deleteVectorsByDocumentIdAndKnowledgeId(Long documentId, Long knowledgeId);
 
-    /** Delete older/missing generations only after the new generation is complete. */
-    void deleteVectorsExceptRevision(Long documentId, Long knowledgeId, int revision);
-
-    /** Remove one incomplete generation after cancellation or terminal failure. */
-    void deleteVectorsByRevision(Long documentId, Long knowledgeId, int revision);
-
     // ==================== 分块查询方法（从ES查询） ====================
 
     /**

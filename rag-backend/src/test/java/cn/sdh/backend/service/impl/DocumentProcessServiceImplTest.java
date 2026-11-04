@@ -115,7 +115,7 @@ class DocumentProcessServiceImplTest {
         order.verify(vectors,atLeastOnce()).addVector(any(),eq(5L),eq("model"),anyMap());
         order.verify(vectors).refreshIndex(5L);
         order.verify(publications).publish(eq(payload),eq(9L),eq("physical-attempt"),anyInt(),eq(executionContext));
-        verify(vectors,never()).deleteVectorsExceptRevision(anyLong(),anyLong(),anyInt());
+        verify(vectors,never()).deleteVectorsByDocumentIdAndKnowledgeId(anyLong(),anyLong());
     }
 
     @Test void failedRefreshLeavesThePreviousPublicationUntouched() {
@@ -124,7 +124,7 @@ class DocumentProcessServiceImplTest {
         assertThrows(IllegalStateException.class,() -> service.executeIndexJob(payload,9L,executionContext));
         verify(publications,never()).publish(any(),anyLong(),anyString(),anyInt(),any());
         verify(relations).markIndexFailed(eq(3L),eq(1),eq(9L),eq("refresh failed"),any());
-        verify(vectors,never()).deleteVectorsExceptRevision(anyLong(),anyLong(),anyInt());
+        verify(vectors,never()).deleteVectorsByDocumentIdAndKnowledgeId(anyLong(),anyLong());
     }
 
     private DocumentIndexJobPayload processingFixture() {

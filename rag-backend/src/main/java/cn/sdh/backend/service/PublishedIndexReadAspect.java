@@ -21,6 +21,7 @@ public class PublishedIndexReadAspect {
         Long id = knowledge instanceof KnowledgeBase base ? base.getId() : (Long)knowledge;
         try (var view = publications.open(id)) {
             Object result = call.proceed();
+            view.checkActive(); // Reject late responses even if an ES call crossed the absolute lease deadline.
             if (result instanceof SearchResult search) search.setPublicationSnapshot(view.snapshot());
             if (result instanceof RagSearchService.RagSearchResult search) search.setPublicationSnapshot(view.snapshot());
             return result;

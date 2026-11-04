@@ -38,7 +38,7 @@ Agent 的提示词证据仍沿用 12 Ki 字符上限，Run 的 `evidence_text` �
 
 V37 的观察快照仍兼容 `UNPINNED`。后续 V38 已实现已发布索引集合及单次检索固定读视图，新查询的 `publicationVersion` 指向该集合的指纹，详见 [已发布索引可见性](published-index-visibility.md)。片段元数据 `COMPLETE` 仍不替代发布集合身份。
 
-当前保留旧物理批次保护重建中的读请求；读者租约、有界保留与自动回收，以及业务质量门禁与索引发布的衔接仍待实施。
+V39 已增加 [读者租约、保留窗口与自动回收](index-lifecycle-and-retention.md)，自动删除默认关闭。业务质量门禁与索引发布的衔接、清理管理界面和审计元数据归档仍待实施。
 
 ## 行动与验证
 

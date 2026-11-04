@@ -72,12 +72,6 @@ public interface KnowledgeDocumentRelationMapper extends BaseMapper<KnowledgeDoc
     int markIndexRunning(@Param("id") Long id, @Param("revision") Integer revision,
                          @Param("jobId") Long jobId, @Param("now") java.time.LocalDateTime now);
 
-    @Update("UPDATE knowledge_document_relation SET process_status=2, chunk_count=#{chunkCount}, " +
-            "error_message=NULL, process_time=#{now} WHERE id=#{id} AND index_revision=#{revision} AND job_id=#{jobId}")
-    int markIndexSucceeded(@Param("id") Long id, @Param("revision") Integer revision,
-                           @Param("jobId") Long jobId, @Param("chunkCount") int chunkCount,
-                           @Param("now") java.time.LocalDateTime now);
-
     @Update("UPDATE knowledge_document_relation SET process_status=3, error_message=#{error}, process_time=#{now} " +
             "WHERE id=#{id} AND index_revision=#{revision} AND job_id=#{jobId}")
     int markIndexFailed(@Param("id") Long id, @Param("revision") Integer revision,

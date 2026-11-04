@@ -21,8 +21,8 @@ class PublishedIndexServiceTest {
         jdbc = new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
         jdbc.update("INSERT INTO knowledge_document_relation VALUES(1,7,42,1,11,2,1,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql")).execute(source);
-        service = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source));
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql")).execute(source);
+        service = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),new cn.sdh.backend.config.IndexLifecycleProperties()));
         context = org.mockito.Mockito.mock(cn.sdh.backend.job.PlatformJobExecutionContext.class);
         org.mockito.Mockito.when(context.jobId()).thenReturn(12L);
     }
@@ -72,6 +72,12 @@ class PublishedIndexServiceTest {
         assertTrue(service.stage(payload(2), 12L, "b".repeat(64), context).published());
         assertThrows(BusinessException.class, () -> service.publish(payload(2), 12L, stage.key(), 4, context));
         assertEquals(3, jdbc.queryForObject("SELECT chunk_count FROM knowledge_index_generation WHERE generation_key=?", Integer.class, stage.key()));
+    }
+    @Test void deletionTombstonesCannotBeRepublished() {
+        next(2,12); var stage=service.stage(payload(2),12L,"b".repeat(64),context);
+        jdbc.update("UPDATE knowledge_index_generation SET state='DELETING' WHERE generation_key=?",stage.key());
+        assertEquals(409,assertThrows(BusinessException.class,() -> service.publish(payload(2),12L,stage.key(),1,context)).getCode());
+        assertEquals("legacy:1:1",jdbc.queryForObject("SELECT published_generation FROM knowledge_document_relation WHERE id=1",String.class));
     }
     void next(int revision, long job) { jdbc.update("UPDATE knowledge_document_relation SET index_revision=?,job_id=?,process_status=1,index_source_sha256=NULL,index_write_generation=NULL WHERE id=1", revision, job); }
     static DocumentIndexJobPayload payload(int revision) { return new DocumentIndexJobPayload(1L, 42L, 7L, revision, new DocumentLinkConfig()); }

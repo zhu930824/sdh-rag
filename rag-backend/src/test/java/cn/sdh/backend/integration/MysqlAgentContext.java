@@ -29,7 +29,7 @@ final class MysqlAgentContext {
     @MapperScan(basePackageClasses = AgentRunMapper.class)
     @Import({RunExecutionLeaseService.class, RunStateService.class, AgentRunLifecycle.class, AgentExecutionAttemptService.class, JdbcAgentStateStore.class,
             AgentRunRecoveryService.class, AgentActionService.class, AgentActionJobs.class,
-            AgentActionExecutor.class, AgentActionCompletionService.class, PlatformJobService.class, PublishedIndexService.class,
+            AgentActionExecutor.class, AgentActionCompletionService.class, PlatformJobService.class, PublishedIndexService.class, IndexGenerationLifecycle.class,cn.sdh.backend.config.IndexLifecycleProperties.class,
             cn.sdh.backend.agent.evaluation.AgentEvaluationService.class})
     static class Config {
         @Bean JdbcTemplate jdbcTemplate(DataSource source) { return new JdbcTemplate(source); }

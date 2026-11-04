@@ -137,6 +137,17 @@ operations:
     dead-letters-24h: ${ALERT_DEAD_LETTERS_24H:1}
 
 knowledge:
+  index-lifecycle:
+    # Enable only after all readers and writers have upgraded to the V39 lease protocol.
+    cleanup-enabled: ${KNOWLEDGE_INDEX_CLEANUP_ENABLED:false}
+    read-lease-seconds: ${KNOWLEDGE_INDEX_READ_LEASE_SECONDS:300}
+    retention-seconds: ${KNOWLEDGE_INDEX_RETENTION_SECONDS:604800}
+    cleanup-lease-seconds: 300
+    retry-seconds: 60
+    resweep-seconds: 86400
+    batch-size: 20
+    knowledge-batch-size: 10
+    cleanup-interval-ms: 60000
   documents:
     index-lock-minutes: ${KNOWLEDGE_DOCUMENT_INDEX_LOCK_MINUTES:120}
     recovery-delay-ms: ${KNOWLEDGE_DOCUMENT_RECOVERY_DELAY_MS:60000}

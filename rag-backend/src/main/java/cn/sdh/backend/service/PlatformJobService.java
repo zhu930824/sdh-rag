@@ -55,7 +55,8 @@ public class PlatformJobService {
         job.setPriority(command.priority() == null ? 0 : command.priority());
         job.setAttempts(0);
         job.setMaxAttempts(Math.max(1, Math.min(command.maxAttempts() == null ? 3 : command.maxAttempts(), 10)));
-        job.setAvailableAt(now);
+        // The persisted column is DATETIME(0); fractional values can round into the future.
+        job.setAvailableAt(now.withNano(0));
         String inheritedTrace = command.traceId() == null ? TraceContext.current() : command.traceId();
         job.setTraceId(TraceContext.normalizeOrCreate(inheritedTrace));
         job.setCreatedBy(command.createdBy());
