@@ -14,10 +14,11 @@ public class PublishedIndexReadAspect {
     @Around("execution(public * cn.sdh.backend.service.impl.RagSearchServiceImpl.search*(..)) || " +
             "execution(public * cn.sdh.backend.service.impl.VectorStoreServiceImpl.*Search(..)) || " +
             "execution(public * cn.sdh.backend.service.impl.VectorStoreServiceImpl.searchByDocumentIds(..)) || " +
+            "execution(public * cn.sdh.backend.service.impl.VectorStoreServiceImpl.*PublishedChunks(..)) || " +
             "execution(public * cn.sdh.backend.service.impl.SummaryIndexServiceImpl.coarseRetrieval(..))")
     public Object read(ProceedingJoinPoint call) throws Throwable {
         Object[] args = call.getArgs();
-        Object knowledge = args[1] instanceof java.util.Set ? args[2] : args[1];
+        Object knowledge=call.getSignature().getName().endsWith("PublishedChunks")?args[0]:args[1] instanceof java.util.Set?args[2]:args[1];
         Long id = knowledge instanceof KnowledgeBase base ? base.getId() : (Long)knowledge;
         try (var view = publications.open(id)) {
             Object result = call.proceed();

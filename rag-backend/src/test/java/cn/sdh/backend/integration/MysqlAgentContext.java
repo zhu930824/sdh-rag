@@ -30,7 +30,7 @@ final class MysqlAgentContext {
     @Import({RunExecutionLeaseService.class, RunStateService.class, AgentRunLifecycle.class, AgentExecutionAttemptService.class, JdbcAgentStateStore.class,
             AgentRunRecoveryService.class, AgentActionService.class, AgentActionJobs.class,
             AgentActionExecutor.class, AgentActionCompletionService.class, PlatformJobService.class, PublishedIndexService.class, IndexPublicationGateStore.class,IndexGenerationLifecycle.class,cn.sdh.backend.config.IndexLifecycleProperties.class,
-            KnowledgePublishingService.class,cn.sdh.backend.agent.evaluation.AgentEvaluationService.class})
+            EvaluationExecutionService.class,KnowledgePublishingService.class,cn.sdh.backend.agent.evaluation.AgentEvaluationService.class})
     static class Config {
         @Bean JdbcTemplate jdbcTemplate(DataSource source) { return new JdbcTemplate(source); }
         @Bean PlatformTransactionManager transactionManager(DataSource source) { return new DataSourceTransactionManager(source); }

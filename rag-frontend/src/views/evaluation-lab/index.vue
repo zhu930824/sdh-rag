@@ -367,7 +367,7 @@ function formatTime(value: string | null) { return value ? new Date(value).toLoc
 function runColor(status: string) { return ({ COMPLETED: 'green', FAILED: 'red', RUNNING: 'blue', LAUNCHING: 'orange' } as Record<string,string>)[status] || 'default' }
 function runStatus(status: string) { return ({ COMPLETED: '完成', FAILED: '失败', RUNNING: '运行中', LAUNCHING: '启动中' } as Record<string,string>)[status] || status }
 function taskStatus(status?: number) { return ({ 0: '等待', 1: '运行中', 2: '完成', 3: '失败' } as Record<number,string>)[status ?? -1] || '-' }
-function regressionStatus(status?: string | null) { return ({ PASSED: '通过', FAILED: '回归', NOT_COMPARED: '未对比' } as Record<string,string>)[status || ''] || '-' }
+function regressionStatus(status?: string | null) { return ({ PASSED: '通过', FAILED: '回归', NOT_COMPARED: '未对比', INCOMPARABLE: '不可比' } as Record<string,string>)[status || ''] || '-' }
 
 onMounted(async () => {
   await Promise.all([loadExperiments(), (async () => {

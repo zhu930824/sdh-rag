@@ -3,6 +3,7 @@ import type { ApiResponse } from '@/types'
 
 export interface EvaluationTask {
   id: number
+  currentExecutionId?: string | null
   jobId: number | null
   jobStatus: string | null
   knowledgeId: number
@@ -29,7 +30,7 @@ export interface EvaluationTask {
   overallScore: number | null
   judgeModel: string | null
   baselineTaskId: number | null
-  regressionStatus: 'PASSED' | 'FAILED' | 'NOT_COMPARED' | null
+  regressionStatus: 'PASSED' | 'FAILED' | 'NOT_COMPARED' | 'INCOMPARABLE' | null
   avgHitRank: number | null
   topKHits: string | null
   negativeCount: number | null
@@ -355,4 +356,20 @@ export function submitHumanReview(qaId: number, data: {
 
 export function getJudgeAlignment(taskId: number): Promise<ApiResponse<EvaluationJudgeAlignment>> {
   return request.get(`/api/evaluation/operations/task/${taskId}/alignment`)
+}
+
+export interface EvaluationExecution {
+  id: string
+  attempt_number: number
+  status: string
+  publication_sha256: string
+  configuration_sha256: string
+  input_sha256: string | null
+  result_count: number
+}
+export function getEvaluationExecutions(taskId: number): Promise<ApiResponse<EvaluationExecution[]>> {
+  return request.get(`/api/evaluation/tasks/${taskId}/executions`)
+}
+export function getEvaluationExecutionResults(id: string, offset = 0, limit = 100): Promise<ApiResponse<Array<{ ordinal: number; snapshot_json: string; snapshot_sha256: string }>>> {
+  return request.get(`/api/evaluation/executions/${id}/results`, { params: { offset, limit } })
 }

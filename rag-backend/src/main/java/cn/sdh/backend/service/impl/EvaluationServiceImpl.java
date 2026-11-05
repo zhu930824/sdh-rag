@@ -49,6 +49,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     private final ObjectMapper objectMapper;
     private final KnowledgeAccessService knowledgeAccess;
     private final PlatformJobService platformJobs;
+    private final EvaluationExecutionService executions;
 
     private static final String QA_GENERATION_PROMPT = """
         请根据以下文档内容，生成一个高质量的问题和答案。
@@ -92,7 +93,7 @@ public class EvaluationServiceImpl implements EvaluationService {
             TestDatasetService testDatasetService,
             ObjectMapper objectMapper,
             KnowledgeAccessService knowledgeAccess,
-            PlatformJobService platformJobs) {
+            PlatformJobService platformJobs,EvaluationExecutionService executions) {
         this.taskMapper = taskMapper;
         this.qaMapper = qaMapper;
         this.vectorStoreService = vectorStoreService;
@@ -103,6 +104,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         this.objectMapper = objectMapper;
         this.knowledgeAccess = knowledgeAccess;
         this.platformJobs = platformJobs;
+        this.executions=executions;
     }
 
     @Override
@@ -405,38 +407,27 @@ public class EvaluationServiceImpl implements EvaluationService {
             return;
         }
 
-        try {
-            checkpoint(context);
-            knowledgeAccess.requireRead(task.getKnowledgeId(), task.getUserId());
-            qaMapper.delete(new LambdaQueryWrapper<EvaluationQa>().eq(EvaluationQa::getTaskId, taskId));
-            task.setStatus(1);
-            task.setErrorMessage(null);
-            task.setUpdateTime(LocalDateTime.now());
-            taskMapper.updateById(task);
+        if(executions.alreadyCompleted(task,context)) return;
+        try (var execution=executions.start(task,context,promptVersions())) {
+            execution.check();
 
-            long totalChunks = vectorStoreService.countChunksByKnowledgeId(task.getKnowledgeId());
+            long totalChunks = vectorStoreService.countPublishedChunks(task.getKnowledgeId());
             if (totalChunks == 0) {
-                task.setStatus(3);
-                task.setErrorMessage("知识库没有可用的分块数据");
-                taskMapper.updateById(task);
-                return;
+                throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
             }
 
             int fetchCount = Math.min(task.getQaCount() * 3, (int) Math.min(totalChunks, 100));
-            List<Document> allChunks = vectorStoreService.getChunksByKnowledgeId(task.getKnowledgeId(), 0, fetchCount);
+            List<Document> allChunks = vectorStoreService.getPublishedChunks(task.getKnowledgeId(), 0, fetchCount);
 
             if (allChunks.isEmpty()) {
-                task.setStatus(3);
-                task.setErrorMessage("知识库没有可用的分块数据");
-                taskMapper.updateById(task);
-                return;
+                throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
             }
 
             int sampleCount = Math.min(task.getQaCount(), allChunks.size());
-            Collections.shuffle(allChunks);
+            Collections.shuffle(allChunks,new Random(execution.seed()));
             List<Document> sampledChunks = allChunks.subList(0, sampleCount);
 
-            KnowledgeBase knowledgeBase = knowledgeBaseService.getKnowledgeBaseById(task.getKnowledgeId());
+            KnowledgeBase knowledgeBase=execution.base();
             String qaModelId = null;
             if (knowledgeBase != null && knowledgeBase.getHydeModel() != null && !knowledgeBase.getHydeModel().isEmpty()) {
                 qaModelId = knowledgeBase.getHydeModel();
@@ -446,48 +437,35 @@ public class EvaluationServiceImpl implements EvaluationService {
             List<EvaluationQa> qaList = new ArrayList<>();
             for (Document doc : sampledChunks) {
                 checkpoint(context);
-                try {
-                    EvaluationQa qa = generateQaFromDocument(doc, taskId, qaModelId);
-                    if (qa != null) {
-                        qa.setSourceType("generated");
-                        qaList.add(qa);
-                    }
-                } catch (Exception e) {
-                    log.warn("生成QA失败: docId={}", doc.getId(), e);
-                }
+                EvaluationQa qa=generateQaFromDocument(doc,taskId,qaModelId);
+                if(qa==null) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
+                execution.check(); qa.setSourceType("generated"); qaList.add(qa);
             }
 
+            execution.inputs(qaList.stream().map(qa -> {
+                var input=new EvaluationQaItem(); input.setQuestion(qa.getQuestion()); input.setExpectedAnswer(qa.getExpectedAnswer());
+                input.setSourceChunkId(qa.getSourceChunkId()); input.setSourceDocumentId(qa.getSourceDocumentId()); return input;
+            }).toList());
             List<EvaluationQa> evaluatedQaList = new ArrayList<>();
             for (EvaluationQa qa : qaList) {
                 checkpoint(context);
-                try {
-                    evaluateQa(qa, task);
-                    qaMapper.insert(qa);
-                    evaluatedQaList.add(qa);
-                } catch (Exception e) {
-                    log.warn("评估QA失败: question={}", qa.getQuestion(), e);
-                }
+                evaluateQa(qa,task,execution.base());
+                execution.record(qa); evaluatedQaList.add(qa);
             }
 
             calculateMetrics(task, evaluatedQaList);
 
-            task.setStatus(2);
-            task.setQaCount(evaluatedQaList.size());
-            task.setUpdateTime(LocalDateTime.now());
-            taskMapper.updateById(task);
+            execution.complete();
 
             log.info("评估任务完成: taskId={}, qaCount={}, hitRate={}, mrr={}",
                     taskId, evaluatedQaList.size(), task.getHitRate(), task.getMrr());
 
         } catch (PlatformJobCancelledException cancelled) {
-            markEvaluationCancelled(task);
             throw cancelled;
         } catch (Exception e) {
             log.error("评估任务执行失败: taskId={}", taskId, e);
-            task.setStatus(3);
-            task.setErrorMessage(e.getMessage());
-            task.setUpdateTime(LocalDateTime.now());
-            taskMapper.updateById(task);
+            executions.failTask(task,context);
+            throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
         }
     }
 
@@ -503,20 +481,18 @@ public class EvaluationServiceImpl implements EvaluationService {
             return;
         }
 
-        try {
-            checkpoint(context);
-            knowledgeAccess.requireRead(task.getKnowledgeId(), task.getUserId());
-            qaMapper.delete(new LambdaQueryWrapper<EvaluationQa>().eq(EvaluationQa::getTaskId, taskId));
-            task.setStatus(1);
-            task.setErrorMessage(null);
-            task.setUpdateTime(LocalDateTime.now());
-            taskMapper.updateById(task);
+        if(executions.alreadyCompleted(task,context)) return;
+        try (var execution=executions.start(task,context,promptVersions())) {
+            execution.check();
 
+            var fixedItems=com.alibaba.fastjson2.JSON.parseArray(com.alibaba.fastjson2.JSON.toJSONString(items),EvaluationQaItem.class);
+            if(fixedItems==null || fixedItems.isEmpty()) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
+            execution.inputs(fixedItems);
             List<EvaluationQa> qaList = new ArrayList<>();
-            for (EvaluationQaItem item : items == null ? List.<EvaluationQaItem>of() : items) {
+            for (EvaluationQaItem item : fixedItems) {
                 checkpoint(context);
                 if (item.getQuestion() == null || item.getQuestion().trim().isEmpty()) {
-                    continue;
+                    throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
                 }
 
                 EvaluationQa qa = new EvaluationQa();
@@ -538,37 +514,24 @@ public class EvaluationServiceImpl implements EvaluationService {
                 qa.setDocHit(false);
                 qa.setCreateTime(LocalDateTime.now());
 
-                try {
-                    evaluateQa(qa, task);
-                    if (qa.getOverallScore() != null) {
-                        qa.setHumanReviewStatus("PENDING");
-                    }
-                    qaMapper.insert(qa);
-                    qaList.add(qa);
-                } catch (Exception e) {
-                    log.warn("评估QA失败: question={}", qa.getQuestion(), e);
-                }
+                evaluateQa(qa,task,execution.base());
+                if(qa.getOverallScore()!=null) qa.setHumanReviewStatus("PENDING");
+                execution.record(qa); qaList.add(qa);
             }
 
             calculateMetrics(task, qaList);
 
-            task.setStatus(2);
-            task.setQaCount(qaList.size());
-            task.setUpdateTime(LocalDateTime.now());
-            taskMapper.updateById(task);
+            execution.complete();
 
             log.info("导入评估任务完成: taskId={}, qaCount={}, hitRate={}, negativeHitRate={}",
                     taskId, qaList.size(), task.getHitRate(), task.getNegativeHitRate());
 
         } catch (PlatformJobCancelledException cancelled) {
-            markEvaluationCancelled(task);
             throw cancelled;
         } catch (Exception e) {
             log.error("导入评估任务执行失败: taskId={}", taskId, e);
-            task.setStatus(3);
-            task.setErrorMessage(e.getMessage());
-            task.setUpdateTime(LocalDateTime.now());
-            taskMapper.updateById(task);
+            executions.failTask(task,context);
+            throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
         }
     }
 
@@ -636,9 +599,15 @@ public class EvaluationServiceImpl implements EvaluationService {
         return answerObj.toString();
     }
 
-    private void evaluateQa(EvaluationQa qa, EvaluationTask task) {
+    private Map<String,String> promptVersions() {
+        return Map.of("qaGeneration",cn.sdh.backend.utils.ContentFingerprint.sha256(QA_GENERATION_PROMPT),
+                "answer",cn.sdh.backend.utils.ContentFingerprint.sha256(ANSWER_PROMPT),
+                "judge",cn.sdh.backend.utils.ContentFingerprint.sha256(JUDGE_PROMPT));
+    }
+
+    private void evaluateQa(EvaluationQa qa, EvaluationTask task,KnowledgeBase frozenBase) {
         RagSearchService.RagSearchResult result = ragSearchService.search(
-                qa.getQuestion(), task.getKnowledgeId(), null
+                qa.getQuestion(), frozenBase, null
         );
 
         List<Document> docs = result.getDocuments() == null ? List.of() : result.getDocuments();
@@ -719,9 +688,11 @@ public class EvaluationServiceImpl implements EvaluationService {
             qa.setCompleteness(score(scores, "completeness"));
             qa.setFluency(score(scores, "fluency"));
             qa.setOverallScore(score(scores, "overall"));
+            if(qa.getContextPrecision()==null || qa.getContextRecall()==null || qa.getFaithfulness()==null || qa.getAnswerRelevancy()==null || qa.getCompleteness()==null || qa.getFluency()==null || qa.getOverallScore()==null) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
             qa.setJudgeReason(cap(Objects.toString(scores.get("reason"), ""), 1000));
         } catch (Exception e) {
-            qa.setJudgeReason(cap("自动评审失败：" + Objects.toString(e.getMessage(), "未知错误"), 1000));
+            ModelExecutionScope.failIfActive();
+            qa.setJudgeReason("自动评审未完整完成");
             log.warn("生成质量评审失败: question={}, error={}", qa.getQuestion(), e.getMessage());
         }
     }
@@ -882,8 +853,8 @@ public class EvaluationServiceImpl implements EvaluationService {
             return;
         }
         EvaluationTask baseline = taskMapper.selectById(task.getBaselineTaskId());
-        if (baseline == null || !Objects.equals(baseline.getKnowledgeId(), task.getKnowledgeId())) {
-            task.setRegressionStatus("FAILED");
+        if (!executions.comparable(task,baseline) || (baseline.getRecallAtK()==null && baseline.getMrr()==null && baseline.getFaithfulness()==null && baseline.getAnswerRelevancy()==null)) {
+            task.setRegressionStatus("INCOMPARABLE");
             return;
         }
         boolean passed = notLower(task.getRecallAtK(), baseline.getRecallAtK())
@@ -1092,13 +1063,6 @@ public class EvaluationServiceImpl implements EvaluationService {
 
     private void checkpoint(PlatformJobExecutionContext context) {
         if (context != null) context.checkpoint();
-    }
-
-    private void markEvaluationCancelled(EvaluationTask task) {
-        task.setStatus(4);
-        task.setErrorMessage("任务已取消");
-        task.setUpdateTime(LocalDateTime.now());
-        taskMapper.updateById(task);
     }
 
     @Override

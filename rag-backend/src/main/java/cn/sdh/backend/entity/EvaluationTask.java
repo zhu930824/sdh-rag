@@ -16,6 +16,8 @@ public class EvaluationTask implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    @TableField(value="current_execution_id",insertStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER,updateStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String currentExecutionId;
 
     @TableField("job_id")
     private Long jobId;

@@ -119,6 +119,11 @@ public class PublishedIndexService {
         var view=lifecycle.readGuard(knowledgeId,() -> openUnderGuard(knowledgeId));
         views.get().push(view); return view;
     }
+    public ReadView openEvaluation(Long knowledgeId) {
+        if(knowledgeId==null || knowledgeId<=0 || views.get().stream().anyMatch(v -> v.knowledgeId.equals(knowledgeId))) throw new BusinessException(409,"评测必须建立独立的已发布版本作用域");
+        var view=lifecycle.readGuard(knowledgeId,() -> openUnderGuard(knowledgeId,null,true));
+        views.get().push(view); return view;
+    }
     public ReadView openCandidate(DocumentIndexJobPayload payload,Long jobId,String generation,PlatformJobExecutionContext context) {
         if(views.get().stream().anyMatch(v -> v.knowledgeId.equals(payload.knowledgeId()))) throw new BusinessException(409,"候选验证必须使用独立读作用域");
         var view=lifecycle.readGuard(payload.knowledgeId(),() -> {
@@ -154,6 +159,9 @@ public class PublishedIndexService {
         return version;
     }
     private ReadView openUnderGuard(Long knowledgeId,Generation candidate) {
+        return openUnderGuard(knowledgeId,candidate,false);
+    }
+    private ReadView openUnderGuard(Long knowledgeId,Generation candidate,boolean evaluation) {
         var heads=heads(knowledgeId,false);
         String basis=saveManifest(knowledgeId,heads.generations());
         List<Generation> generations=heads.generations();
@@ -162,7 +170,7 @@ public class PublishedIndexService {
             merged.add(candidate); merged.sort(Comparator.comparing(Generation::key)); generations=List.copyOf(merged);
         }
         String version=candidate==null?basis:saveManifest(knowledgeId,generations);
-        String lease=lifecycle.pin(knowledgeId,version,generations);
+        String lease=evaluation?lifecycle.pin(knowledgeId,version,generations,3600):lifecycle.pin(knowledgeId,version,generations);
         return new ReadView(knowledgeId,generations,version,candidate==null && heads.summariesComplete(),lease,basis);
     }
     public ReadView current(Long knowledgeId) {
@@ -191,6 +199,7 @@ public class PublishedIndexService {
             lifecycle.assertActive(lease);
         }
         public IndexPublicationSnapshot snapshot() { checkActive(); return snapshot; }
+        public List<Generation> generations() { checkActive(); return generations; }
         public Query filter(String documentField) {
             checkActive();
             return generationFilter(generations,documentField);

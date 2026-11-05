@@ -140,6 +140,8 @@ class PublishedIndexElasticsearchIT {
                 assertIds(online.similaritySearch("question",7L,5,"model"),"new");
                 assertTrue(publications.publish(managedPayload,13L,managed.key(),1,managedContext));
                 assertIds(online.similaritySearch("question",7L,5,"model"),"managed");
+                assertEquals(1,online.countPublishedChunks(7L));
+                assertIds(online.getPublishedChunks(7L,0,10),"managed");
                 // Five stronger published competitors keep an inferior candidate outside Top 5.
                 for(long id=100;id<105;id++) {
                     String key="competitor-"+id;
@@ -170,6 +172,8 @@ class PublishedIndexElasticsearchIT {
         if(generation!=null) result.put("index_generation",generation); return result;
     }
     private static void assertSearches(VectorStoreService vectors,String id) {
+        assertEquals(1,vectors.countPublishedChunks(7L));
+        assertIds(vectors.getPublishedChunks(7L,0,10),id);
         assertIds(vectors.similaritySearch("question",7L,10,"model"),id);
         assertIds(vectors.keywordSearch("question",7L,10),id);
         assertIds(vectors.hybridSearch("question",7L,10,10,.7,.3,"model",null,Map.of()),id);

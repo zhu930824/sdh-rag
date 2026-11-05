@@ -39,7 +39,7 @@ class EvaluationQualityServiceTest {
         context.setUserId(8L);
         UserContext.setUserContext(context);
         service = new EvaluationServiceImpl(tasks, qaMapper, vectors, bases, rag, chat, datasets,
-                new ObjectMapper(), access, platformJobs);
+                new ObjectMapper(), access, platformJobs,mock(EvaluationExecutionService.class));
     }
 
     @AfterEach void clearContext() { UserContext.clear(); }

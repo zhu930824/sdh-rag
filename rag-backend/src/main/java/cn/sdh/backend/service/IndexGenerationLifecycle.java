@@ -36,13 +36,17 @@ public class IndexGenerationLifecycle {
         jdbc.update("INSERT INTO knowledge_index_read_guard(knowledge_id) VALUES(?) ON DUPLICATE KEY UPDATE knowledge_id=knowledge_id",knowledgeId);
     }
     String pin(Long knowledgeId, String snapshot, List<PublishedIndexService.Generation> generations) {
+        return pin(knowledgeId,snapshot,generations,policy.getReadLeaseSeconds());
+    }
+    String pin(Long knowledgeId,String snapshot,List<PublishedIndexService.Generation> generations,int leaseSeconds) {
+        if(leaseSeconds<1 || leaseSeconds>3600) throw new IllegalArgumentException("读租约范围为 1—3600 秒");
         if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT generations_registered FROM knowledge_index_read_snapshot WHERE snapshot_sha256=?",Boolean.class,snapshot))) {
             jdbc.batchUpdate("INSERT INTO knowledge_index_read_snapshot_generation(snapshot_sha256,generation_key) VALUES(?,?)",
                     generations.stream().map(g -> new Object[]{snapshot,g.key()}).toList());
             jdbc.update("UPDATE knowledge_index_read_snapshot SET generations_registered=TRUE WHERE snapshot_sha256=?",snapshot);
         }
         String id=UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO knowledge_index_read_lease(lease_id,knowledge_id,snapshot_sha256,expires_at) VALUES(?,?,?,?)",id,knowledgeId,snapshot,now().plusSeconds(policy.getReadLeaseSeconds()));
+        jdbc.update("INSERT INTO knowledge_index_read_lease(lease_id,knowledge_id,snapshot_sha256,expires_at) VALUES(?,?,?,?)",id,knowledgeId,snapshot,now().plusSeconds(leaseSeconds));
         return id;
     }
     void assertActive(String lease) {

@@ -252,6 +252,8 @@
           </div>
         </div>
 
+        <ExecutionHistory :key="currentTask.id" :task-id="currentTask.id" />
+
         <div class="layered-metrics-panel">
           <div class="panel-title">检索层指标（Top {{ currentTask.topK || 5 }}，已标注 {{ currentTask.labeledCount || 0 }} 条）</div>
           <a-alert v-if="!currentTask.labeledCount" type="warning" show-icon message="当前数据集没有相关文档标注，经典检索指标不会参与统计。" style="margin-bottom: 12px" />
@@ -595,6 +597,7 @@
 
 <script setup lang="ts">
 import AgentEvaluationPanel from './components/AgentEvaluationPanel.vue'
+import ExecutionHistory from './components/ExecutionHistory.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
@@ -777,7 +780,7 @@ function datasetTypeColor(type: string | null) {
   return map[type || 'generated'] || 'blue'
 }
 
-function regressionText(value: string | null) { return ({PASSED:'通过',FAILED:'退化',NOT_COMPARED:'未对比'} as Record<string,string>)[value || 'NOT_COMPARED'] || '未对比' }
+function regressionText(value: string | null) { return ({PASSED:'通过',FAILED:'退化',NOT_COMPARED:'未对比',INCOMPARABLE:'不可比'} as Record<string,string>)[value || 'NOT_COMPARED'] || '未对比' }
 function scoreText(value: number | null) { return value === null || value === undefined ? '-' : `${(value * 100).toFixed(1)}%` }
 function failureText(value: string | null) { return ({UNLABELED:'缺少标注',RETRIEVAL_MISS:'检索遗漏',CONTEXT_NOISE:'上下文噪声',HALLUCINATION:'生成幻觉',INCOMPLETE:'回答不完整',NEGATIVE_FALSE_POSITIVE:'拒答失败'} as Record<string,string>)[value || ''] || value || '无明显失败' }
 

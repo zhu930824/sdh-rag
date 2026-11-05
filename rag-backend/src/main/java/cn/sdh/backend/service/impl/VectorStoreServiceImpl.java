@@ -30,6 +30,19 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class VectorStoreServiceImpl implements VectorStoreService {
+    @Override public long countPublishedChunks(Long knowledgeId) {
+        try {
+            return elasticsearchClient.count(c -> c.index(elasticsearchIndexService.getIndexName(knowledgeId)).query(publications.current(knowledgeId).filter("document_id"))).count();
+        } catch(Exception error) { throw new cn.sdh.backend.common.exception.EvaluationIntegrityException(); }
+    }
+    @Override public List<Document> getPublishedChunks(Long knowledgeId,int page,int size) {
+        if(page<0 || size<1 || size>1000) throw new IllegalArgumentException("分页参数无效");
+        try {
+            var response=elasticsearchClient.search(s -> s.index(elasticsearchIndexService.getIndexName(knowledgeId)).from(Math.multiplyExact(page,size)).size(size)
+                    .query(publications.current(knowledgeId).filter("document_id")).sort(v -> v.field(f -> f.field("document_id"))).sort(v -> v.field(f -> f.field("chunk_index"))),Map.class);
+            return convertHitsToDocuments(response.hits().hits());
+        } catch(Exception error) { throw new cn.sdh.backend.common.exception.EvaluationIntegrityException(); }
+    }
 
     private static final int RRF_K = 10;
 
@@ -116,6 +129,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                     vectorId, chunk.getChunkIndex(), knowledgeId, embeddingModelName, indexName);
             return vectorId;
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("添加向量失败: chunkId={}, error={}", chunk.getId(), e.getMessage(), e);
             return null;
         }
@@ -160,6 +174,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             elasticsearchClient.delete(d -> d.index(indexName).id(vectorId));
             log.info("删除向量成功: vectorId={}, index={}", vectorId, indexName);
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("删除向量失败: vectorId={}, knowledgeId={}, error={}", vectorId, knowledgeId, e.getMessage());
         }
     }
@@ -199,6 +214,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             log.info("删除知识库向量完成: knowledgeId={}, index={}", knowledgeId, indexName);
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("删除知识库向量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
         }
     }
@@ -269,6 +285,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                     knowledgeId, embeddingModelName, documents.size(), filtered);
             return documents;
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("相似度搜索失败: knowledgeId={}, embeddingModel={}, error={}",
                     knowledgeId, embeddingModelName, e.getMessage(), e);
             if(strict) throw new IllegalStateException("候选检索失败，等待任务重试",e);
@@ -300,6 +317,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             log.info("删除文档向量完成: documentId={}, knowledgeId={}, index={}", documentId, knowledgeId, indexName);
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("删除文档向量失败: documentId={}, knowledgeId={}, error={}",
                     documentId, knowledgeId, e.getMessage());
             throw new IllegalStateException("删除文档向量失败: " + e.getMessage(), e);
@@ -330,6 +348,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return knowledgeBase.getEmbeddingModel();
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.warn("获取知识库嵌入模型失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
         }
         return null;
@@ -345,6 +364,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             CountResponse response = elasticsearchClient.count(c -> c.index(indexName));
             return response.count();
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("统计分块数量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
             return 0;
         }
@@ -364,6 +384,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             CountResponse response = elasticsearchClient.count(c -> c.index(indexName).query(query));
             return response.count();
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("统计文档分块数量失败: documentId={}, error={}", documentId, e.getMessage());
             return 0;
         }
@@ -387,6 +408,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             return convertHitsToDocuments(response.hits().hits());
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("获取知识库分块列表失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
             return Collections.emptyList();
         }
@@ -414,6 +436,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             return convertHitsToDocuments(response.hits().hits());
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("获取文档分块列表失败: documentId={}, error={}", documentId, e.getMessage());
             return Collections.emptyList();
         }
@@ -443,6 +466,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return doc;
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("获取分块详情失败: vectorId={}, knowledgeId={}, error={}", vectorId, knowledgeId, e.getMessage());
         }
         return null;
@@ -463,6 +487,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 return indexStats.primaries().store().sizeInBytes();
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.warn("获取索引大小失败: {}", e.getMessage());
         }
         return 0;
@@ -493,6 +518,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 }
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.warn("获取最后更新时间失败: knowledgeId={}, error={}", knowledgeId, e.getMessage());
         }
         return 0;
@@ -522,6 +548,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                     knowledgeId, query, topK, documents.size());
             return documents;
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("关键字搜索失败: knowledgeId={}, query={}, error={}", knowledgeId, query, e.getMessage());
             return Collections.emptyList();
         }
@@ -580,6 +607,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
             return mergedResults;
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("混合检索失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
             return Collections.emptyList();
         }
@@ -663,6 +691,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 allResults.addAll(convertHitsToDocuments(response.hits().hits()));
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("searchByDocumentIds failed: kbId={}", knowledgeId, e);
         }
         return allResults;
@@ -702,6 +731,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             var response = elasticsearchClient.search(s -> s.index(indexName).knn(knn).size(topK), Map.class);
             return convertHitsToDocuments(response.hits().hits());
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.warn("coldSearch failed: kbId={}, error={}", knowledgeId, e.getMessage());
             return List.of();
         }
@@ -735,6 +765,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             }
             return results;
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("similaritySearchWithFilter failed: kbId={}", knowledgeId, e);
             return List.of();
         }
@@ -752,6 +783,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 .index(indexName).query(q -> q.bool(boolBuilder.build())).size(topK), Map.class);
             return convertHitsToDocuments(response.hits().hits());
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("keywordSearchWithFilter failed: kbId={}", knowledgeId, e);
             return List.of();
         }
