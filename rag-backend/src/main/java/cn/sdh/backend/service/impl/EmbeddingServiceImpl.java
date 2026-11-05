@@ -33,6 +33,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
     @Override
     public float[] getEmbedding(String text, Long knowledgeId) {
         if (text == null || text.isEmpty()) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             return new float[0];
         }
 
@@ -40,23 +41,27 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             EmbeddingModel embeddingModel = getEmbeddingModelByKnowledgeId(knowledgeId);
             if (embeddingModel == null) {
                 log.error("无法获取嵌入模型: knowledgeId={}", knowledgeId);
-                return new float[0];
+                cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            return new float[0];
             }
 
             EmbeddingResponse response = embeddingModel.embedForResponse(List.of(text));
             if (response != null && !response.getResults().isEmpty()) {
-                return response.getResults().get(0).getOutput();
+                return confirmed(response.getResults().get(0).getOutput());
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("获取文本向量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
         }
 
-        return new float[0];
+        cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            return new float[0];
     }
 
     @Override
     public float[] getEmbeddingByModel(String text, String embeddingModelName) {
         if (text == null || text.isEmpty()) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             return new float[0];
         }
 
@@ -64,18 +69,21 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             EmbeddingModel embeddingModel = embeddingModelFactory.getModel(embeddingModelName);
             if (embeddingModel == null) {
                 log.error("无法获取嵌入模型: modelName={}", embeddingModelName);
-                return new float[0];
+                cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            return new float[0];
             }
 
             EmbeddingResponse response = embeddingModel.embedForResponse(List.of(text));
             if (response != null && !response.getResults().isEmpty()) {
-                return response.getResults().get(0).getOutput();
+                return confirmed(response.getResults().get(0).getOutput());
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("获取文本向量失败: modelName={}, error={}", embeddingModelName, e.getMessage(), e);
         }
 
-        return new float[0];
+        cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            return new float[0];
     }
 
     @Override
@@ -107,14 +115,22 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             EmbeddingResponse response = embeddingModel.embedForResponse(texts);
             if (response != null) {
                 response.getResults().forEach(embedding -> {
-                    results.add(embedding.getOutput());
+                    results.add(confirmed(embedding.getOutput()));
                 });
             }
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("批量获取文本向量失败: knowledgeId={}, error={}", knowledgeId, e.getMessage(), e);
         }
 
+        if(results.size()!=texts.size()) cn.sdh.backend.service.ModelExecutionScope.failIfActive();
         return results;
+    }
+
+    private float[] confirmed(float[] vector) {
+        if(vector==null || vector.length==0) cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+        else for(float value:vector) if(!Float.isFinite(value)) cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+        return vector;
     }
 
     /**

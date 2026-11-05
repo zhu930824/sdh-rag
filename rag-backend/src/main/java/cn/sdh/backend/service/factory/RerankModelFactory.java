@@ -70,6 +70,12 @@ public class RerankModelFactory extends ModelFactory<RerankModel> {
     protected String getModelType() {
         return MODEL_TYPE;
     }
+    @Override protected ModelConfig executionConfiguration(ModelConfig config) {
+        if(ModelProvider.fromString(config.getProvider())!=ModelProvider.DASHSCOPE) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
+        config.setBaseUrl(DASHSCOPE_RERANK_URL);
+        if(config.getApiKey()==null || config.getApiKey().isBlank()) config.setApiKey(dashscopeApiKey);
+        return config;
+    }
 
     // ==================== 具体创建方法 ====================
 

@@ -108,11 +108,21 @@ public class EmbeddingModelFactory extends ModelFactory<EmbeddingModel> {
 
     @Override
     public EmbeddingModel getModel(String modelName) {
+        if(cn.sdh.backend.service.ModelExecutionScope.active()) return super.getModel(modelName);
         // 模型名称兼容映射
         if (modelName != null) {
             modelName = normalizeModelName(modelName);
         }
         return super.getModel(modelName);
+    }
+    @Override protected ModelConfig executionConfiguration(ModelConfig config) {
+        var provider=ModelProvider.fromString(config.getProvider());
+        if(provider==null || config.getModelId()==null || config.getModelId().isBlank()) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
+        config.setBaseUrl(provider==ModelProvider.DASHSCOPE?resolveDashScopeBaseUrl(config):resolveBaseUrl(config,provider));
+        if(config.getApiKey()==null || config.getApiKey().isBlank()) {
+            config.setApiKey(provider==ModelProvider.DASHSCOPE?dashscopeApiKey:provider==ModelProvider.OPENAI?openaiApiKey:provider==ModelProvider.LOCAL?"local":null);
+        }
+        return config;
     }
 
     // ==================== 具体创建方法 ====================

@@ -211,6 +211,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             return result;
 
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("RAG检索失败: knowledgeId={}, error={}", knowledgeBase.getId(), e.getMessage(), e);
             result.setDocuments(Collections.emptyList());
             return result;
@@ -264,6 +265,7 @@ public class RagSearchServiceImpl implements RagSearchService {
                     scoreMap.merge(docId, rrfScore, Double::sum);
                 }
             } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
                 log.warn("查询执行失败: query={}, error={}", queries.get(q), e.getMessage());
             }
         }
@@ -308,6 +310,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             return query;
 
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("查询改写失败: {}", e.getMessage());
             return query;
         }
@@ -342,6 +345,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             log.info("查询扩展完成: 原始=[{}], 扩展=[{}]", query, expandedQueries);
 
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("查询扩展失败: {}", e.getMessage());
         }
 
@@ -365,6 +369,7 @@ public class RagSearchServiceImpl implements RagSearchService {
             return null;
 
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("HyDE 生成失败: {}", e.getMessage());
             return null;
         }
@@ -517,24 +522,28 @@ public class RagSearchServiceImpl implements RagSearchService {
     private Long parseLong(Object val) {
         if (val == null) return null;
         if (val instanceof Number) return ((Number) val).longValue();
-        try { return Long.valueOf(val.toString()); } catch (Exception e) { return null; }
+        try { return Long.valueOf(val.toString()); } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive(); return null; }
     }
 
     private Integer parseInt(Object val) {
         if (val == null) return 0;
         if (val instanceof Number) return ((Number) val).intValue();
-        try { return Integer.valueOf(val.toString()); } catch (Exception e) { return 0; }
+        try { return Integer.valueOf(val.toString()); } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive(); return 0; }
     }
 
     private Double parseDouble(Object val, double defaultValue) {
         if (val instanceof Number number) return number.doubleValue();
         try { return val == null ? defaultValue : Double.parseDouble(val.toString()); }
-        catch (Exception e) { return defaultValue; }
+        catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive(); return defaultValue; }
     }
 
     private java.time.LocalDate parseDate(Object val) {
         if (val == null) return null;
         try { return java.time.LocalDate.parse(val.toString()); }
-        catch (Exception e) { return null; }
+        catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive(); return null; }
     }
 }

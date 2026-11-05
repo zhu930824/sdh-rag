@@ -202,7 +202,8 @@ public class ChatServiceImpl implements ChatService {
                             }
                         })
                         .onErrorResume(e -> {
-                            log.error("AI调用失败", e);
+                            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            log.error("AI调用失败", e);
                             return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
                         })
         );
@@ -346,7 +347,8 @@ public class ChatServiceImpl implements ChatService {
                             return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
                         })
                         .onErrorResume(e -> {
-                            log.error("AI调用失败", e);
+                            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            log.error("AI调用失败", e);
                             return Flux.just("{\"type\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
                         })
         );
@@ -861,6 +863,7 @@ public class ChatServiceImpl implements ChatService {
             ChatResponse response = chatModel.call(prompt);
             return extractContent(response);
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("AI调用失败", e);
             return "AI调用失败: " + e.getMessage();
         }
@@ -880,6 +883,7 @@ public class ChatServiceImpl implements ChatService {
                 ChatResponse response = chatModel.call(prompt);
                 return extractContent(response);
             } catch (Exception e) {
+                cn.sdh.backend.service.ModelExecutionScope.failIfActive();
                 log.error("AI调用失败: {}", e.getMessage(), e);
                 return null;
         }
@@ -889,6 +893,7 @@ public class ChatServiceImpl implements ChatService {
      * 获取聊天模型
      */
     private ChatModel getChatModel(String modelId) {
+        if(cn.sdh.backend.service.ModelExecutionScope.active()) return chatModelFactory.getModel(modelId);
         // 优先使用指定的模型ID
         if (modelId != null) {
             ChatModel model = chatModelFactory.getModelById(modelId);

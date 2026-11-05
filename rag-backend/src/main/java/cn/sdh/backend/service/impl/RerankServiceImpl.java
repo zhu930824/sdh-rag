@@ -42,6 +42,7 @@ public class RerankServiceImpl implements RerankService {
         RerankModel model = rerankModelFactory.getModel(rerankModel);
         if (model == null) {
             log.warn("无法获取 Rerank 模型: {}", rerankModel);
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             return fallbackRerank(documents, topK);
         }
 
@@ -63,7 +64,8 @@ public class RerankServiceImpl implements RerankService {
 
             if (response == null || response.getResults() == null) {
                 log.warn("Rerank 响应为空");
-                return fallbackRerank(documents, topK);
+                cn.sdh.backend.service.ModelExecutionScope.failIfActive();
+            return fallbackRerank(documents, topK);
             }
 
             // 转换结果
@@ -76,7 +78,9 @@ public class RerankServiceImpl implements RerankService {
             return results;
 
         } catch (Exception e) {
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             log.error("Rerank 调用失败: {}", e.getMessage(), e);
+            cn.sdh.backend.service.ModelExecutionScope.failIfActive();
             return fallbackRerank(documents, topK);
         }
     }

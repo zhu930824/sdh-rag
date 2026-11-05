@@ -73,6 +73,13 @@ public class ChatModelFactory extends ModelFactory<ChatModel> {
         if (strategy == null) throw new cn.sdh.backend.common.exception.BusinessException(400, "所选模型供应商没有可用的聊天模型创建策略");
         return strategy.createModel(config, provider == ModelProvider.DASHSCOPE ? dashscopeApiKey : openaiApiKey);
     }
+    @Override protected ModelConfig executionConfiguration(ModelConfig config) {
+        var provider=ModelProvider.fromString(config.getProvider());
+        var strategy=strategyMap.get(provider);
+        if(strategy==null) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
+        return strategy.effectiveConfiguration(config,provider==ModelProvider.DASHSCOPE?dashscopeApiKey:openaiApiKey);
+    }
+    @Override protected ChatModel createExecutionModel(ModelConfig config) { return createConfiguredModel(config); }
 
     @Override
     protected ChatModel createDefaultModel(String modelName) {

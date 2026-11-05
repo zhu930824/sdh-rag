@@ -6,6 +6,11 @@ import java.util.HexFormat;
 
 public final class ContentFingerprint {
     private ContentFingerprint() {}
+    public static String classSha256(Class<?> type) {
+        try(var input=type.getResourceAsStream("/"+type.getName().replace('.','/')+".class")) {
+            return input==null?"unavailable":sha256Bytes(input.readAllBytes());
+        } catch(java.io.IOException unavailable) { return "unavailable"; }
+    }
     public static String sha256(String value) {
         if (value == null) return null;
         return sha256Bytes(value.getBytes(StandardCharsets.UTF_8));

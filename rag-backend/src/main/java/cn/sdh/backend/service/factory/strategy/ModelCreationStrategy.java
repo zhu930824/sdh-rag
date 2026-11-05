@@ -10,6 +10,9 @@ import cn.sdh.backend.service.factory.ModelProvider;
  * @param <M> 模型类型
  */
 public interface ModelCreationStrategy<M> {
+    default ModelConfig effectiveConfiguration(ModelConfig config,String defaultApiKey) {
+        return cn.sdh.backend.service.ModelExecutionScope.copy(config);
+    }
 
     /**
      * 获取此策略对应的模型提供者

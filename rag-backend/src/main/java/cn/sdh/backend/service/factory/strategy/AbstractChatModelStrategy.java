@@ -14,6 +14,11 @@ import org.springframework.ai.openai.api.OpenAiApi;
  */
 @Slf4j
 public abstract class AbstractChatModelStrategy implements ModelCreationStrategy<ChatModel> {
+    @Override public ModelConfig effectiveConfiguration(ModelConfig config,String defaultApiKey) {
+        var effective=cn.sdh.backend.service.ModelExecutionScope.copy(config);
+        effective.setBaseUrl(resolveBaseUrl(config)); effective.setApiKey(resolveApiKey(config,defaultApiKey));
+        return effective;
+    }
 
     @Override
     public ChatModel createModel(ModelConfig config, String defaultApiKey) {
