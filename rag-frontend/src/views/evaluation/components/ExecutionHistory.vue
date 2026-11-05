@@ -7,7 +7,12 @@
         <a-table-column title="状态" key="status"><template #default="{ record }">{{ statusLabel(record.status) }}</template></a-table-column>
         <a-table-column title="语料版本" key="corpus"><template #default="{ record }"><span :title="record.publication_sha256">{{ record.publication_sha256.slice(0, 12) }}</span></template></a-table-column>
         <a-table-column title="已归档样本" data-index="result_count" />
-        <a-table-column title="操作" key="actions"><template #default="{ record }"><a-button type="link" size="small" @click="open(record)">查看结果</a-button></template></a-table-column>
+        <a-table-column title="操作" key="actions"><template #default="{ record }">
+          <a-button type="link" size="small" @click="open(record)">查看结果</a-button>
+          <a-popconfirm v-if="record.status === 'COMPLETED'" title="使用当时语料和检索配置、当前模型目录新建评测？排队保留窗口为 24 小时。" @confirm="replay(record)">
+            <a-button type="link" size="small" :disabled="!!replaying" :loading="replaying === record.id">重放此批次</a-button>
+          </a-popconfirm>
+        </template></a-table-column>
         <template #emptyText>暂无执行归档，历史任务不会自动补造批次。</template>
       </a-table>
     </a-collapse-panel>
@@ -27,9 +32,13 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { getEvaluationExecutions, getEvaluationExecutionResults, type EvaluationExecution } from '@/api/evaluation'
+import { message } from 'ant-design-vue'
+import { getEvaluationExecutions, getEvaluationExecutionResults, replayEvaluationExecution, type EvaluationExecution } from '@/api/evaluation'
 
 const props = defineProps<{ taskId: number }>()
+const emit = defineEmits<{ created: [] }>()
+const replaying = ref<string | null>(null)
+const requestKeys = new Map<string, string>()
 const attempts = ref<EvaluationExecution[]>([])
 const selected = ref<EvaluationExecution | null>(null)
 const results = ref<Array<{ ordinal: number; snapshot: { question?: string; expectedAnswer?: string; actualAnswer?: string } }>>([])
@@ -58,6 +67,20 @@ async function load(keys: string | number | Array<string | number>) {
   } finally { if (requestVersion === version) loading.value = false }
 }
 function close() { resultVersion++; selected.value = null; results.value = []; loadingResults.value = false }
+async function replay(attempt: EvaluationExecution) {
+  if (replaying.value) return
+  replaying.value = attempt.id
+  const requestKey = requestKeys.get(attempt.id) || crypto.randomUUID()
+  requestKeys.set(attempt.id, requestKey)
+  try {
+    const response = await replayEvaluationExecution(attempt.id, requestKey)
+    if (response.code !== 200) throw new Error(response.message || '重放创建失败')
+    requestKeys.delete(attempt.id)
+    message.success(`已创建历史重放任务 #${response.data.id}`)
+    emit('created')
+  } catch (error) { message.error(error instanceof Error ? error.message : '重放创建失败，请重试') }
+  finally { replaying.value = null }
+}
 async function open(attempt: EvaluationExecution) { selected.value = attempt; page.value = 1; await loadResults() }
 async function changePage(pagination: { current?: number }) { page.value = pagination.current || 1; await loadResults() }
 async function loadResults() {

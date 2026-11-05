@@ -26,6 +26,8 @@ public class EvaluationJobHandler implements PlatformJobHandler {
         if (payload.taskId() == null) throw new IllegalArgumentException("评测任务 ID 不能为空");
         if (EvaluationJobPayload.GENERATED.equals(payload.mode())) {
             evaluationService.runEvaluation(payload.taskId(), context);
+        } else if (EvaluationJobPayload.REPLAY.equals(payload.mode())) {
+            evaluationService.runImportedEvaluation(payload.taskId(),null,context);
         } else if (EvaluationJobPayload.DATASET.equals(payload.mode())) {
             evaluationService.runImportedEvaluation(payload.taskId(), payload.items(), context);
         } else {

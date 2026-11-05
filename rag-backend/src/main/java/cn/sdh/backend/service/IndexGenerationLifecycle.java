@@ -16,7 +16,7 @@ import java.util.function.Supplier;
 public class IndexGenerationLifecycle {
     public record CleanupClaim(Long knowledgeId, PublishedIndexService.Generation generation, String owner) {}
     private static final String UNREFERENCED = "NOT EXISTS (SELECT 1 FROM knowledge_document_relation r WHERE r.published_generation=g.generation_key OR r.index_write_generation=g.generation_key)";
-    private static final String NO_READER = "NOT EXISTS (SELECT 1 FROM knowledge_index_read_snapshot_generation ref JOIN knowledge_index_read_lease l ON l.snapshot_sha256=ref.snapshot_sha256 WHERE ref.generation_key=g.generation_key AND l.expires_at>CURRENT_TIMESTAMP(6))";
+    private static final String NO_READER = "NOT EXISTS (SELECT 1 FROM knowledge_index_read_snapshot_generation ref JOIN knowledge_index_read_lease l ON l.snapshot_sha256=ref.snapshot_sha256 WHERE ref.generation_key=g.generation_key AND l.expires_at>CURRENT_TIMESTAMP(6)) AND NOT EXISTS (SELECT 1 FROM knowledge_index_read_snapshot_generation ref JOIN knowledge_index_snapshot_hold h ON h.snapshot_sha256=ref.snapshot_sha256 WHERE ref.generation_key=g.generation_key AND h.expires_at>CURRENT_TIMESTAMP(6))";
     private final JdbcTemplate jdbc;
     private final IndexLifecycleProperties policy;
     private final TransactionTemplate transactions;
@@ -40,14 +40,21 @@ public class IndexGenerationLifecycle {
     }
     String pin(Long knowledgeId,String snapshot,List<PublishedIndexService.Generation> generations,int leaseSeconds) {
         if(leaseSeconds<1 || leaseSeconds>3600) throw new IllegalArgumentException("读租约范围为 1—3600 秒");
+        register(snapshot,generations);
+        String id=UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO knowledge_index_read_lease(lease_id,knowledge_id,snapshot_sha256,expires_at) VALUES(?,?,?,?)",id,knowledgeId,snapshot,now().plusSeconds(leaseSeconds));
+        return id;
+    }
+    private void register(String snapshot,List<PublishedIndexService.Generation> generations) {
         if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT generations_registered FROM knowledge_index_read_snapshot WHERE snapshot_sha256=?",Boolean.class,snapshot))) {
             jdbc.batchUpdate("INSERT INTO knowledge_index_read_snapshot_generation(snapshot_sha256,generation_key) VALUES(?,?)",
                     generations.stream().map(g -> new Object[]{snapshot,g.key()}).toList());
             jdbc.update("UPDATE knowledge_index_read_snapshot SET generations_registered=TRUE WHERE snapshot_sha256=?",snapshot);
         }
-        String id=UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO knowledge_index_read_lease(lease_id,knowledge_id,snapshot_sha256,expires_at) VALUES(?,?,?,?)",id,knowledgeId,snapshot,now().plusSeconds(leaseSeconds));
-        return id;
+    }
+    void hold(Long knowledgeId,String snapshot,List<PublishedIndexService.Generation> generations,String holdId) {
+        register(snapshot,generations);
+        jdbc.update("INSERT INTO knowledge_index_snapshot_hold(hold_id,knowledge_id,snapshot_sha256,expires_at) VALUES(?,?,?,TIMESTAMPADD(HOUR,24,CURRENT_TIMESTAMP(6)))",holdId,knowledgeId,snapshot);
     }
     void assertActive(String lease) {
         Integer active=transactions.execute(status -> jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_index_read_lease WHERE lease_id=? AND expires_at>CURRENT_TIMESTAMP(6)",Integer.class,lease));
@@ -61,6 +68,7 @@ public class IndexGenerationLifecycle {
     }
     public void reapExpiredLeases() {
         jdbc.update("DELETE FROM knowledge_index_read_lease WHERE expires_at<=CURRENT_TIMESTAMP(6) LIMIT 1000");
+        jdbc.update("DELETE FROM knowledge_index_snapshot_hold WHERE expires_at<=CURRENT_TIMESTAMP(6) LIMIT 1000");
     }
     public List<Long> dueKnowledgeBases() {
         return jdbc.queryForList("SELECT g.knowledge_id FROM knowledge_index_generation g WHERE " + UNREFERENCED +

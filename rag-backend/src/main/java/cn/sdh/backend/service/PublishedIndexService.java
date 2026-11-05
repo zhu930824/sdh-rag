@@ -124,6 +124,47 @@ public class PublishedIndexService {
         var view=lifecycle.readGuard(knowledgeId,() -> openUnderGuard(knowledgeId,null,true));
         views.get().push(view); return view;
     }
+    public ReadView openHistorical(Long knowledgeId,String version) {
+        if(views.get().stream().anyMatch(v -> v.knowledgeId.equals(knowledgeId))) throw new BusinessException(409,"历史重放必须使用独立读作用域");
+        var view=lifecycle.readGuard(knowledgeId,() -> {
+            var historical=historical(knowledgeId,version);
+            String lease=lifecycle.pin(knowledgeId,version,historical.generations(),3600);
+            return new ReadView(knowledgeId,historical.generations(),version,historical.summariesComplete(),lease,version);
+        });
+        views.get().push(view); return view;
+    }
+    /** Queue reservation and task creation commit under the same KB guard as cleanup admission. */
+    public <T> T reserveHistorical(Long knowledgeId,String version,String holdId,java.util.function.Supplier<T> createTask) {
+        return lifecycle.readGuard(knowledgeId,() -> {
+            var historical=historical(knowledgeId,version);
+            lifecycle.hold(knowledgeId,version,historical.generations(),holdId);
+            return createTask.get();
+        });
+    }
+    private Heads historical(Long knowledgeId,String version) {
+        if(knowledgeId==null || knowledgeId<=0 || version==null || !version.matches("[a-f0-9]{64}")) throw new BusinessException(400,"历史语料版本无效");
+        var rows=jdbc.queryForList("SELECT manifest_json FROM knowledge_index_read_snapshot WHERE knowledge_id=? AND snapshot_sha256=?",knowledgeId,version);
+        if(rows.isEmpty()) throw unavailableHistory();
+        String json=(String)rows.getFirst().get("manifest_json");
+        if(!version.equals(ContentFingerprint.sha256(json))) throw unavailableHistory();
+        var manifest=JSON.parseObject(json);
+        if(!knowledgeId.equals(manifest.getLong("knowledgeId"))) throw unavailableHistory();
+        var generations=manifest.getList("generations",Generation.class);
+        if(generations==null || generations.stream().map(Generation::key).distinct().count()!=generations.size()) throw unavailableHistory();
+        boolean ready=!generations.isEmpty();
+        for(var generation:generations) ready=validateHistoricalGeneration(knowledgeId,generation) && ready;
+        return new Heads(List.copyOf(generations),ready);
+    }
+    private boolean validateHistoricalGeneration(Long knowledgeId,Generation expected) {
+        if(expected.legacy() || expected.sourceSha256()==null || !expected.sourceSha256().matches("[a-f0-9]{64}")) throw unavailableHistory();
+        var rows=jdbc.queryForList("SELECT g.* FROM knowledge_index_generation g JOIN knowledge_document_relation r ON r.id=g.relation_id AND r.knowledge_id=g.knowledge_id AND r.document_id=g.document_id WHERE g.generation_key=? AND g.knowledge_id=? AND g.state='PUBLISHED' AND NOT EXISTS (SELECT 1 FROM knowledge_draft d WHERE d.published_document_id=g.document_id AND (d.knowledge_id<>g.knowledge_id OR d.status='ROLLED_BACK'))",expected.key(),knowledgeId);
+        if(rows.size()!=1) throw unavailableHistory();
+        var row=rows.getFirst();
+        if(!Objects.equals(expected.documentId(),((Number)row.get("document_id")).longValue()) || expected.revision()!=((Number)row.get("index_revision")).intValue()
+                || !Objects.equals(expected.sourceSha256(),row.get("source_sha256")) || Boolean.TRUE.equals(row.get("legacy_vectors"))) throw unavailableHistory();
+        return Boolean.TRUE.equals(row.get("summary_ready"));
+    }
+    private BusinessException unavailableHistory() { return new BusinessException(409,"历史语料已回收、撤回或缺少完整版本证据，不能重放"); }
     public ReadView openCandidate(DocumentIndexJobPayload payload,Long jobId,String generation,PlatformJobExecutionContext context) {
         if(views.get().stream().anyMatch(v -> v.knowledgeId.equals(payload.knowledgeId()))) throw new BusinessException(409,"候选验证必须使用独立读作用域");
         var view=lifecycle.readGuard(payload.knowledgeId(),() -> {

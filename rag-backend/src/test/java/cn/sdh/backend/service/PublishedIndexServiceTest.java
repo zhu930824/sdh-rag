@@ -21,12 +21,53 @@ class PublishedIndexServiceTest {
         jdbc = new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
         jdbc.update("INSERT INTO knowledge_document_relation VALUES(1,7,42,1,11,2,1,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql")).execute(source);
+        jdbc.execute("CREATE TABLE evaluation_task(id BIGINT PRIMARY KEY)");
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql"),new ClassPathResource("db/migration/V42__historical_evaluation_replay.sql")).execute(source);
         service = new PublishedIndexService(jdbc, new DataSourceTransactionManager(source),new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),new cn.sdh.backend.config.IndexLifecycleProperties()),new IndexPublicationGateStore(jdbc,org.mockito.Mockito.mock(AgentImprovementService.class)));
         context = org.mockito.Mockito.mock(cn.sdh.backend.job.PlatformJobExecutionContext.class);
         org.mockito.Mockito.when(context.jobId()).thenReturn(12L);
     }
     @AfterEach void close() { source.destroy(); }
+    @Test void historicalEvaluationReopensItsRecordedGenerationAfterTheHeadChanges() {
+        next(2,12); var first=service.stage(payload(2),12L,"b".repeat(64),context);
+        service.publish(payload(2),12L,first.key(),1,context);
+        String recorded;
+        try(var old=service.openEvaluation(7L)) { recorded=old.snapshot().version(); }
+        next(3,12); var second=service.stage(payload(3),12L,"c".repeat(64),context);
+        service.publish(payload(3),12L,second.key(),1,context);
+        try(var replay=service.openHistorical(7L,recorded)) {
+            assertEquals(recorded,replay.snapshot().version());
+            assertEquals(first.key(),replay.generations().getFirst().key());
+        }
+        try(var live=service.open(7L)) { assertEquals(second.key(),live.generations().getFirst().key()); }
+    }
+    @Test void queueReservationsProtectHistoryAndRollbackWithTaskCreation() {
+        next(2,12); var first=service.stage(payload(2),12L,"b".repeat(64),context); service.publish(payload(2),12L,first.key(),1,context);
+        String version; try(var view=service.open(7L)) { version=view.snapshot().version(); }
+        assertThrows(IllegalStateException.class,() -> service.reserveHistorical(7L,version,"a".repeat(32),() -> { throw new IllegalStateException("injected queue failure"); }));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_index_snapshot_hold",Integer.class));
+        assertEquals("queued",service.reserveHistorical(7L,version,"b".repeat(32),() -> "queued"));
+        next(3,12); var second=service.stage(payload(3),12L,"c".repeat(64),context); service.publish(payload(3),12L,second.key(),1,context);
+        var policy=new cn.sdh.backend.config.IndexLifecycleProperties(); policy.setRetentionSeconds(0);
+        var cleanup=new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(source),policy);
+        assertTrue(cleanup.claim(7L).stream().noneMatch(c -> c.generation().key().equals(first.key())));
+        jdbc.update("UPDATE knowledge_index_snapshot_hold SET expires_at=TIMESTAMPADD(SECOND,-1,CURRENT_TIMESTAMP)");
+        assertTrue(cleanup.claim(7L).stream().anyMatch(c -> c.generation().key().equals(first.key())));
+        assertThrows(BusinessException.class,() -> service.openHistorical(7L,version));
+    }
+    @Test void legacyDeletedRevokedAndCrossKnowledgeHistoryCannotBeReopened() {
+        String legacy; try(var view=service.open(7L)) { legacy=view.snapshot().version(); }
+        assertThrows(BusinessException.class,() -> service.openHistorical(7L,legacy));
+        next(2,12); var first=service.stage(payload(2),12L,"b".repeat(64),context); service.publish(payload(2),12L,first.key(),1,context);
+        String version; try(var view=service.open(7L)) { version=view.snapshot().version(); }
+        assertThrows(BusinessException.class,() -> service.openHistorical(8L,version));
+        jdbc.update("UPDATE knowledge_index_generation SET state='DELETED' WHERE generation_key=?",first.key());
+        assertThrows(BusinessException.class,() -> service.openHistorical(7L,version));
+        jdbc.update("UPDATE knowledge_index_generation SET state='PUBLISHED' WHERE generation_key=?",first.key());
+        managedDraft(); jdbc.update("UPDATE knowledge_draft SET status='ROLLED_BACK' WHERE id=31");
+        assertThrows(BusinessException.class,() -> service.openHistorical(7L,version));
+        assertThrows(IllegalStateException.class,() -> service.current(7L));
+    }
     @Test void stagingIsInvisibleAndAReadViewDoesNotChangeAcrossPublication() {
         try (var old = service.open(7L)) {
             assertEquals(1, old.snapshot().legacyCount());

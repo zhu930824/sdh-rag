@@ -23,16 +23,18 @@ public class EvaluationExecutionService {
     private final PublishedIndexService publications;
     private final EvaluationQaMapper qaMapper;
     private final EvaluationTaskMapper tasks;
-    public EvaluationExecutionService(JdbcTemplate jdbc,PlatformTransactionManager manager,ModelConfigMapper models,KnowledgeAccessService access,PublishedIndexService publications,EvaluationQaMapper qaMapper,EvaluationTaskMapper tasks) {
-        this.jdbc=jdbc; this.transactions=new TransactionTemplate(manager); this.models=models; this.access=access; this.publications=publications; this.qaMapper=qaMapper; this.tasks=tasks;
+    private final EvaluationReplayService replays;
+    public EvaluationExecutionService(JdbcTemplate jdbc,PlatformTransactionManager manager,ModelConfigMapper models,KnowledgeAccessService access,PublishedIndexService publications,EvaluationQaMapper qaMapper,EvaluationTaskMapper tasks,EvaluationReplayService replays) {
+        this.jdbc=jdbc; this.transactions=new TransactionTemplate(manager); this.models=models; this.access=access; this.publications=publications; this.qaMapper=qaMapper; this.tasks=tasks; this.replays=replays;
     }
     public Session start(EvaluationTask task,PlatformJobExecutionContext context,Map<String,String> prompts) {
         if(context==null || !Objects.equals(task.getJobId(),context.jobId())) throw new BusinessException(409,"评测必须由当前可靠任务执行");
         var original=access.requireRead(task.getKnowledgeId(),task.getUserId());
         if(original==null) throw new BusinessException(404,"知识库不存在");
-        var base=JSON.parseObject(JSON.toJSONString(original),KnowledgeBase.class);
+        var replay=replays.spec(task);
+        var base=replay==null?JSON.parseObject(JSON.toJSONString(original),KnowledgeBase.class):replay.base();
         var catalog=models.selectList(null).stream().map(ModelExecutionScope::copy).toList();
-        var view=publications.openEvaluation(task.getKnowledgeId());
+        var view=replay==null?publications.openEvaluation(task.getKnowledgeId()):publications.openHistorical(task.getKnowledgeId(),replay.version());
         ModelExecutionScope scope=null;
         try {
             scope=new ModelExecutionScope(catalog);
@@ -41,6 +43,7 @@ public class EvaluationExecutionService {
             initial.put("publication",view.snapshot()); initial.put("generations",view.generations()); initial.put("evaluationMode",task.getEvaluationMode()); initial.put("topK",task.getTopK());
             initial.put("judgeModel",task.getJudgeModel()); initial.put("promptVersions",Map.copyOf(prompts));
             initial.put("modelCatalogSha256",scope.catalogSha256());
+            if(replay!=null) initial.put("replaySourceExecutionId",replay.sourceExecution());
             initial.put("runtimeFingerprints",runtimeFingerprints());
             String publication=view.snapshot().version();
             String snapshot=JSON.toJSONString(initial),configuration=ContentFingerprint.sha256(snapshot);
@@ -56,8 +59,11 @@ public class EvaluationExecutionService {
             });
             resetMetrics(task);
             task.setStatus(1); task.setErrorMessage(null); task.setCurrentExecutionId(id);
-            return new Session(id,task,context,base,view,scope,initial);
+            return new Session(id,task,context,base,view,scope,initial,replay);
         } catch(RuntimeException error) { if(scope!=null) scope.close(); view.close(); throw error; }
+    }
+    public List<cn.sdh.backend.dto.EvaluationQaItem> frozenReplayInputs(Long taskId,PlatformJobExecutionContext context) {
+        return replays.inputs(taskId,context);
     }
     public boolean alreadyCompleted(EvaluationTask task,PlatformJobExecutionContext context) {
         if(context==null || !Objects.equals(task.getJobId(),context.jobId())) return false;
@@ -94,8 +100,9 @@ public class EvaluationExecutionService {
         private int count;
         private boolean terminal;
         private int expectedCount;
-        Session(String id,EvaluationTask task,PlatformJobExecutionContext context,KnowledgeBase base,PublishedIndexService.ReadView view,ModelExecutionScope scope,Map<String,Object> initial) {
-            this.id=id; this.task=task; this.context=context; this.base=base; this.view=view; this.scope=scope; this.initial=initial;
+        private final EvaluationReplayService.Spec replay;
+        Session(String id,EvaluationTask task,PlatformJobExecutionContext context,KnowledgeBase base,PublishedIndexService.ReadView view,ModelExecutionScope scope,Map<String,Object> initial,EvaluationReplayService.Spec replay) {
+            this.id=id; this.task=task; this.context=context; this.base=base; this.view=view; this.scope=scope; this.initial=initial; this.replay=replay;
         }
         public KnowledgeBase base() { return JSON.parseObject(JSON.toJSONString(base),KnowledgeBase.class); }
         public long seed() { return Long.parseUnsignedLong(((cn.sdh.backend.dto.IndexPublicationSnapshot)initial.get("publication")).version().substring(0,16),16); }
@@ -105,6 +112,7 @@ public class EvaluationExecutionService {
             if(!(values instanceof Collection<?> entries) || entries.isEmpty()) throw new EvaluationIntegrityException();
             expectedCount=entries.size();
             String json=JSON.toJSONString(values);
+            if(replay!=null && !replay.inputSha256().equals(ContentFingerprint.sha256(json))) throw new EvaluationIntegrityException();
             if(json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>4*1024*1024) throw new EvaluationIntegrityException();
             transactions.executeWithoutResult(status -> {
                 fence(task,context,id);
@@ -135,6 +143,7 @@ public class EvaluationExecutionService {
                 jdbc.update(RESET_METRICS,task.getId());
                 task.setStatus(2); task.setQaCount(count); task.setUpdateTime(java.time.LocalDateTime.now());
                 if(tasks.updateById(task)!=1) throw new EvaluationIntegrityException();
+                replays.release(task.getId());
             }); terminal=true;
         }
         private String manifest() {
@@ -203,6 +212,7 @@ public class EvaluationExecutionService {
             jdbc.update("UPDATE evaluation_execution_attempt SET status=?,finished_at=CURRENT_TIMESTAMP(6) WHERE task_id=? AND job_id=? AND status='RUNNING'",outcome,candidate.get("task_id"),candidate.get("job_id"));
             if(!task.isEmpty() && Objects.equals(task.getFirst().get("job_id"),candidate.get("job_id")))
                 jdbc.update("UPDATE evaluation_task SET status=?,error_message='评测任务已取消或重试耗尽',update_time=CURRENT_TIMESTAMP WHERE id=? AND status<>2","CANCELLED".equals(outcome)?4:3,candidate.get("task_id"));
+            if(!task.isEmpty() && Objects.equals(task.getFirst().get("job_id"),candidate.get("job_id"))) replays.release(((Number)candidate.get("task_id")).longValue());
         });
     }
 }

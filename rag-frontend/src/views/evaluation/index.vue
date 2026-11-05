@@ -252,7 +252,7 @@
           </div>
         </div>
 
-        <ExecutionHistory :key="currentTask.id" :task-id="currentTask.id" />
+        <ExecutionHistory :key="currentTask.id" :task-id="currentTask.id" @created="onHistoricalReplayCreated" />
 
         <div class="layered-metrics-panel">
           <div class="panel-title">检索层指标（Top {{ currentTask.topK || 5 }}，已标注 {{ currentTask.labeledCount || 0 }} 条）</div>
@@ -771,12 +771,12 @@ function statusColor(status: number, jobStatus?: string | null) {
 }
 
 function datasetTypeText(type: string | null) {
-  const map: Record<string, string> = { generated: '生成', imported: '导入', builtin: '内置', custom: '自定义' }
+  const map: Record<string, string> = { generated: '生成', imported: '导入', builtin: '内置', custom: '自定义', historical: '历史重放' }
   return map[type || 'generated'] || '生成'
 }
 
 function datasetTypeColor(type: string | null) {
-  const map: Record<string, string> = { generated: 'blue', imported: 'green', builtin: 'purple', custom: 'green' }
+  const map: Record<string, string> = { generated: 'blue', imported: 'green', builtin: 'purple', custom: 'green', historical: 'cyan' }
   return map[type || 'generated'] || 'blue'
 }
 
@@ -1287,6 +1287,7 @@ async function handleViewDetail(record: EvaluationTask) {
     loadingQa.value = false
   }
 }
+function onHistoricalReplayCreated() { loadTasks(); startPolling() }
 
 function showQaDetail(record: EvaluationQa) {
   selectedQa.value = record

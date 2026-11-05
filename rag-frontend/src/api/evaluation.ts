@@ -373,3 +373,6 @@ export function getEvaluationExecutions(taskId: number): Promise<ApiResponse<Eva
 export function getEvaluationExecutionResults(id: string, offset = 0, limit = 100): Promise<ApiResponse<Array<{ ordinal: number; snapshot_json: string; snapshot_sha256: string }>>> {
   return request.get(`/api/evaluation/executions/${id}/results`, { params: { offset, limit } })
 }
+export function replayEvaluationExecution(id: string, requestKey: string, judgeModel?: string): Promise<ApiResponse<EvaluationTask>> {
+  return request.post(`/api/evaluation/executions/${id}/replay`, { requestKey, judgeModel })
+}

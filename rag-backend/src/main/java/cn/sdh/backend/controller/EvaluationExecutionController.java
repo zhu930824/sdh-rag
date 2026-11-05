@@ -13,6 +13,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EvaluationExecutionController {
     private final EvaluationExecutionService executions;
+    private final cn.sdh.backend.service.EvaluationReplayService replays;
+
+    @PostMapping("/executions/{executionId}/replay")
+    public Result<cn.sdh.backend.entity.EvaluationTask> replay(@PathVariable String executionId,@RequestBody cn.sdh.backend.service.EvaluationReplayService.Command command) {
+        return Result.success(replays.create(executionId,UserContext.getCurrentUserId(),command));
+    }
 
     @GetMapping("/tasks/{taskId}/executions")
     public Result<List<Map<String,Object>>> attempts(@PathVariable Long taskId) {

@@ -485,6 +485,7 @@ public class EvaluationServiceImpl implements EvaluationService {
         try (var execution=executions.start(task,context,promptVersions())) {
             execution.check();
 
+            if(items==null) items=executions.frozenReplayInputs(taskId,context);
             var fixedItems=com.alibaba.fastjson2.JSON.parseArray(com.alibaba.fastjson2.JSON.toJSONString(items),EvaluationQaItem.class);
             if(fixedItems==null || fixedItems.isEmpty()) throw new cn.sdh.backend.common.exception.EvaluationIntegrityException();
             execution.inputs(fixedItems);

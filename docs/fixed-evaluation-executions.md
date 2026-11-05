@@ -54,3 +54,6 @@ V41 为每次可靠任务执行建立独立批次。执行期间固定已发布�
 2026-11-05 最终验收：266 项普通测试，265 项通过、1 项既有应用环境测试跳过；26 项真实 MySQL 8.4.13 验收通过（含 V1—V41 迁移及幂等验证）；真实 Elasticsearch 8.18.5 验收通过，覆盖固定集合计数、分页与发布切换；前端生产构建和 8 项既有行为测试通过。`DEFAULT` 名称与隐式默认选择器冲突先由失败用例复现，再改为无歧义编码并通过回归。
 
 证据日志：`.workbuddy/evaluation-execution-final-mysql.log`、`.workbuddy/evaluation-published-es.log`、`.workbuddy/evaluation-http-contracts.log`、`.workbuddy/evaluation-selector-red.log`、`.workbuddy/evaluation-execution-frontend-release.log`、`.workbuddy/evaluation-execution-frontend-tests.log`。全局前端类型检查仍有 320 条既有诊断，新批次组件没有诊断，不能宣称全局类型检查通过。未调用真实模型供应商，未部署生产。
+
+
+V42 后续增量见 [历史评测语料重放](historical-evaluation-replay.md)：可用的完整历史代际支持独立重放及有限排队保留；不会从已回收的向量自动重建语料。以上 V41 验收记录保留其原始版本范围。

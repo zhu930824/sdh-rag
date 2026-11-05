@@ -59,6 +59,8 @@ class AgentMysqlIT {
         }
         upgraded=Flyway.configure().dataSource(source).target("41").load();
         assertEquals(1,upgraded.migrate().migrationsExecuted);
+        upgraded=Flyway.configure().dataSource(source).target("42").load();
+        assertEquals(1,upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         assertEquals(0, upgraded.migrate().migrationsExecuted, "Re-running the migrator must be a no-op");
         context = MysqlAgentContext.open(source);
@@ -70,7 +72,7 @@ class AgentMysqlIT {
     }
 
     @BeforeEach void reset() {
-        for (String table : List.of("evaluation_execution_attempt", "evaluation_qa", "evaluation_task", "knowledge_index_publication_gate", "knowledge_draft", "knowledge_index_read_lease", "knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
+        for (String table : List.of("evaluation_replay_request", "knowledge_index_snapshot_hold", "evaluation_execution_attempt", "evaluation_qa", "evaluation_task", "knowledge_index_publication_gate", "knowledge_draft", "knowledge_index_read_lease", "knowledge_index_read_snapshot", "knowledge_index_generation", "knowledge_document_relation", "agent_evaluation_record", "agent_evaluation_dataset", "agent_execution_attempt", "agent_step", "agent_action", "agent_run", "agent_runtime_state", "chat_history", "platform_job", "it_business_receipt")) {
             jdbc.execute("DELETE FROM " + table); // Only this freshly created, private schema is connected.
         }
     }
@@ -84,10 +86,10 @@ class AgentMysqlIT {
         if (mysql != null) mysql.close();
     }
 
-    @Test void migrationsAreValidatedOnMySqlAndReachV41() {
+    @Test void migrationsAreValidatedOnMySqlAndReachV42() {
         assertTrue(jdbc.queryForObject("SELECT VERSION()", String.class).startsWith("8."));
-        assertEquals("41", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
-        assertEquals(41, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
+        assertEquals("42", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class));
+        assertEquals(42, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class));
         assertEquals(0, count("agent_run"));
     }
 
@@ -106,6 +108,85 @@ class AgentMysqlIT {
         var qa=new EvaluationQa(); qa.setTaskId(task.getId()); qa.setQuestion(question); qa.setExpectedAnswer("answer");
         qa.setHit(false); qa.setDocHit(false); qa.setIsNegative(false); qa.setSourceType("imported");
         qa.setRetrievedContext("private retrieved context"); return qa;
+    }
+    private EvaluationFixture replaySource() {
+        jdbc.update("UPDATE knowledge_base SET vector_top_k=3 WHERE id=900001");
+        jdbc.update("INSERT INTO knowledge_document_relation(id,knowledge_id,document_id,index_revision,published_generation) VALUES(900001,900001,900001,1,'historical-v1')");
+        jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state,source_sha256) VALUES('historical-v1',900001,900001,900001,1,'PUBLISHED',?)","b".repeat(64));
+        var source=evaluationFixture("replay-source");
+        var item=new cn.sdh.backend.dto.EvaluationQaItem(); item.setQuestion("historical question"); item.setExpectedAnswer("answer");
+        item.setExpectedDocumentIds(List.of(900001L)); item.setRelevanceJudgments(Map.of(900001L,3));
+        try(var attempt=context.getBean(EvaluationExecutionService.class).start(source.task(),source.worker(),Map.of())) {
+            attempt.inputs(List.of(item)); attempt.record(evaluationQa(source.task(),item.getQuestion()));
+            source.task().setRecallAtK(java.math.BigDecimal.ONE); source.task().setMrr(java.math.BigDecimal.ONE); attempt.complete();
+        }
+        jdbc.update("INSERT INTO knowledge_index_generation(generation_key,relation_id,knowledge_id,document_id,index_revision,state,source_sha256) VALUES('historical-v2',900001,900001,900001,2,'PUBLISHED',?)","c".repeat(64));
+        jdbc.update("UPDATE knowledge_document_relation SET published_generation='historical-v2',index_revision=2 WHERE id=900001");
+        jdbc.update("UPDATE knowledge_base SET vector_top_k=99 WHERE id=900001");
+        return source;
+    }
+    @Test void historicalReplayIsIdempotentAndActuallyRunsTheFrozenDatasetAndCorpus() throws Exception {
+        var source=replaySource(); var replays=context.getBean(EvaluationReplayService.class);
+        var command=new EvaluationReplayService.Command(UUID.randomUUID().toString(),null);
+        var ids=new java.util.concurrent.CopyOnWriteArrayList<Long>();
+        simultaneous(() -> { ids.add(replays.create(source.task().getCurrentExecutionId(),1L,command).getId()); return 1; });
+        assertEquals(1,new HashSet<>(ids).size());
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM evaluation_replay_request",Integer.class));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_index_snapshot_hold",Integer.class));
+        assertThrows(BusinessException.class,() -> replays.create(source.task().getCurrentExecutionId(),1L,new EvaluationReplayService.Command(command.requestKey(),"different-judge")));
+        var policy=new cn.sdh.backend.config.IndexLifecycleProperties(); policy.setRetentionSeconds(0);
+        var cleanup=new IndexGenerationLifecycle(jdbc,context.getBean(org.springframework.transaction.PlatformTransactionManager.class),policy);
+        assertTrue(cleanup.claim(900001L).isEmpty(),"The queued replay must protect the old generation before a read lease exists");
+        var task=context.getBean(EvaluationTaskMapper.class).selectById(ids.getFirst());
+        var jobs=context.getBean(PlatformJobService.class); assertEquals(1,jobs.claimAvailable("historical-worker",100).size());
+        var worker=new cn.sdh.backend.job.PlatformJobExecutionContext(task.getJobId(),"historical-worker",jobs);
+        var rag=org.mockito.Mockito.mock(RagSearchService.class);
+        var publications=context.getBean(PublishedIndexService.class);
+        org.mockito.Mockito.when(rag.search(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(KnowledgeBase.class),org.mockito.ArgumentMatchers.isNull())).thenAnswer(call -> {
+            assertEquals("historical question",call.getArgument(0));
+            assertEquals(3,((KnowledgeBase)call.getArgument(1)).getVectorTopK());
+            assertEquals("historical-v1",publications.current(900001L).generations().getFirst().key());
+            var result=new RagSearchService.RagSearchResult();
+            result.setDocuments(List.of(new org.springframework.ai.document.Document("old corpus",Map.of("id","old-chunk","document_id",900001L)))); return result;
+        });
+        var runtime=new cn.sdh.backend.service.impl.EvaluationServiceImpl(context.getBean(EvaluationTaskMapper.class),context.getBean(EvaluationQaMapper.class),context.getBean(VectorStoreService.class),org.mockito.Mockito.mock(KnowledgeBaseService.class),rag,org.mockito.Mockito.mock(ChatService.class),org.mockito.Mockito.mock(TestDatasetService.class),context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class),context.getBean(KnowledgeAccessService.class),jobs,context.getBean(EvaluationExecutionService.class));
+        var handler=new cn.sdh.backend.job.EvaluationJobHandler(runtime,context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class));
+        assertTrue(handler.execute(jobs.get(task.getJobId()),worker).contains("1"));
+        var completed=context.getBean(EvaluationTaskMapper.class).selectById(task.getId());
+        assertEquals(2,completed.getStatus()); assertEquals("PASSED",completed.getRegressionStatus());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_index_snapshot_hold",Integer.class));
+        assertEquals(jdbc.queryForObject("SELECT input_sha256 FROM evaluation_execution_attempt WHERE id=?",String.class,source.task().getCurrentExecutionId()),jdbc.queryForObject("SELECT input_sha256 FROM evaluation_execution_attempt WHERE id=?",String.class,completed.getCurrentExecutionId()));
+        try(var latest=publications.open(900001L)) { assertEquals("historical-v2",latest.generations().getFirst().key()); }
+    }
+    @Test void historicalReplayRejectsUnavailableInputsAndQueueFailuresLeaveNoPartialTask() {
+        var source=replaySource(); var replays=context.getBean(EvaluationReplayService.class);
+        String execution=source.task().getCurrentExecutionId();
+        assertThrows(BusinessException.class,() -> replays.create(execution,2L,new EvaluationReplayService.Command(UUID.randomUUID().toString(),null)));
+        jdbc.execute("CREATE TRIGGER it_reject_replay_job BEFORE INSERT ON platform_job FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected replay queue failure'");
+        try { assertThrows(org.springframework.dao.DataAccessException.class,() -> replays.create(execution,1L,new EvaluationReplayService.Command(UUID.randomUUID().toString(),null))); }
+        finally { jdbc.execute("DROP TRIGGER it_reject_replay_job"); }
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM evaluation_task",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM evaluation_replay_request",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_index_snapshot_hold",Integer.class));
+        var replay=replays.create(execution,1L,new EvaluationReplayService.Command(UUID.randomUUID().toString(),null));
+        jdbc.update("UPDATE evaluation_replay_request SET expires_at=TIMESTAMPADD(SECOND,-1,NOW()) WHERE task_id=?",replay.getId());
+        assertThrows(BusinessException.class,() -> replays.spec(replay));
+        var jobs=context.getBean(PlatformJobService.class); assertEquals(1,jobs.claimAvailable("expired-replay",100).size());
+        var worker=new cn.sdh.backend.job.PlatformJobExecutionContext(replay.getJobId(),"expired-replay",jobs);
+        var rag=org.mockito.Mockito.mock(RagSearchService.class);
+        var runtime=new cn.sdh.backend.service.impl.EvaluationServiceImpl(context.getBean(EvaluationTaskMapper.class),context.getBean(EvaluationQaMapper.class),context.getBean(VectorStoreService.class),org.mockito.Mockito.mock(KnowledgeBaseService.class),rag,org.mockito.Mockito.mock(ChatService.class),org.mockito.Mockito.mock(TestDatasetService.class),context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class),context.getBean(KnowledgeAccessService.class),jobs,context.getBean(EvaluationExecutionService.class));
+        var handler=new cn.sdh.backend.job.EvaluationJobHandler(runtime,context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class));
+        assertThrows(cn.sdh.backend.common.exception.EvaluationIntegrityException.class,() -> handler.execute(jobs.get(replay.getJobId()),worker));
+        assertEquals(3,context.getBean(EvaluationTaskMapper.class).selectById(replay.getId()).getStatus(),"Preflight failures must not leave the task pending forever");
+        org.mockito.Mockito.verifyNoInteractions(rag);
+        jdbc.update("UPDATE evaluation_replay_request SET expires_at=TIMESTAMPADD(HOUR,24,NOW()) WHERE task_id=?",replay.getId());
+        var access=context.getBean(KnowledgeAccessService.class);
+        org.mockito.Mockito.doThrow(new BusinessException(403,"revoked")).when(access).requireEdit(900001L,1L);
+        try { assertThrows(BusinessException.class,() -> replays.spec(replay)); }
+        finally { org.mockito.Mockito.doAnswer(call -> context.getBean(KnowledgeBaseMapper.class).selectById((Long)call.getArgument(0))).when(access).requireEdit(900001L,1L); }
+        jdbc.update("UPDATE knowledge_index_generation SET state='DELETED' WHERE generation_key='historical-v1'");
+        assertThrows(BusinessException.class,() -> replays.create(execution,1L,new EvaluationReplayService.Command(UUID.randomUUID().toString(),null)));
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM evaluation_task",Integer.class));
     }
     @Test void incompleteAttemptsCannotCompleteAndRetriesKeepImmutableResults() {
         var fixture=evaluationFixture("evaluation-owner"); var task=fixture.task();

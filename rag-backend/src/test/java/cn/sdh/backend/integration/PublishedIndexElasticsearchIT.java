@@ -35,7 +35,8 @@ class PublishedIndexElasticsearchIT {
                 var jdbc = new JdbcTemplate(connections);
                 jdbc.execute("CREATE TABLE knowledge_document_relation(id BIGINT PRIMARY KEY,knowledge_id BIGINT,document_id BIGINT,index_revision INT,job_id BIGINT,process_status INT,chunk_count INT,error_message VARCHAR(2000),process_time TIMESTAMP,create_time TIMESTAMP)");
                 jdbc.update("INSERT INTO knowledge_document_relation VALUES(1,7,42,1,11,2,1,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
-                new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql")).execute(connections);
+                jdbc.execute("CREATE TABLE evaluation_task(id BIGINT PRIMARY KEY)");
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V24__knowledge_publishing_pipeline.sql"),new ClassPathResource("db/migration/V38__published_index_generations.sql"),new ClassPathResource("db/migration/V39__index_read_leases_and_cleanup.sql"),new ClassPathResource("db/migration/V40__index_publication_quality_gate.sql"),new ClassPathResource("db/migration/V42__historical_evaluation_replay.sql")).execute(connections);
                 var policy=new cn.sdh.backend.config.IndexLifecycleProperties(); policy.setRetentionSeconds(0);
                 var lifecycle=new IndexGenerationLifecycle(jdbc,new DataSourceTransactionManager(connections),policy);
                 var publications = new PublishedIndexService(jdbc, new DataSourceTransactionManager(connections),lifecycle,new IndexPublicationGateStore(jdbc,org.mockito.Mockito.mock(AgentImprovementService.class)));
@@ -76,7 +77,9 @@ class PublishedIndexElasticsearchIT {
                 deletion.delete(retired.getFirst()); assertTrue(lifecycle.finish(retired.getFirst(),true));
                 assertFalse(es.exists(e -> e.index("sdh-rag-kb-7").id("old")).value());
                 assertFalse(es.exists(e -> e.index("sdh-rag-kb-7-cold").id("old")).value());
+                String historicalVersion;
                 try (var current = publications.open(7L)) {
+                    historicalVersion=current.snapshot().version();
                     assertNotEquals(oldVersion,current.snapshot().version());
                     assertSearches(vectors,"new");
                     assertFalse(current.snapshot().summariesComplete());
@@ -140,6 +143,12 @@ class PublishedIndexElasticsearchIT {
                 assertIds(online.similaritySearch("question",7L,5,"model"),"new");
                 assertTrue(publications.publish(managedPayload,13L,managed.key(),1,managedContext));
                 assertIds(online.similaritySearch("question",7L,5,"model"),"managed");
+                try(var historical=publications.openHistorical(7L,historicalVersion)) {
+                    assertIds(online.similaritySearch("question",7L,5,"model"),"new");
+                    assertEquals(1,online.countPublishedChunks(7L));
+                    assertIds(online.getPublishedChunks(7L,0,10),"new");
+                }
+
                 assertEquals(1,online.countPublishedChunks(7L));
                 assertIds(online.getPublishedChunks(7L,0,10),"managed");
                 // Five stronger published competitors keep an inferior candidate outside Top 5.
